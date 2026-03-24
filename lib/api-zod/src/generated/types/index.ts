@@ -3,10 +3,11 @@
  * Do not edit manually.
  * Api
  * Arvoredo PDV API
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 
 export * from "./abrirCaixaInput";
+export * from "./alertasProdutos";
 export * from "./buscarProdutoParams";
 export * from "./cliente";
 export * from "./criarClienteInput";
@@ -17,6 +18,9 @@ export * from "./editarProdutoInputCategoria";
 export * from "./extratoCliente";
 export * from "./fiadoItem";
 export * from "./healthStatus";
+export * from "./impressaoResponse";
+export * from "./imprimirCupomInput";
+export * from "./imprimirSangriaInput";
 export * from "./itemVenda";
 export * from "./itemVendaInput";
 export * from "./listarClientesParams";

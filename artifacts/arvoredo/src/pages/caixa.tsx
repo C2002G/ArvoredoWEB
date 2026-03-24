@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useCaixaStatus, useCaixaHistorico, useCaixaSangrias, useAbrirCaixaWrapper, useFecharCaixaWrapper, useRegistrarSangriaWrapper } from "@/hooks/use-caixa";
+import { useImprimirSangria } from "@/hooks/use-impressora";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { Button, Input, Modal } from "@/components/ui-elements";
-import { Wallet, LogOut, Download, LockOpen, Lock, AlertCircle } from "lucide-react";
+import { Wallet, LogOut, Download, LockOpen, Lock, AlertCircle, Printer, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Caixa() {
@@ -14,28 +15,32 @@ export default function Caixa() {
   const abrirCaixa = useAbrirCaixaWrapper();
   const fecharCaixa = useFecharCaixaWrapper();
   const registrarSangria = useRegistrarSangriaWrapper();
+  const imprimirSangria = useImprimirSangria();
   const { toast } = useToast();
 
-  const [fundoInicial, setFundoInicial] = useState("");
-  const [sangriaForm, setSangriaForm] = useState({ valor: "", motivo: "" });
+  const hoje = new Date().toISOString().split('T')[0];
+  const [fundoInicial, setFundoInicial] = useState("300");
+  const [sangriaForm, setSangriaForm] = useState({ valor: "300", motivo: "" });
   const [fecharModal, setFecharModal] = useState(false);
+  const [imprimirModal, setImprimirModal] = useState(false);
+  const [periodoImpressao, setPeriodoImpressao] = useState({ inicio: hoje, fim: hoje });
+  const [imprimindoTexto, setImprimindoTexto] = useState<string | null>(null);
 
   const handleAbrir = (e: React.FormEvent) => {
     e.preventDefault();
-    abrirCaixa.mutate({ data: { fundo_inicial: Number(fundoInicial) || 0 } }, {
+    abrirCaixa.mutate({ data: { fundo_inicial: Number(fundoInicial) || 300 } }, {
       onSuccess: () => {
         toast({ title: "Caixa aberto", className: "bg-green-600 text-white" });
-        setFundoInicial("");
       }
     });
   };
 
   const handleSangria = (e: React.FormEvent) => {
     e.preventDefault();
-    registrarSangria.mutate({ data: { valor: Number(sangriaForm.valor), motivo: sangriaForm.motivo } }, {
+    registrarSangria.mutate({ data: { valor: Number(sangriaForm.valor), motivo: sangriaForm.motivo || null } }, {
       onSuccess: () => {
         toast({ title: "Sangria registrada", className: "bg-green-600 text-white" });
-        setSangriaForm({ valor: "", motivo: "" });
+        setSangriaForm({ valor: "300", motivo: "" });
       }
     });
   };
@@ -45,6 +50,27 @@ export default function Caixa() {
       onSuccess: () => {
         toast({ title: "Caixa fechado com sucesso", className: "bg-green-600 text-white" });
         setFecharModal(false);
+      }
+    });
+  };
+
+  const handleImprimirSangria = () => {
+    imprimirSangria.mutate({
+      data: {
+        data_inicio: periodoImpressao.inicio,
+        data_fim: periodoImpressao.fim,
+        sessao_id: sessaoId || null,
+      }
+    }, {
+      onSuccess: (res: any) => {
+        if (res.ok && res.simulado && res.texto) {
+          setImprimindoTexto(res.texto);
+        } else if (res.ok) {
+          toast({ title: "Relatório impresso com sucesso!", className: "bg-green-600 text-white" });
+          setImprimirModal(false);
+        } else {
+          toast({ title: "Erro na impressora", description: res.erro, variant: "destructive" });
+        }
       }
     });
   };
@@ -77,11 +103,12 @@ export default function Caixa() {
                 type="number" 
                 step="0.01" 
                 min="0"
-                placeholder="R$ 0,00"
+                placeholder="R$ 300,00"
                 value={fundoInicial}
                 onChange={e => setFundoInicial(e.target.value)}
                 className="text-xl h-14 font-mono text-center font-bold"
               />
+              <p className="text-xs text-muted-foreground mt-1 text-center">Padrão: R$ 300,00</p>
             </div>
             <Button size="lg" className="w-full h-14 text-lg" disabled={abrirCaixa.isPending}>
               <LockOpen className="w-5 h-5 mr-2" />
@@ -108,10 +135,16 @@ export default function Caixa() {
                   <h3 className="font-bold text-lg mb-1">Status: Aberto</h3>
                   <p className="text-muted-foreground text-sm">Desde {formatDate(status.sessao!.aberto_em)}</p>
                 </div>
-                <Button variant="destructive" className="w-full mt-6 gap-2" onClick={() => setFecharModal(true)}>
-                  <LogOut className="w-5 h-5" />
-                  Fechar Caixa
-                </Button>
+                <div className="flex flex-col gap-3 mt-6">
+                  <Button variant="outline" className="w-full gap-2" onClick={() => setImprimirModal(true)}>
+                    <Printer className="w-4 h-4" />
+                    Imprimir Relatório
+                  </Button>
+                  <Button variant="destructive" className="w-full gap-2" onClick={() => setFecharModal(true)}>
+                    <LogOut className="w-5 h-5" />
+                    Fechar Caixa
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -150,13 +183,14 @@ export default function Caixa() {
           {/* Sangria */}
           <div className="space-y-8">
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
                 <Download className="text-orange-500" /> Registrar Sangria
               </h3>
+              <p className="text-xs text-muted-foreground mb-4">Padrão: R$300. O valor excedente em dinheiro é retirado como sangria.</p>
               <form onSubmit={handleSangria} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Valor Retirado (R$)</label>
-                  <Input required type="number" step="0.01" min="0.01" max={totalCalculado} value={sangriaForm.valor} onChange={e => setSangriaForm({...sangriaForm, valor: e.target.value})} className="font-mono" />
+                  <Input required type="number" step="0.01" min="0.01" value={sangriaForm.valor} onChange={e => setSangriaForm({...sangriaForm, valor: e.target.value})} className="font-mono font-bold text-lg" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Motivo (Opcional)</label>
@@ -175,7 +209,7 @@ export default function Caixa() {
                   <div key={s.id} className="flex justify-between items-center p-3 bg-secondary/30 rounded-xl border border-border">
                     <div>
                       <p className="font-bold text-orange-600 font-mono">-{formatMoney(s.valor)}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(s.criado_em).split(' ')[1]}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(s.criado_em)}</p>
                     </div>
                     {s.motivo && <span className="text-sm">{s.motivo}</span>}
                   </div>
@@ -223,6 +257,40 @@ export default function Caixa() {
           </div>
         </div>
       </div>
+
+      {/* Modal Imprimir Relatório */}
+      <Modal isOpen={imprimirModal} onClose={() => { setImprimirModal(false); setImprimindoTexto(null); }} title="Imprimir Relatório de Vendas">
+        {imprimindoTexto ? (
+          <div className="space-y-4">
+            <div className="bg-muted rounded-xl p-4">
+              <p className="text-xs text-muted-foreground mb-2">Pré-visualização (impressora não encontrada — copie o texto):</p>
+              <pre className="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-64">{imprimindoTexto}</pre>
+            </div>
+            <Button className="w-full" onClick={() => { setImprimindoTexto(null); setImprimirModal(false); }}>Fechar</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-sm">Selecione o período para o relatório de vendas / sangria.</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 flex items-center gap-1"><Calendar className="w-4 h-4" /> Data Início</label>
+                <Input type="date" value={periodoImpressao.inicio} onChange={e => setPeriodoImpressao({...periodoImpressao, inicio: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 flex items-center gap-1"><Calendar className="w-4 h-4" /> Data Fim</label>
+                <Input type="date" value={periodoImpressao.fim} onChange={e => setPeriodoImpressao({...periodoImpressao, fim: e.target.value})} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setImprimirModal(false)}>Cancelar</Button>
+              <Button className="gap-2" onClick={handleImprimirSangria} disabled={imprimirSangria.isPending}>
+                <Printer className="w-4 h-4" />
+                {imprimirSangria.isPending ? "Imprimindo..." : "Imprimir"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={fecharModal} onClose={() => setFecharModal(false)} title="Confirmar Fechamento">
         <div className="space-y-6">

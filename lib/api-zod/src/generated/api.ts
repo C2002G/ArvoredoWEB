@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * Arvoredo PDV API
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 import * as zod from "zod";
 
@@ -33,6 +33,7 @@ export const ListarProdutosResponseItem = zod.object({
   estoque: zod.number(),
   estoque_min: zod.number(),
   unidade: zod.string(),
+  validade: zod.string().nullish(),
   ativo: zod.boolean(),
   criado_em: zod.string(),
 });
@@ -56,6 +57,7 @@ export const CriarProdutoBody = zod.object({
   estoque: zod.number().default(criarProdutoBodyEstoqueDefault),
   estoque_min: zod.number().default(criarProdutoBodyEstoqueMinDefault),
   unidade: zod.string().default(criarProdutoBodyUnidadeDefault),
+  validade: zod.string().nullish(),
 });
 
 /**
@@ -64,6 +66,7 @@ export const CriarProdutoBody = zod.object({
 export const BuscarProdutoQueryParams = zod.object({
   codigo: zod.coerce.string().optional(),
   nome: zod.coerce.string().optional(),
+  q: zod.coerce.string().optional(),
 });
 
 export const BuscarProdutoResponseItem = zod.object({
@@ -77,29 +80,69 @@ export const BuscarProdutoResponseItem = zod.object({
   estoque: zod.number(),
   estoque_min: zod.number(),
   unidade: zod.string(),
+  validade: zod.string().nullish(),
   ativo: zod.boolean(),
   criado_em: zod.string(),
 });
 export const BuscarProdutoResponse = zod.array(BuscarProdutoResponseItem);
 
 /**
- * @summary Produtos com estoque baixo
+ * @summary Produtos com estoque baixo ou vencendo
  */
-export const AlertasEstoqueResponseItem = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha"]),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
+export const AlertasEstoqueResponse = zod.object({
+  estoque_baixo: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha"]),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  vencendo: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha"]),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  vencidos: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha"]),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  total_alertas: zod.number(),
 });
-export const AlertasEstoqueResponse = zod.array(AlertasEstoqueResponseItem);
 
 /**
  * @summary Editar produto
@@ -118,6 +161,7 @@ export const EditarProdutoBody = zod.object({
   estoque: zod.number().optional(),
   estoque_min: zod.number().optional(),
   unidade: zod.string().optional(),
+  validade: zod.string().nullish(),
   ativo: zod.boolean().optional(),
 });
 
@@ -132,6 +176,7 @@ export const EditarProdutoResponse = zod.object({
   estoque: zod.number(),
   estoque_min: zod.number(),
   unidade: zod.string(),
+  validade: zod.string().nullish(),
   ativo: zod.boolean(),
   criado_em: zod.string(),
 });
@@ -155,6 +200,8 @@ export const listarVendasQueryLimitDefault = 50;
 
 export const ListarVendasQueryParams = zod.object({
   data: zod.coerce.string().optional(),
+  data_inicio: zod.coerce.string().optional(),
+  data_fim: zod.coerce.string().optional(),
   categoria: zod.coerce.string().optional(),
   limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
 });
@@ -266,7 +313,9 @@ export const ListarClientesQueryParams = zod.object({
 export const ListarClientesResponseItem = zod.object({
   id: zod.number(),
   nome: zod.string(),
+  apelido: zod.string().nullish(),
   telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
   observacao: zod.string().nullish(),
   criado_em: zod.string(),
 });
@@ -277,7 +326,9 @@ export const ListarClientesResponse = zod.array(ListarClientesResponseItem);
  */
 export const CriarClienteBody = zod.object({
   nome: zod.string(),
+  apelido: zod.string().nullish(),
   telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
   observacao: zod.string().nullish(),
 });
 
@@ -290,14 +341,18 @@ export const EditarClienteParams = zod.object({
 
 export const EditarClienteBody = zod.object({
   nome: zod.string(),
+  apelido: zod.string().nullish(),
   telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
   observacao: zod.string().nullish(),
 });
 
 export const EditarClienteResponse = zod.object({
   id: zod.number(),
   nome: zod.string(),
+  apelido: zod.string().nullish(),
   telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
   observacao: zod.string().nullish(),
   criado_em: zod.string(),
 });
@@ -313,7 +368,9 @@ export const ExtratoClienteResponse = zod.object({
   cliente: zod.object({
     id: zod.number(),
     nome: zod.string(),
+    apelido: zod.string().nullish(),
     telefone: zod.string().nullish(),
+    cpf: zod.string().nullish(),
     observacao: zod.string().nullish(),
     criado_em: zod.string(),
   }),
@@ -353,7 +410,9 @@ export const ResumoFiadoResponseItem = zod.object({
   cliente: zod.object({
     id: zod.number(),
     nome: zod.string(),
+    apelido: zod.string().nullish(),
     telefone: zod.string().nullish(),
+    cpf: zod.string().nullish(),
     observacao: zod.string().nullish(),
     criado_em: zod.string(),
   }),
@@ -385,7 +444,7 @@ export const StatusCaixaResponse = zod.object({
 /**
  * @summary Abrir sessão de caixa
  */
-export const abrirCaixaBodyFundoInicialDefault = 0;
+export const abrirCaixaBodyFundoInicialDefault = 300;
 
 export const AbrirCaixaBody = zod.object({
   fundo_inicial: zod.number().default(abrirCaixaBodyFundoInicialDefault),
@@ -447,3 +506,37 @@ export const HistoricoCaixaResponseItem = zod.object({
   status: zod.enum(["aberto", "fechado"]),
 });
 export const HistoricoCaixaResponse = zod.array(HistoricoCaixaResponseItem);
+
+/**
+ * @summary Imprimir cupom de venda
+ */
+export const ImprimirCupomBody = zod.object({
+  venda_id: zod.number(),
+});
+
+export const ImprimirCupomResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+
+/**
+ * @summary Imprimir relatório de sangria/vendas por período
+ */
+export const ImprimirSangriaBody = zod.object({
+  data_inicio: zod.string(),
+  data_fim: zod.string(),
+  sessao_id: zod.number().nullish(),
+});
+
+export const ImprimirSangriaResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+
+/**
+ * @summary Testar impressora
+ */
+export const TestImpressoraResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Api
-  version: 0.1.0
+  version: 0.2.0
   description: Arvoredo PDV API
 servers:
   - url: /api
@@ -19,6 +19,8 @@ tags:
     description: Fiado operations
   - name: caixa
     description: Caixa operations
+  - name: impressora
+    description: Impressora operations
 paths:
   /healthz:
     get:
@@ -89,6 +91,10 @@ paths:
           in: query
           schema:
             type: string
+        - name: q
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: Produtos encontrados
@@ -103,16 +109,14 @@ paths:
     get:
       operationId: alertasEstoque
       tags: [produtos]
-      summary: Produtos com estoque baixo
+      summary: Produtos com estoque baixo ou vencendo
       responses:
         "200":
-          description: Produtos com estoque abaixo do mínimo
+          description: Produtos com alertas
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Produto"
+                $ref: "#/components/schemas/AlertasProdutos"
 
   /produtos/{id}:
     put:
@@ -163,6 +167,14 @@ paths:
       summary: Listar vendas
       parameters:
         - name: data
+          in: query
+          schema:
+            type: string
+        - name: data_inicio
+          in: query
+          schema:
+            type: string
+        - name: data_fim
           in: query
           schema:
             type: string
@@ -500,6 +512,57 @@ paths:
                 items:
                   $ref: "#/components/schemas/SessaoCaixa"
 
+  /impressora/cupom:
+    post:
+      operationId: imprimirCupom
+      tags: [impressora]
+      summary: Imprimir cupom de venda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImprimirCupomInput"
+      responses:
+        "200":
+          description: Resultado da impressão
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpressaoResponse"
+
+  /impressora/sangria:
+    post:
+      operationId: imprimirSangria
+      tags: [impressora]
+      summary: Imprimir relatório de sangria/vendas por período
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImprimirSangriaInput"
+      responses:
+        "200":
+          description: Resultado da impressão
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpressaoResponse"
+
+  /impressora/teste:
+    post:
+      operationId: testImpressora
+      tags: [impressora]
+      summary: Testar impressora
+      responses:
+        "200":
+          description: Resultado do teste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpressaoResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -546,6 +609,9 @@ components:
           type: number
         unidade:
           type: string
+        validade:
+          type: string
+          nullable: true
         ativo:
           type: boolean
         criado_em:
@@ -561,6 +627,29 @@ components:
         - unidade
         - ativo
         - criado_em
+
+    AlertasProdutos:
+      type: object
+      properties:
+        estoque_baixo:
+          type: array
+          items:
+            $ref: "#/components/schemas/Produto"
+        vencendo:
+          type: array
+          items:
+            $ref: "#/components/schemas/Produto"
+        vencidos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Produto"
+        total_alertas:
+          type: integer
+      required:
+        - estoque_baixo
+        - vencendo
+        - vencidos
+        - total_alertas
 
     CriarProdutoInput:
       type: object
@@ -590,6 +679,9 @@ components:
         unidade:
           type: string
           default: un
+        validade:
+          type: string
+          nullable: true
       required:
         - nome
         - categoria
@@ -619,6 +711,9 @@ components:
           type: number
         unidade:
           type: string
+        validade:
+          type: string
+          nullable: true
         ativo:
           type: boolean
 
@@ -804,7 +899,13 @@ components:
           type: integer
         nome:
           type: string
+        apelido:
+          type: string
+          nullable: true
         telefone:
+          type: string
+          nullable: true
+        cpf:
           type: string
           nullable: true
         observacao:
@@ -822,7 +923,13 @@ components:
       properties:
         nome:
           type: string
+        apelido:
+          type: string
+          nullable: true
         telefone:
+          type: string
+          nullable: true
+        cpf:
           type: string
           nullable: true
         observacao:
@@ -941,7 +1048,7 @@ components:
       properties:
         fundo_inicial:
           type: number
-          default: 0
+          default: 300
       required: []
 
     Sangria:
@@ -974,3 +1081,36 @@ components:
           nullable: true
       required:
         - valor
+
+    ImprimirCupomInput:
+      type: object
+      properties:
+        venda_id:
+          type: integer
+      required:
+        - venda_id
+
+    ImprimirSangriaInput:
+      type: object
+      properties:
+        data_inicio:
+          type: string
+        data_fim:
+          type: string
+        sessao_id:
+          type: integer
+          nullable: true
+      required:
+        - data_inicio
+        - data_fim
+
+    ImpressaoResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        erro:
+          type: string
+          nullable: true
+      required:
+        - ok

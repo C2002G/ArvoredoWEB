@@ -3,11 +3,13 @@
  * Do not edit manually.
  * Api
  * Arvoredo PDV API
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 
 export interface CriarClienteInput {
   nome: string;
+  apelido?: string | null;
   telefone?: string | null;
+  cpf?: string | null;
   observacao?: string | null;
 }

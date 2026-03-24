@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * Arvoredo PDV API
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
@@ -18,6 +18,7 @@ import type {
 
 import type {
   AbrirCaixaInput,
+  AlertasProdutos,
   BuscarProdutoParams,
   Cliente,
   CriarClienteInput,
@@ -25,6 +26,9 @@ import type {
   EditarProdutoInput,
   ExtratoCliente,
   HealthStatus,
+  ImpressaoResponse,
+  ImprimirCupomInput,
+  ImprimirSangriaInput,
   ItemVenda,
   ListarClientesParams,
   ListarMovimentosParams,
@@ -405,7 +409,7 @@ export function useBuscarProduto<
 }
 
 /**
- * @summary Produtos com estoque baixo
+ * @summary Produtos com estoque baixo ou vencendo
  */
 export const getAlertasEstoqueUrl = () => {
   return `/api/produtos/alertas`;
@@ -413,8 +417,8 @@ export const getAlertasEstoqueUrl = () => {
 
 export const alertasEstoque = async (
   options?: RequestInit,
-): Promise<Produto[]> => {
-  return customFetch<Produto[]>(getAlertasEstoqueUrl(), {
+): Promise<AlertasProdutos> => {
+  return customFetch<AlertasProdutos>(getAlertasEstoqueUrl(), {
     ...options,
     method: "GET",
   });
@@ -456,7 +460,7 @@ export type AlertasEstoqueQueryResult = NonNullable<
 export type AlertasEstoqueQueryError = ErrorType<unknown>;
 
 /**
- * @summary Produtos com estoque baixo
+ * @summary Produtos com estoque baixo ou vencendo
  */
 
 export function useAlertasEstoque<
@@ -2187,3 +2191,256 @@ export function useHistoricoCaixa<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Imprimir cupom de venda
+ */
+export const getImprimirCupomUrl = () => {
+  return `/api/impressora/cupom`;
+};
+
+export const imprimirCupom = async (
+  imprimirCupomInput: ImprimirCupomInput,
+  options?: RequestInit,
+): Promise<ImpressaoResponse> => {
+  return customFetch<ImpressaoResponse>(getImprimirCupomUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(imprimirCupomInput),
+  });
+};
+
+export const getImprimirCupomMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof imprimirCupom>>,
+    TError,
+    { data: BodyType<ImprimirCupomInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof imprimirCupom>>,
+  TError,
+  { data: BodyType<ImprimirCupomInput> },
+  TContext
+> => {
+  const mutationKey = ["imprimirCupom"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof imprimirCupom>>,
+    { data: BodyType<ImprimirCupomInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return imprimirCupom(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImprimirCupomMutationResult = NonNullable<
+  Awaited<ReturnType<typeof imprimirCupom>>
+>;
+export type ImprimirCupomMutationBody = BodyType<ImprimirCupomInput>;
+export type ImprimirCupomMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Imprimir cupom de venda
+ */
+export const useImprimirCupom = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof imprimirCupom>>,
+    TError,
+    { data: BodyType<ImprimirCupomInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof imprimirCupom>>,
+  TError,
+  { data: BodyType<ImprimirCupomInput> },
+  TContext
+> => {
+  return useMutation(getImprimirCupomMutationOptions(options));
+};
+
+/**
+ * @summary Imprimir relatório de sangria/vendas por período
+ */
+export const getImprimirSangriaUrl = () => {
+  return `/api/impressora/sangria`;
+};
+
+export const imprimirSangria = async (
+  imprimirSangriaInput: ImprimirSangriaInput,
+  options?: RequestInit,
+): Promise<ImpressaoResponse> => {
+  return customFetch<ImpressaoResponse>(getImprimirSangriaUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(imprimirSangriaInput),
+  });
+};
+
+export const getImprimirSangriaMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof imprimirSangria>>,
+    TError,
+    { data: BodyType<ImprimirSangriaInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof imprimirSangria>>,
+  TError,
+  { data: BodyType<ImprimirSangriaInput> },
+  TContext
+> => {
+  const mutationKey = ["imprimirSangria"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof imprimirSangria>>,
+    { data: BodyType<ImprimirSangriaInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return imprimirSangria(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImprimirSangriaMutationResult = NonNullable<
+  Awaited<ReturnType<typeof imprimirSangria>>
+>;
+export type ImprimirSangriaMutationBody = BodyType<ImprimirSangriaInput>;
+export type ImprimirSangriaMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Imprimir relatório de sangria/vendas por período
+ */
+export const useImprimirSangria = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof imprimirSangria>>,
+    TError,
+    { data: BodyType<ImprimirSangriaInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof imprimirSangria>>,
+  TError,
+  { data: BodyType<ImprimirSangriaInput> },
+  TContext
+> => {
+  return useMutation(getImprimirSangriaMutationOptions(options));
+};
+
+/**
+ * @summary Testar impressora
+ */
+export const getTestImpressoraUrl = () => {
+  return `/api/impressora/teste`;
+};
+
+export const testImpressora = async (
+  options?: RequestInit,
+): Promise<ImpressaoResponse> => {
+  return customFetch<ImpressaoResponse>(getTestImpressoraUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getTestImpressoraMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testImpressora>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof testImpressora>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["testImpressora"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof testImpressora>>,
+    void
+  > = () => {
+    return testImpressora(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestImpressoraMutationResult = NonNullable<
+  Awaited<ReturnType<typeof testImpressora>>
+>;
+
+export type TestImpressoraMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Testar impressora
+ */
+export const useTestImpressora = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof testImpressora>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof testImpressora>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getTestImpressoraMutationOptions(options));
+};

@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * Arvoredo PDV API
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 export interface HealthStatus {
   status: string;
@@ -33,8 +33,16 @@ export interface Produto {
   estoque: number;
   estoque_min: number;
   unidade: string;
+  validade?: string | null;
   ativo: boolean;
   criado_em: string;
+}
+
+export interface AlertasProdutos {
+  estoque_baixo: Produto[];
+  vencendo: Produto[];
+  vencidos: Produto[];
+  total_alertas: number;
 }
 
 export type CriarProdutoInputCategoria =
@@ -55,6 +63,7 @@ export interface CriarProdutoInput {
   estoque?: number;
   estoque_min?: number;
   unidade?: string;
+  validade?: string | null;
 }
 
 export type EditarProdutoInputCategoria =
@@ -75,6 +84,7 @@ export interface EditarProdutoInput {
   estoque?: number;
   estoque_min?: number;
   unidade?: string;
+  validade?: string | null;
   ativo?: boolean;
 }
 
@@ -174,14 +184,18 @@ export interface MovimentoEstoque {
 export interface Cliente {
   id: number;
   nome: string;
+  apelido?: string | null;
   telefone?: string | null;
+  cpf?: string | null;
   observacao?: string | null;
   criado_em: string;
 }
 
 export interface CriarClienteInput {
   nome: string;
+  apelido?: string | null;
   telefone?: string | null;
+  cpf?: string | null;
   observacao?: string | null;
 }
 
@@ -252,6 +266,21 @@ export interface SangriaInput {
   motivo?: string | null;
 }
 
+export interface ImprimirCupomInput {
+  venda_id: number;
+}
+
+export interface ImprimirSangriaInput {
+  data_inicio: string;
+  data_fim: string;
+  sessao_id?: number | null;
+}
+
+export interface ImpressaoResponse {
+  ok: boolean;
+  erro?: string | null;
+}
+
 export type ListarProdutosParams = {
   q?: string;
   categoria?: ListarProdutosCategoria;
@@ -268,10 +297,13 @@ export const ListarProdutosCategoria = {
 export type BuscarProdutoParams = {
   codigo?: string;
   nome?: string;
+  q?: string;
 };
 
 export type ListarVendasParams = {
   data?: string;
+  data_inicio?: string;
+  data_fim?: string;
   categoria?: string;
   limit?: number;
 };

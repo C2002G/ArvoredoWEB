@@ -1,0 +1,40 @@
+quero q a cor que está azul seja verde (cor de arvore) 
+Está muito bom, so quero q adicione algumas coisas
+- quero que deixe todo em python dentro do possivel, pode usar outras ferramentas se for preciso, mas preciso que seja em python a stack princpal. Preciso que seja python para colocar no meu vscode e mexer por la também manualmente
+- quero que ao adcionar um produto tenha o campo de validade também e apareça em "estoque" e "produtos"
+- o codigo do produto seja registrado atraves do leitor de codigo de barras
+- ao cadastrar um cliente, pode colocar alem de nome e telefone, apelido (opcional) e cpf(opcional)
+- a abertura do caixa vai ser por padrão 300R$, mas seja possivel trocar se a dona do estabelecimento quiser, isso serve para sangria, 300 é fixo e o valor que tiver a mais é a sangria
+- tenha um alerta de validade perto da data no estoque, igual ao alerta de estoque baixo
+- na aba produtos preciso que ao registrar um produto possa colocar validade (opcional) e fique aparecendo a data e hora de registro daquele produto
+- A sangria e seja possivel imprimir pela impressora Elgin I9
+A impressão da sangria mostra como tabela de todos o historico de vendas do periodo de data escolhido (pode ser so do dia ou de tal dia ate tal dia)
+
+E toda venda é OBRIGATÓRIO imprimir a venda feita nesse formato
+================================
+       MERCADO ARVOREDO
+    R. Cel. Fernando Machado, 
+     453 - Centro Histórico, 
+   Porto Alegre - RS, 90010-321
+       Tel: (51) 996204850
+================================
+         CUPOM FISCAL
+================================
+Data: DD/MM/AAAA  Hora: HH:MM
+Nº Venda: #000
+Categoria: MERCADO / COZINHA
+--------------------------------
+ITEM           QTD   UNIT  TOTAL
+--------------------------------
+Nome produto   1     5,00  5,00
+Nome produto   2     3,50  7,00
+--------------------------------
+Desconto:            -R$ 0,00
+TOTAL:               R$ 12,00
+================================
+Pagamento: DINHEIRO
+================================
+   Obrigado pela preferência!
+================================
+         [CORTE DO PAPEL]
+ 

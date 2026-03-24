@@ -41,9 +41,9 @@
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   
-  /* Primary Blue (#2563EB) */
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
+  /* Primary Green (cor de árvore / Arvoredo) */
+  --primary: 142 71% 35%;
+  --primary-foreground: 0 0% 100%;
   
   /* Secondary / Surface */
   --secondary: 210 40% 96%;
@@ -69,7 +69,7 @@
   
   --border: 214 32% 91%;
   --input: 214 32% 91%;
-  --ring: 221 83% 53%;
+  --ring: 142 71% 35%;
 }
 
 @layer base {

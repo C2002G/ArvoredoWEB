@@ -2,9 +2,25 @@ import React, { useState } from "react";
 import { useProdutos, useCriarProdutoWrapper, useEditarProdutoWrapper, useDeletarProdutoWrapper } from "@/hooks/use-produtos";
 import { formatMoney } from "@/lib/utils";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
-import { Search, Plus, Edit2, Trash2, AlertCircle } from "lucide-react";
+import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Barcode } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto, CriarProdutoInputCategoria } from "@workspace/api-client-react/src/generated/api.schemas";
+
+function formatValidade(validade: string | null | undefined) {
+  if (!validade) return null;
+  const [ano, mes, dia] = validade.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+function validadeStatus(validade: string | null | undefined): null | "vencido" | "vencendo" {
+  if (!validade) return null;
+  const hoje = new Date();
+  const val = new Date(validade + "T12:00:00");
+  const diff = (val.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24);
+  if (diff < 0) return "vencido";
+  if (diff <= 7) return "vencendo";
+  return null;
+}
 
 export default function Produtos() {
   const [search, setSearch] = useState("");
@@ -21,7 +37,7 @@ export default function Produtos() {
   
   const defaultForm = {
     nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria, 
-    preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un"
+    preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
   };
   const [formData, setFormData] = useState(defaultForm);
 
@@ -42,7 +58,8 @@ export default function Produtos() {
       custo: p.custo.toString(),
       estoque: p.estoque.toString(),
       estoque_min: p.estoque_min.toString(),
-      unidade: p.unidade
+      unidade: p.unidade,
+      validade: p.validade || ""
     });
     setModalOpen(true);
   };
@@ -58,7 +75,8 @@ export default function Produtos() {
       custo: Number(formData.custo) || 0,
       estoque: Number(formData.estoque) || 0,
       estoque_min: Number(formData.estoque_min) || 0,
-      unidade: formData.unidade || 'un'
+      unidade: formData.unidade || 'un',
+      validade: formData.validade || null,
     };
 
     if (editingId) {
@@ -121,42 +139,64 @@ export default function Produtos() {
             <table className="w-full text-left">
               <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Cód.</th>
-                  <th className="px-6 py-4 font-medium">Nome</th>
-                  <th className="px-6 py-4 font-medium">Marca</th>
-                  <th className="px-6 py-4 font-medium">Cat.</th>
-                  <th className="px-6 py-4 font-medium text-right">Custo</th>
-                  <th className="px-6 py-4 font-medium text-right">Preço Venda</th>
-                  <th className="px-6 py-4 font-medium text-right">Estoque</th>
-                  <th className="px-6 py-4 font-medium text-center">Ações</th>
+                  <th className="px-4 py-4 font-medium">Cód.</th>
+                  <th className="px-4 py-4 font-medium">Nome</th>
+                  <th className="px-4 py-4 font-medium">Marca</th>
+                  <th className="px-4 py-4 font-medium">Cat.</th>
+                  <th className="px-4 py-4 font-medium text-right">Preço</th>
+                  <th className="px-4 py-4 font-medium text-right">Estoque</th>
+                  <th className="px-4 py-4 font-medium">Validade</th>
+                  <th className="px-4 py-4 font-medium">Cadastro</th>
+                  <th className="px-4 py-4 font-medium text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {produtos.map(p => (
-                  <tr key={p.id} className="hover:bg-muted/30">
-                    <td className="px-6 py-4 text-muted-foreground font-mono text-sm">{p.codigo || '-'}</td>
-                    <td className="px-6 py-4 font-bold">{p.nome}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{p.marca || '-'}</td>
-                    <td className="px-6 py-4 capitalize">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.categoria === 'cozinha' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {p.categoria}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-mono text-muted-foreground">{formatMoney(p.custo)}</td>
-                    <td className="px-6 py-4 text-right font-mono font-bold text-primary">{formatMoney(p.preco)}</td>
-                    <td className="px-6 py-4 text-right font-mono font-medium">{p.estoque} <span className="text-xs text-muted-foreground">{p.unidade}</span></td>
-                    <td className="px-6 py-4">
-                      <div className="flex justify-center gap-2">
-                        <button onClick={() => handleOpenEdit(p)} className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => setDeleteModal(p.id)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {produtos.map(p => {
+                  const vs = validadeStatus(p.validade);
+                  return (
+                    <tr key={p.id} className="hover:bg-muted/30">
+                      <td className="px-4 py-4 text-muted-foreground font-mono text-sm">{p.codigo || '-'}</td>
+                      <td className="px-4 py-4 font-bold">{p.nome}</td>
+                      <td className="px-4 py-4 text-muted-foreground">{p.marca || '-'}</td>
+                      <td className="px-4 py-4">
+                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.categoria === 'cozinha' ? 'bg-orange-100 text-orange-700' : 'bg-primary/10 text-primary'}`}>
+                          {p.categoria}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-right font-mono font-bold text-primary">{formatMoney(p.preco)}</td>
+                      <td className={`px-4 py-4 text-right font-mono font-medium ${p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''}`}>
+                        {p.estoque} <span className="text-xs text-muted-foreground">{p.unidade}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        {p.validade ? (
+                          <span className={`flex items-center gap-1 text-sm font-medium ${
+                            vs === 'vencido' ? 'text-destructive' : vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
+                          }`}>
+                            <Calendar className="w-4 h-4" />
+                            {formatValidade(p.validade)}
+                            {vs === 'vencido' && <span className="text-xs font-bold bg-destructive/10 px-1 rounded">VENCIDO</span>}
+                            {vs === 'vencendo' && <span className="text-xs font-bold bg-yellow-100 px-1 rounded">VENCENDO</span>}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-xs text-muted-foreground">
+                        {p.criado_em ? new Date(p.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex justify-center gap-2">
+                          <button onClick={() => handleOpenEdit(p)} className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setDeleteModal(p.id)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -177,8 +217,15 @@ export default function Produtos() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Código (Barras)</label>
-              <Input value={formData.codigo} onChange={e => setFormData({...formData, codigo: e.target.value})} />
+              <label className="block text-sm font-medium mb-1">
+                <span className="flex items-center gap-1"><Barcode className="w-4 h-4" /> Código de Barras</span>
+              </label>
+              <Input
+                value={formData.codigo}
+                onChange={e => setFormData({...formData, codigo: e.target.value})}
+                placeholder="Aponte o leitor de código..."
+                autoComplete="off"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Categoria *</label>
@@ -211,6 +258,16 @@ export default function Produtos() {
               <label className="block text-sm font-medium mb-1">Unidade</label>
               <Input value={formData.unidade} onChange={e => setFormData({...formData, unidade: e.target.value})} placeholder="un, kg, L" />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> Validade (opcional)</span>
+            </label>
+            <Input
+              type="date"
+              value={formData.validade}
+              onChange={e => setFormData({...formData, validade: e.target.value})}
+            />
           </div>
           <div className="pt-6 flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>

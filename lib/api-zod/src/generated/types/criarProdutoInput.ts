@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Api
  * Arvoredo PDV API
- * OpenAPI spec version: 0.1.0
+ * OpenAPI spec version: 0.2.0
  */
 import type { CriarProdutoInputCategoria } from "./criarProdutoInputCategoria";
 
@@ -17,4 +17,5 @@ export interface CriarProdutoInput {
   estoque?: number;
   estoque_min?: number;
   unidade?: string;
+  validade?: string | null;
 }

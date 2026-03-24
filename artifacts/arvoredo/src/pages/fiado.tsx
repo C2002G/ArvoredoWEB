@@ -18,17 +18,28 @@ export default function Fiado() {
   const [novoModal, setNovoModal] = useState(false);
   const [pagarModal, setPagarModal] = useState(false);
   const [valorPagamento, setValorPagamento] = useState("");
-  const [novoCliente, setNovoCliente] = useState({ nome: "", telefone: "" });
+  const [novoCliente, setNovoCliente] = useState({ nome: "", apelido: "", telefone: "", cpf: "" });
 
-  const filteredResumo = resumo.filter(r => r.cliente.nome.toLowerCase().includes(search.toLowerCase()));
+  const filteredResumo = resumo.filter(r =>
+    r.cliente.nome.toLowerCase().includes(search.toLowerCase()) ||
+    (r.cliente.apelido || "").toLowerCase().includes(search.toLowerCase()) ||
+    (r.cliente.cpf || "").includes(search)
+  );
 
   const handleCriarCliente = (e: React.FormEvent) => {
     e.preventDefault();
-    criarCliente.mutate({ data: novoCliente }, {
+    criarCliente.mutate({
+      data: {
+        nome: novoCliente.nome,
+        apelido: novoCliente.apelido || null,
+        telefone: novoCliente.telefone || null,
+        cpf: novoCliente.cpf || null,
+      }
+    }, {
       onSuccess: () => {
         toast({ title: "Cliente criado", className: "bg-green-600 text-white" });
         setNovoModal(false);
-        setNovoCliente({ nome: "", telefone: "" });
+        setNovoCliente({ nome: "", apelido: "", telefone: "", cpf: "" });
       }
     });
   };
@@ -62,7 +73,7 @@ export default function Fiado() {
           <div className="relative">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input 
-              placeholder="Buscar cliente..." 
+              placeholder="Buscar nome, apelido, CPF..." 
               className="pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -81,7 +92,16 @@ export default function Fiado() {
               }`}
             >
               <div className="flex justify-between items-center mb-1">
-                <span className="font-bold truncate pr-2">{r.cliente.nome}</span>
+                <div>
+                  <span className="font-bold truncate pr-2 block">
+                    {r.cliente.apelido || r.cliente.nome}
+                  </span>
+                  {r.cliente.apelido && (
+                    <span className={`text-xs ${selectedId === r.cliente.id ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      {r.cliente.nome}
+                    </span>
+                  )}
+                </div>
                 <ChevronRight className={`w-4 h-4 ${selectedId === r.cliente.id ? 'opacity-100' : 'opacity-0'}`} />
               </div>
               <div className={`font-mono font-bold ${
@@ -112,9 +132,13 @@ export default function Fiado() {
           <div className="max-w-4xl mx-auto space-y-8">
             <div className="bg-card p-8 rounded-2xl shadow-sm border border-border flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
-                <h1 className="text-3xl font-bold text-foreground mb-2">{extrato.cliente.nome}</h1>
-                <p className="text-muted-foreground">Cliente desde {formatDate(extrato.cliente.criado_em).split(' ')[0]}</p>
-                {extrato.cliente.telefone && <p className="text-muted-foreground">{extrato.cliente.telefone}</p>}
+                <h1 className="text-3xl font-bold text-foreground mb-1">{extrato.cliente.nome}</h1>
+                {extrato.cliente.apelido && (
+                  <p className="text-primary font-medium text-lg">"{extrato.cliente.apelido}"</p>
+                )}
+                <p className="text-muted-foreground text-sm mt-1">Cliente desde {formatDate(extrato.cliente.criado_em).split(' ')[0]}</p>
+                {extrato.cliente.telefone && <p className="text-muted-foreground text-sm">{extrato.cliente.telefone}</p>}
+                {extrato.cliente.cpf && <p className="text-muted-foreground text-sm">CPF: {extrato.cliente.cpf}</p>}
               </div>
               <div className="bg-destructive/10 border border-destructive/20 p-6 rounded-2xl text-center min-w-[200px]">
                 <p className="text-sm font-semibold text-destructive uppercase tracking-wider mb-1">Total em Aberto</p>
@@ -148,16 +172,16 @@ export default function Fiado() {
                       <tr key={f.id} className="hover:bg-muted/30">
                         <td className="px-6 py-4">{formatDate(f.criado_em)}</td>
                         <td className="px-6 py-4 font-medium">
-                          {f.valor < 0 ? 'Pagamento' : `Compra #${f.venda_id || ''}`}
+                          {f.pago && f.venda_id === null ? 'Pagamento' : `Compra #${f.venda_id || ''}`}
                         </td>
-                        <td className={`px-6 py-4 text-right font-mono font-bold ${f.valor < 0 ? 'text-green-600' : 'text-foreground'}`}>
-                          {f.valor < 0 ? '' : '+'}{formatMoney(Math.abs(f.valor))}
+                        <td className="px-6 py-4 text-right font-mono font-bold">
+                          +{formatMoney(f.valor)}
                         </td>
                         <td className="px-6 py-4 flex justify-center">
-                          {f.valor < 0 ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-500" />
-                          ) : f.pago ? (
-                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">PAGO</span>
+                          {f.pago ? (
+                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> PAGO
+                            </span>
                           ) : (
                             <span className="px-2 py-1 bg-destructive/10 text-destructive text-xs font-bold rounded-full">ABERTO</span>
                           )}
@@ -177,13 +201,37 @@ export default function Fiado() {
 
       <Modal isOpen={novoModal} onClose={() => setNovoModal(false)} title="Novo Cliente">
         <form onSubmit={handleCriarCliente} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Nome *</label>
-            <Input required value={novoCliente.nome} onChange={e => setNovoCliente({...novoCliente, nome: e.target.value})} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Nome Completo *</label>
+              <Input required value={novoCliente.nome} onChange={e => setNovoCliente({...novoCliente, nome: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Apelido (opcional)</label>
+              <Input
+                value={novoCliente.apelido}
+                onChange={e => setNovoCliente({...novoCliente, apelido: e.target.value})}
+                placeholder="Ex: Seu João"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Telefone</label>
-            <Input value={novoCliente.telefone} onChange={e => setNovoCliente({...novoCliente, telefone: e.target.value})} />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Telefone (opcional)</label>
+              <Input
+                value={novoCliente.telefone}
+                onChange={e => setNovoCliente({...novoCliente, telefone: e.target.value})}
+                placeholder="(51) 99999-9999"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">CPF (opcional)</label>
+              <Input
+                value={novoCliente.cpf}
+                onChange={e => setNovoCliente({...novoCliente, cpf: e.target.value})}
+                placeholder="000.000.000-00"
+              />
+            </div>
           </div>
           <div className="pt-4 flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setNovoModal(false)}>Cancelar</Button>
