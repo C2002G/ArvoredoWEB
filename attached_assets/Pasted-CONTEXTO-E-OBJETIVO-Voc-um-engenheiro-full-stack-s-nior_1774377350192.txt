@@ -1,0 +1,301 @@
+CONTEXTO E OBJETIVO
+Você é um engenheiro full-stack sênior. Sua tarefa é construir um sistema PDV (ponto de venda) completo para um pequeno mercado e lanchonete que funcionam no mesmo estabelecimento. O sistema roda localmente em um único PC de caixa, acessado pelo navegador em http://localhost:8000. O código deve ser portável: deve funcionar tanto no Replit (para desenvolvimento) quanto exportado para rodar em um PC Windows com python main.py.
+
+STACK OBRIGATÓRIA
+
+Backend: Python 3.11 + FastAPI + Uvicorn
+Banco de dados: SQLite via SQLAlchemy ORM (arquivo caixa.db na raiz do projeto)
+Frontend: HTML5 + CSS3 + JavaScript puro (sem frameworks JS, sem Node, sem build step)
+Impressão: biblioteca python-escpos para impressora térmica Elgin i7 Plus via USB
+Arquitetura: SPA (Single Page Application) — uma única página index.html com navegação por abas via JavaScript
+
+
+ESTRUTURA DE ARQUIVOS OBRIGATÓRIA
+mercado-caixa/
+├── main.py                   # Inicialização FastAPI + mount static + rotas
+├── database.py               # SQLAlchemy: engine, Base, Session, init_db()
+├── models.py                 # Todos os modelos ORM
+├── schemas.py                # Todos os schemas Pydantic
+├── routers/
+│   ├── __init__.py
+│   ├── produtos.py
+│   ├── vendas.py
+│   ├── estoque.py
+│   ├── fiado.py
+│   └── caixa.py
+├── services/
+│   ├── __init__.py
+│   └── impressora.py         # Lógica de impressão ESC/POS
+├── static/
+│   └── css/
+│       └── style.css
+├── templates/
+│   └── index.html            # SPA completa
+├── requirements.txt
+└── README.md
+
+MODELOS DO BANCO DE DADOS (SQLAlchemy ORM)
+Implemente exatamente estes modelos:
+Produto
+
+id, codigo (único, nullable), nome, categoria (enum: 'mercado' | 'cozinha')
+preco (Float), custo (Float, default 0), estoque (Float, default 0)
+estoque_min (Float, default 5), unidade (default 'un'), ativo (Boolean, default True)
+criado_em (DateTime, default now)
+
+SessaoCaixa
+
+id, aberto_em, fechado_em (nullable), fundo_inicial (Float, default 0)
+total_dinheiro, total_pix, total_cartao, total_fiado, total_sangria (Float, default 0)
+status (enum: 'aberto' | 'fechado', default 'aberto')
+
+Venda
+
+id, sessao_id (FK → SessaoCaixa), categoria, total, desconto (default 0)
+pagamento (enum: 'dinheiro' | 'pix' | 'cartao' | 'fiado')
+cliente_id (FK → Cliente, nullable), observacao, criado_em
+
+ItemVenda
+
+id, venda_id (FK → Venda), produto_id (FK → Produto)
+nome_snap (String — snapshot do nome no momento da venda)
+quantidade (Float), preco_unit (Float), subtotal (Float)
+
+Sangria
+
+id, sessao_id (FK → SessaoCaixa), valor (Float), motivo, criado_em
+
+Cliente
+
+id, nome, telefone (nullable), observacao (nullable), criado_em
+
+Fiado
+
+id, cliente_id (FK → Cliente), venda_id (FK → Venda, nullable)
+valor (Float), pago (Boolean, default False), pago_em (nullable), criado_em
+
+MovimentoEstoque
+
+id, produto_id (FK → Produto), tipo (enum: 'entrada' | 'saida' | 'ajuste')
+quantidade (Float), motivo (nullable), criado_em
+
+
+ENDPOINTS DA API (FastAPI)
+/api/produtos
+
+GET / — listar (query params: q, categoria)
+GET /busca — busca por código de barras exato (query: codigo) ou nome (query: nome)
+GET /alertas — produtos com estoque <= estoque_min
+POST / — criar produto
+PUT /{id} — editar produto
+DELETE /{id} — soft delete (ativo = False)
+
+/api/vendas
+
+POST / — registrar venda (baixa automática no estoque, lança fiado se pagamento='fiado', atualiza totais da sessão)
+GET / — listar (query params: data, categoria, limit=50)
+GET /resumo/hoje — totais do dia agrupados por forma de pagamento e categoria
+GET /{id}/itens — itens de uma venda específica
+
+/api/estoque
+
+POST /movimento — entrada, saída ou ajuste de estoque
+GET /movimentos — histórico (query params: produto_id, limit=100)
+
+/api/fiado
+
+GET /clientes — listar clientes (query: q para busca por nome)
+POST /clientes — criar cliente
+PUT /clientes/{id} — editar cliente
+GET /clientes/{id}/extrato — retorna cliente + lista de débitos + total em aberto
+POST /clientes/{id}/pagar — abate pagamento nos débitos mais antigos primeiro
+GET /resumo — clientes que possuem dívida em aberto, ordenado por valor
+
+/api/caixa
+
+GET /status — retorna se há sessão aberta e seus dados
+POST /abrir — abre nova sessão (erro se já houver uma aberta)
+POST /fechar — fecha sessão atual
+POST /sangria — registra sangria e incrementa total_sangria na sessão
+GET /sangrias — lista sangrias (query: sessao_id)
+GET /historico — últimas 30 sessões
+
+/api/impressora
+
+POST /cupom — recebe venda_id e imprime cupom na Elgin i7 Plus
+POST /teste — imprime linha de teste para verificar conexão
+
+
+FRONTEND — SPA (index.html)
+Design System
+
+Tema: claro (light mode)
+Paleta: branco e cinzas para fundo, azul (#2563EB) como cor primária, verde (#16A34A) para confirmações, vermelho (#DC2626) para alertas e exclusões, laranja (#EA580C) para cozinha, azul (#2563EB) para mercado
+Tipografia: Google Fonts — Inter para corpo, JetBrains Mono para valores monetários e códigos
+Componentes: cards com sombra suave, bordas arredondadas (8px), tabelas zebradas, badges coloridos por categoria/pagamento
+Responsividade: otimizado para tela de 1280x768 (PC de caixa)
+
+Abas de Navegação (nav bar fixa no topo)
+
+🛒 PDV / Caixa
+📦 Estoque (badge vermelho com contagem de alertas)
+📒 Fiado
+💰 Caixa
+📊 Histórico
+🏷️ Produtos
+
+
+ABA 1 — PDV / Caixa
+Layout: duas colunas — esquerda (produtos) e direita (carrinho fixo)
+Coluna esquerda:
+
+Toggle de categoria no topo: botão 🛒 Mercado | 🍳 Cozinha — ao selecionar, filtra o grid de produtos
+Campo de busca com autofocus e id="barcode-input":
+
+oninput → busca em tempo real por nome (debounce 200ms) e exibe dropdown
+onkeydown Enter → busca exata por código de barras via GET /api/produtos/busca?codigo=
+Escape → limpa campo e fecha dropdown
+
+
+Grid de cards de produtos (categorias da aba selecionada): nome, preço, estoque atual — clique adiciona ao carrinho
+
+Coluna direita (carrinho):
+
+Lista de itens com controles +/− de quantidade e botão remover
+Campo de desconto em R$
+Totais: subtotal, desconto, TOTAL em destaque (fonte grande, JetBrains Mono)
+Seleção de forma de pagamento: 4 botões toggle — Dinheiro, PIX, Cartão, Fiado
+Se "Fiado" selecionado: aparece campo de busca de cliente por nome com dropdown
+Botão ✓ Finalizar Venda — desabilitado se carrinho vazio ou sem forma de pagamento
+Banner de aviso se o caixa estiver fechado
+
+
+ABA 2 — Estoque
+
+Cards de resumo no topo: total de produtos, produtos com estoque baixo
+Filtros: busca por texto, filtro por categoria, filtro por situação (baixo/ok)
+Tabela: produto, categoria, estoque atual (vermelho se baixo), mínimo, unidade, situação, botão "Movimentar"
+Modal de movimentação: busca de produto, tipo (entrada/saída/ajuste), quantidade, motivo
+
+
+ABA 3 — Fiado
+Layout: duas colunas — esquerda (lista de clientes com dívida) e direita (extrato)
+
+Coluna esquerda: lista de clientes devedores com nome e valor total em vermelho; filtro por nome; botão "+ Novo Cliente"
+Coluna direita: ao clicar no cliente, exibe extrato completo com todas as compras (data, valor, status pago/pendente), total em aberto e botão 💰 Registrar Pagamento
+Modal de pagamento: campo de valor (pré-preenchido com total em aberto), abate nos débitos mais antigos primeiro
+
+
+ABA 4 — Caixa
+Se caixa fechado: tela centralizada com campo de fundo inicial e botão 🟢 Abrir Caixa
+Se caixa aberto:
+
+Cards de totais: Dinheiro, PIX, Cartão, Fiado, Sangrias, Total Geral
+Formulário de sangria: valor + motivo + botão registrar
+Lista de sangrias da sessão atual
+Botão 🔒 Fechar Caixa (com confirmação)
+
+
+ABA 5 — Histórico
+
+Cards de resumo do dia: receita total, número de vendas, breakdown por categoria e por forma de pagamento
+Filtros: data (padrão = hoje), categoria
+Tabela: #id, data/hora, categoria, pagamento, cliente, total, botão "Ver itens"
+"Ver itens" abre modal com os itens da venda
+
+
+ABA 6 — Produtos
+
+Filtros: busca por texto, categoria
+Tabela completa: código, nome, categoria, preço venda, custo, estoque, mínimo, ações
+Botão + Novo Produto abre modal com todos os campos
+Ações por linha: editar (✏️) e excluir (🗑️ com confirmação)
+
+
+IMPRESSÃO — SERVIÇO ESC/POS (services/impressora.py)
+Implemente a impressão do cupom completo para a impressora térmica Elgin i7 Plus via USB usando python-escpos.
+Estrutura do cupom:
+================================
+     NOME DO ESTABELECIMENTO
+       Endereço do local
+       Tel: (XX) XXXXX-XXXX
+================================
+        CUPOM NÃO FISCAL
+================================
+Data: DD/MM/AAAA  Hora: HH:MM
+Nº Venda: #000
+Categoria: MERCADO / COZINHA
+--------------------------------
+ITEM           QTD   UNIT  TOTAL
+--------------------------------
+Nome produto   1     5,00  5,00
+Nome produto   2     3,50  7,00
+--------------------------------
+Desconto:            -R$ 0,00
+TOTAL:               R$ 12,00
+================================
+Pagamento: DINHEIRO
+================================
+   Obrigado pela preferência!
+================================
+         [CORTE DO PAPEL]
+
+As configurações do estabelecimento (nome, endereço, telefone) devem ser lidas de um arquivo config.json na raiz do projeto
+Se a impressora não estiver conectada, o sistema não deve travar — deve retornar erro 200 com {"ok": false, "erro": "Impressora não encontrada"} e exibir toast de aviso no frontend
+Ao finalizar uma venda com sucesso, o frontend deve automaticamente fazer POST /api/impressora/cupom com o venda_id
+
+
+ARQUIVO config.json (criar na raiz)
+json{
+  "estabelecimento": {
+    "nome": "Mercado & Lanchonete",
+    "endereco": "Rua Exemplo, 123 - Bairro",
+    "telefone": "(51) 99999-9999",
+    "cidade": "Porto Alegre - RS"
+  },
+  "impressora": {
+    "vendor_id": "0x0fe6",
+    "product_id": "0x811e",
+    "interface": 0,
+    "timeout": 5000
+  }
+}
+
+REGRAS DE NEGÓCIO CRÍTICAS
+
+Estoque: ao registrar uma venda, o estoque de cada produto é decrementado automaticamente. Se o estoque ficar negativo, apenas loga um aviso — não bloqueia a venda.
+Fiado: ao registrar venda com pagamento='fiado', um registro na tabela fiado é criado automaticamente. Pagamentos abatam os débitos mais antigos primeiro (FIFO).
+Sessão de caixa: só pode haver uma sessão aberta por vez. Totais (dinheiro, pix, cartão, fiado, sangria) são acumulados na sessão em tempo real a cada venda.
+Snapshot de preço: ao salvar um item de venda, o campo nome_snap deve guardar o nome do produto no momento da venda (não usar FK dinâmica para exibição histórica).
+Soft delete: produtos nunca são deletados fisicamente — apenas ativo = False. Produtos inativos não aparecem nas buscas do PDV.
+Alertas de estoque: o badge no menu de Estoque deve ser atualizado a cada venda finalizada e ao entrar na aba.
+
+
+REQUIREMENTS.TXT
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+sqlalchemy==2.0.36
+pydantic==2.9.2
+python-multipart==0.0.9
+python-escpos==3.1
+pyusb==1.2.1
+
+COMPORTAMENTOS DE UX OBRIGATÓRIOS
+
+Toast de feedback (canto inferior direito) para toda ação: sucesso (verde) e erro (vermelho), desaparece após 3 segundos
+Campo barcode com autofocus permanente na aba PDV — ao voltar para a aba, o foco retorna automaticamente ao campo
+Confirmação antes de: fechar caixa, excluir produto
+Loading state no botão "Finalizar Venda" enquanto a requisição está em andamento (texto muda para "Processando..." e fica desabilitado)
+Carrinho persiste ao trocar de aba e voltar para o PDV
+Data de hoje pré-selecionada no filtro de histórico ao abrir a aba
+
+
+INSTRUÇÕES FINAIS PARA O AGENTE
+
+Implemente todos os arquivos da estrutura listada acima, sem omitir nenhum.
+O sistema deve iniciar com python main.py e ser acessível em http://0.0.0.0:8000 (porta padrão do Replit).
+O banco de dados deve ser criado automaticamente com init_db() chamado no startup do FastAPI.
+O frontend deve ser uma SPA completa em um único arquivo templates/index.html — sem dependências externas além do Google Fonts.
+Todo o JavaScript deve usar fetch nativo (sem axios, sem jQuery).
+O código deve ser portável para Windows: paths relativos, sem hardcode de /tmp ou caminhos Unix.
+Após gerar todos os arquivos, rode o projeto e confirme que o servidor sobe sem erros antes de encerrar.

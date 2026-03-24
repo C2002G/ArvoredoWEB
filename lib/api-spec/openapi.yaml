@@ -1,22 +1,30 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Arvoredo PDV API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: produtos
+    description: Produtos operations
+  - name: vendas
+    description: Vendas operations
+  - name: estoque
+    description: Estoque operations
+  - name: fiado
+    description: Fiado operations
+  - name: caixa
+    description: Caixa operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +32,474 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /produtos:
+    get:
+      operationId: listarProdutos
+      tags: [produtos]
+      summary: Listar produtos
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: categoria
+          in: query
+          schema:
+            type: string
+            enum: [mercado, cozinha]
+      responses:
+        "200":
+          description: Lista de produtos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Produto"
+    post:
+      operationId: criarProduto
+      tags: [produtos]
+      summary: Criar produto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarProdutoInput"
+      responses:
+        "201":
+          description: Produto criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Produto"
+
+  /produtos/busca:
+    get:
+      operationId: buscarProduto
+      tags: [produtos]
+      summary: Buscar produto por código ou nome
+      parameters:
+        - name: codigo
+          in: query
+          schema:
+            type: string
+        - name: nome
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Produtos encontrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Produto"
+
+  /produtos/alertas:
+    get:
+      operationId: alertasEstoque
+      tags: [produtos]
+      summary: Produtos com estoque baixo
+      responses:
+        "200":
+          description: Produtos com estoque abaixo do mínimo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Produto"
+
+  /produtos/{id}:
+    put:
+      operationId: editarProduto
+      tags: [produtos]
+      summary: Editar produto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditarProdutoInput"
+      responses:
+        "200":
+          description: Produto editado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Produto"
+    delete:
+      operationId: deletarProduto
+      tags: [produtos]
+      summary: Soft delete produto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Produto desativado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /vendas:
+    get:
+      operationId: listarVendas
+      tags: [vendas]
+      summary: Listar vendas
+      parameters:
+        - name: data
+          in: query
+          schema:
+            type: string
+        - name: categoria
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Lista de vendas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Venda"
+    post:
+      operationId: registrarVenda
+      tags: [vendas]
+      summary: Registrar venda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarVendaInput"
+      responses:
+        "201":
+          description: Venda registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Venda"
+
+  /vendas/resumo/hoje:
+    get:
+      operationId: resumoHoje
+      tags: [vendas]
+      summary: Resumo das vendas de hoje
+      responses:
+        "200":
+          description: Resumo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumoVendas"
+
+  /vendas/{id}/itens:
+    get:
+      operationId: itensDaVenda
+      tags: [vendas]
+      summary: Itens de uma venda
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Itens da venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ItemVenda"
+
+  /estoque/movimento:
+    post:
+      operationId: movimentarEstoque
+      tags: [estoque]
+      summary: Registrar movimento de estoque
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovimentoEstoqueInput"
+      responses:
+        "201":
+          description: Movimento registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovimentoEstoque"
+
+  /estoque/movimentos:
+    get:
+      operationId: listarMovimentos
+      tags: [estoque]
+      summary: Histórico de movimentos de estoque
+      parameters:
+        - name: produto_id
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Lista de movimentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MovimentoEstoque"
+
+  /fiado/clientes:
+    get:
+      operationId: listarClientes
+      tags: [fiado]
+      summary: Listar clientes
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de clientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cliente"
+    post:
+      operationId: criarCliente
+      tags: [fiado]
+      summary: Criar cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarClienteInput"
+      responses:
+        "201":
+          description: Cliente criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cliente"
+
+  /fiado/clientes/{id}:
+    put:
+      operationId: editarCliente
+      tags: [fiado]
+      summary: Editar cliente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarClienteInput"
+      responses:
+        "200":
+          description: Cliente editado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cliente"
+
+  /fiado/clientes/{id}/extrato:
+    get:
+      operationId: extratoCliente
+      tags: [fiado]
+      summary: Extrato do cliente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Extrato do cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtratoCliente"
+
+  /fiado/clientes/{id}/pagar:
+    post:
+      operationId: pagarFiado
+      tags: [fiado]
+      summary: Registrar pagamento de fiado
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PagarFiadoInput"
+      responses:
+        "200":
+          description: Pagamento registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /fiado/resumo:
+    get:
+      operationId: resumoFiado
+      tags: [fiado]
+      summary: Clientes com dívida em aberto
+      responses:
+        "200":
+          description: Resumo de fiado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResumoFiado"
+
+  /caixa/status:
+    get:
+      operationId: statusCaixa
+      tags: [caixa]
+      summary: Status atual do caixa
+      responses:
+        "200":
+          description: Status do caixa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusCaixa"
+
+  /caixa/abrir:
+    post:
+      operationId: abrirCaixa
+      tags: [caixa]
+      summary: Abrir sessão de caixa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AbrirCaixaInput"
+      responses:
+        "201":
+          description: Caixa aberto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessaoCaixa"
+
+  /caixa/fechar:
+    post:
+      operationId: fecharCaixa
+      tags: [caixa]
+      summary: Fechar sessão de caixa
+      responses:
+        "200":
+          description: Caixa fechado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessaoCaixa"
+
+  /caixa/sangria:
+    post:
+      operationId: registrarSangria
+      tags: [caixa]
+      summary: Registrar sangria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SangriaInput"
+      responses:
+        "201":
+          description: Sangria registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sangria"
+
+  /caixa/sangrias:
+    get:
+      operationId: listarSangrias
+      tags: [caixa]
+      summary: Listar sangrias
+      parameters:
+        - name: sessao_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lista de sangrias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sangria"
+
+  /caixa/historico:
+    get:
+      operationId: historicoCaixa
+      tags: [caixa]
+      summary: Histórico de sessões
+      responses:
+        "200":
+          description: Últimas 30 sessões
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessaoCaixa"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +510,467 @@ components:
       required:
         - status
 
+    SuccessResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+      required:
+        - ok
+
+    Produto:
+      type: object
+      properties:
+        id:
+          type: integer
+        codigo:
+          type: string
+          nullable: true
+        nome:
+          type: string
+        marca:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          enum: [mercado, cozinha]
+        preco:
+          type: number
+        custo:
+          type: number
+        estoque:
+          type: number
+        estoque_min:
+          type: number
+        unidade:
+          type: string
+        ativo:
+          type: boolean
+        criado_em:
+          type: string
+      required:
+        - id
+        - nome
+        - categoria
+        - preco
+        - custo
+        - estoque
+        - estoque_min
+        - unidade
+        - ativo
+        - criado_em
+
+    CriarProdutoInput:
+      type: object
+      properties:
+        codigo:
+          type: string
+          nullable: true
+        nome:
+          type: string
+        marca:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          enum: [mercado, cozinha]
+        preco:
+          type: number
+        custo:
+          type: number
+          default: 0
+        estoque:
+          type: number
+          default: 0
+        estoque_min:
+          type: number
+          default: 5
+        unidade:
+          type: string
+          default: un
+      required:
+        - nome
+        - categoria
+        - preco
+
+    EditarProdutoInput:
+      type: object
+      properties:
+        codigo:
+          type: string
+          nullable: true
+        nome:
+          type: string
+        marca:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          enum: [mercado, cozinha]
+        preco:
+          type: number
+        custo:
+          type: number
+        estoque:
+          type: number
+        estoque_min:
+          type: number
+        unidade:
+          type: string
+        ativo:
+          type: boolean
+
+    ItemVendaInput:
+      type: object
+      properties:
+        produto_id:
+          type: integer
+        quantidade:
+          type: number
+        preco_unit:
+          type: number
+      required:
+        - produto_id
+        - quantidade
+        - preco_unit
+
+    RegistrarVendaInput:
+      type: object
+      properties:
+        categoria:
+          type: string
+          enum: [mercado, cozinha]
+        desconto:
+          type: number
+          default: 0
+        pagamento:
+          type: string
+          enum: [dinheiro, pix, cartao, fiado]
+        cliente_id:
+          type: integer
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemVendaInput"
+      required:
+        - categoria
+        - pagamento
+        - itens
+
+    ItemVenda:
+      type: object
+      properties:
+        id:
+          type: integer
+        venda_id:
+          type: integer
+        produto_id:
+          type: integer
+        nome_snap:
+          type: string
+        quantidade:
+          type: number
+        preco_unit:
+          type: number
+        subtotal:
+          type: number
+      required:
+        - id
+        - venda_id
+        - produto_id
+        - nome_snap
+        - quantidade
+        - preco_unit
+        - subtotal
+
+    Venda:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessao_id:
+          type: integer
+          nullable: true
+        categoria:
+          type: string
+        total:
+          type: number
+        desconto:
+          type: number
+        pagamento:
+          type: string
+        cliente_id:
+          type: integer
+          nullable: true
+        cliente_nome:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - categoria
+        - total
+        - desconto
+        - pagamento
+        - criado_em
+
+    ResumoVendas:
+      type: object
+      properties:
+        total:
+          type: number
+        total_dinheiro:
+          type: number
+        total_pix:
+          type: number
+        total_cartao:
+          type: number
+        total_fiado:
+          type: number
+        num_vendas:
+          type: integer
+        mercado:
+          type: number
+        cozinha:
+          type: number
+      required:
+        - total
+        - total_dinheiro
+        - total_pix
+        - total_cartao
+        - total_fiado
+        - num_vendas
+        - mercado
+        - cozinha
+
+    MovimentoEstoqueInput:
+      type: object
+      properties:
+        produto_id:
+          type: integer
+        tipo:
+          type: string
+          enum: [entrada, saida, ajuste]
+        quantidade:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+      required:
+        - produto_id
+        - tipo
+        - quantidade
+
+    MovimentoEstoque:
+      type: object
+      properties:
+        id:
+          type: integer
+        produto_id:
+          type: integer
+        produto_nome:
+          type: string
+          nullable: true
+        tipo:
+          type: string
+        quantidade:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - produto_id
+        - tipo
+        - quantidade
+        - criado_em
+
+    Cliente:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome:
+          type: string
+        telefone:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - nome
+        - criado_em
+
+    CriarClienteInput:
+      type: object
+      properties:
+        nome:
+          type: string
+        telefone:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+      required:
+        - nome
+
+    FiadoItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        venda_id:
+          type: integer
+          nullable: true
+        valor:
+          type: number
+        pago:
+          type: boolean
+        pago_em:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - valor
+        - pago
+        - criado_em
+
+    ExtratoCliente:
+      type: object
+      properties:
+        cliente:
+          $ref: "#/components/schemas/Cliente"
+        fiados:
+          type: array
+          items:
+            $ref: "#/components/schemas/FiadoItem"
+        total_aberto:
+          type: number
+      required:
+        - cliente
+        - fiados
+        - total_aberto
+
+    PagarFiadoInput:
+      type: object
+      properties:
+        valor:
+          type: number
+      required:
+        - valor
+
+    ResumoFiado:
+      type: object
+      properties:
+        cliente:
+          $ref: "#/components/schemas/Cliente"
+        total_aberto:
+          type: number
+      required:
+        - cliente
+        - total_aberto
+
+    SessaoCaixa:
+      type: object
+      properties:
+        id:
+          type: integer
+        aberto_em:
+          type: string
+        fechado_em:
+          type: string
+          nullable: true
+        fundo_inicial:
+          type: number
+        total_dinheiro:
+          type: number
+        total_pix:
+          type: number
+        total_cartao:
+          type: number
+        total_fiado:
+          type: number
+        total_sangria:
+          type: number
+        status:
+          type: string
+          enum: [aberto, fechado]
+      required:
+        - id
+        - aberto_em
+        - fundo_inicial
+        - total_dinheiro
+        - total_pix
+        - total_cartao
+        - total_fiado
+        - total_sangria
+        - status
+
+    StatusCaixa:
+      type: object
+      properties:
+        aberto:
+          type: boolean
+        sessao:
+          $ref: "#/components/schemas/SessaoCaixa"
+          nullable: true
+      required:
+        - aberto
+
+    AbrirCaixaInput:
+      type: object
+      properties:
+        fundo_inicial:
+          type: number
+          default: 0
+      required: []
+
+    Sangria:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessao_id:
+          type: integer
+        valor:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - sessao_id
+        - valor
+        - criado_em
+
+    SangriaInput:
+      type: object
+      properties:
+        valor:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+      required:
+        - valor
