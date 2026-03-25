@@ -1,14 +1,28 @@
-import React, { useState, useDeferredValue } from "react";
+import React, { useState, useDeferredValue, useRef, useCallback } from "react";
 import { useCart } from "@/store/use-cart";
 import { useProdutos } from "@/hooks/use-produtos";
 import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
 import { useCaixaStatus } from "@/hooks/use-caixa";
 import { useFiadoClientes } from "@/hooks/use-fiado";
+import { useImprimirCupom } from "@/hooks/use-impressora";
 import { formatMoney } from "@/lib/utils";
-import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package } from "lucide-react";
+import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer } from "lucide-react";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
+
+/* Componente de pré-visualização do cupom (quando impressora não está conectada) */
+function TicketPreview({ texto, onClose }: { texto: string; onClose: () => void }) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Impressora não encontrada. Aqui está o cupom gerado:</p>
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto">
+        <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{texto}</pre>
+      </div>
+      <Button className="w-full" onClick={onClose}>Fechar</Button>
+    </div>
+  );
+}
 
 export default function Pdv() {
   const [search, setSearch] = useState("");
@@ -20,9 +34,19 @@ export default function Pdv() {
   
   const cart = useCart();
   const registrarVenda = useRegistrarVendaWrapper();
+  const imprimirCupom = useImprimirCupom();
   const { toast } = useToast();
 
-  const [checkoutModal, setCheckoutModal] = useState<{ isOpen: boolean; paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'fiado' | null }>({ isOpen: false, paymentMethod: null });
+  const [checkoutModal, setCheckoutModal] = useState<{
+    isOpen: boolean;
+    paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'fiado' | null;
+  }>({ isOpen: false, paymentMethod: null });
+
+  const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
+    isOpen: false,
+    texto: null,
+  });
+
   const [selectedCliente, setSelectedCliente] = useState<string>("");
   const { data: clientes = [] } = useFiadoClientes();
 
@@ -39,13 +63,29 @@ export default function Pdv() {
       toast({ title: "Carrinho Vazio", description: "Adicione produtos antes de finalizar.", variant: "destructive" });
       return;
     }
-    
     if (method === 'fiado') {
       setCheckoutModal({ isOpen: true, paymentMethod: method });
     } else {
       processVenda(method);
     }
   };
+
+  const imprimirAposVenda = useCallback((vendaId: number) => {
+    imprimirCupom.mutate({ data: { venda_id: vendaId } }, {
+      onSuccess: (res: any) => {
+        if (res?.simulado && res?.texto) {
+          // Impressora não encontrada — mostrar pré-visualização
+          setCupomModal({ isOpen: true, texto: res.texto });
+        } else if (!res?.ok) {
+          toast({
+            title: "Aviso de Impressão",
+            description: res?.erro || "Não foi possível imprimir o cupom.",
+            variant: "destructive",
+          });
+        }
+      },
+    });
+  }, [imprimirCupom, toast]);
 
   const processVenda = (method: 'dinheiro' | 'pix' | 'cartao' | 'fiado', clienteId?: number) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
@@ -61,10 +101,14 @@ export default function Pdv() {
         itens: cart.getPayloadItens(),
       }
     }, {
-      onSuccess: () => {
-        toast({ title: "Venda Finalizada", description: "Venda registrada com sucesso.", className: "bg-green-600 text-white" });
+      onSuccess: (venda) => {
+        toast({ title: "✓ Venda Finalizada", description: "Imprimindo cupom...", className: "bg-green-600 text-white" });
         cart.clearCart();
         setCheckoutModal({ isOpen: false, paymentMethod: null });
+        // Impressão obrigatória
+        if (venda?.id) {
+          imprimirAposVenda(venda.id);
+        }
       },
       onError: (err) => {
         toast({ title: "Erro na Venda", description: err.message, variant: "destructive" });
@@ -81,7 +125,7 @@ export default function Pdv() {
             <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
             <Input 
               autoFocus
-              placeholder="Buscar por nome ou código..." 
+              placeholder="Buscar por nome ou código de barras..." 
               className="pl-10 h-12 text-lg shadow-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -233,9 +277,17 @@ export default function Pdv() {
               <span>Fiado</span>
             </Button>
           </div>
+
+          {imprimirCupom.isPending && (
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Printer className="w-4 h-4 animate-pulse" />
+              Imprimindo cupom...
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Modal Fiado */}
       <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Fiado">
         <div className="space-y-4">
           <div>
@@ -243,7 +295,7 @@ export default function Pdv() {
             <Select value={selectedCliente} onChange={(e) => setSelectedCliente(e.target.value)}>
               <option value="">-- Selecione --</option>
               {clientes.map(c => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
+                <option key={c.id} value={c.id}>{c.apelido ? `${c.apelido} (${c.nome})` : c.nome}</option>
               ))}
             </Select>
           </div>
@@ -260,6 +312,20 @@ export default function Pdv() {
             {registrarVenda.isPending ? "Registrando..." : "Confirmar Venda no Fiado"}
           </Button>
         </div>
+      </Modal>
+
+      {/* Modal Cupom (impressora não conectada) */}
+      <Modal
+        isOpen={cupomModal.isOpen}
+        onClose={() => setCupomModal({ isOpen: false, texto: null })}
+        title="Cupom Fiscal"
+      >
+        {cupomModal.texto && (
+          <TicketPreview
+            texto={cupomModal.texto}
+            onClose={() => setCupomModal({ isOpen: false, texto: null })}
+          />
+        )}
       </Modal>
     </div>
   );

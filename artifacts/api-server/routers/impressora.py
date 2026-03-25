@@ -14,6 +14,7 @@ ELGIN_I9_PID = 0x5743
 
 CABECALHO = """================================
        MERCADO ARVOREDO
+      60.242.783/0001-41
     R. Cel. Fernando Machado, 
      453 - Centro Histórico, 
    Porto Alegre - RS, 90010-321

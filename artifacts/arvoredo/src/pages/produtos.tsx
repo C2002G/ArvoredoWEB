@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useProdutos, useCriarProdutoWrapper, useEditarProdutoWrapper, useDeletarProdutoWrapper } from "@/hooks/use-produtos";
 import { formatMoney } from "@/lib/utils";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
-import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Barcode } from "lucide-react";
+import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto, CriarProdutoInputCategoria } from "@workspace/api-client-react/src/generated/api.schemas";
 
@@ -20,6 +20,84 @@ function validadeStatus(validade: string | null | undefined): null | "vencido" |
   if (diff < 0) return "vencido";
   if (diff <= 7) return "vencendo";
   return null;
+}
+
+/* Campo de código de barras com botão de scanner */
+function CodigoBarrasInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [scanning, setScanning] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startScan = () => {
+    setScanning(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const stopScan = () => setScanning(false);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setScanning(false); // código capturado, sai do modo scan
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {scanning ? (
+        <div className="border-2 border-primary rounded-xl p-3 bg-primary/5 animate-pulse">
+          <div className="flex items-center gap-2 mb-2">
+            <Scan className="w-5 h-5 text-primary animate-bounce" />
+            <span className="text-sm font-semibold text-primary">Aponte o leitor para o produto...</span>
+            <button type="button" onClick={stopScan} className="ml-auto text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => { if (!value) setScanning(false); }}
+            className="w-full bg-transparent border-none outline-none font-mono text-lg text-center tracking-widest text-foreground placeholder:text-muted-foreground"
+            placeholder="aguardando leitura..."
+            autoComplete="off"
+          />
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder="Código de barras..."
+            autoComplete="off"
+            className="font-mono"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-shrink-0 gap-1.5 border-primary/30 text-primary hover:border-primary"
+            onClick={startScan}
+            title="Ativar leitor de código de barras"
+          >
+            <Scan className="w-4 h-4" />
+            Escanear
+          </Button>
+        </div>
+      )}
+      {value && !scanning && (
+        <p className="text-xs text-muted-foreground font-mono">Código: {value}</p>
+      )}
+    </div>
+  );
 }
 
 export default function Produtos() {
@@ -197,6 +275,13 @@ export default function Produtos() {
                     </tr>
                   );
                 })}
+                {produtos.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
+                      Nenhum produto encontrado. Clique em "Novo Produto" para adicionar.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
@@ -215,26 +300,24 @@ export default function Produtos() {
               <Input value={formData.marca} onChange={e => setFormData({...formData, marca: e.target.value})} placeholder="Ex: PratoFino 5kg" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                <span className="flex items-center gap-1"><Barcode className="w-4 h-4" /> Código de Barras</span>
-              </label>
-              <Input
-                value={formData.codigo}
-                onChange={e => setFormData({...formData, codigo: e.target.value})}
-                placeholder="Aponte o leitor de código..."
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Categoria *</label>
-              <Select required value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value as CriarProdutoInputCategoria})}>
-                <option value="mercado">Mercado</option>
-                <option value="cozinha">Cozinha / Lanchonete</option>
-              </Select>
-            </div>
+
+          {/* Campo de Código de Barras com Botão Scanner */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Código de Barras</label>
+            <CodigoBarrasInput
+              value={formData.codigo}
+              onChange={v => setFormData({...formData, codigo: v})}
+            />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Categoria *</label>
+            <Select required value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value as CriarProdutoInputCategoria})}>
+              <option value="mercado">Mercado</option>
+              <option value="cozinha">Cozinha / Lanchonete</option>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Custo (R$)</label>
@@ -260,8 +343,8 @@ export default function Produtos() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">
-              <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> Validade (opcional)</span>
+            <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+              <Calendar className="w-4 h-4" /> Validade <span className="text-muted-foreground font-normal">(opcional)</span>
             </label>
             <Input
               type="date"
