@@ -6,21 +6,96 @@ import { useCaixaStatus } from "@/hooks/use-caixa";
 import { useFiadoClientes } from "@/hooks/use-fiado";
 import { useImprimirCupom } from "@/hooks/use-impressora";
 import { formatMoney } from "@/lib/utils";
-import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer } from "lucide-react";
+import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer, UserCheck, X } from "lucide-react";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
 
-/* Componente de pré-visualização do cupom (quando impressora não está conectada) */
+type Cliente = { id: number; nome: string; apelido?: string | null; cpf?: string | null };
+
+/* Pré-visualização do cupom quando impressora não está conectada */
 function TicketPreview({ texto, onClose }: { texto: string; onClose: () => void }) {
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Impressora não encontrada. Aqui está o cupom gerado:</p>
+      <p className="text-sm text-muted-foreground">Impressora não encontrada. Cupom gerado:</p>
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto">
         <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{texto}</pre>
       </div>
       <Button className="w-full" onClick={onClose}>Fechar</Button>
     </div>
+  );
+}
+
+/* Modal de seleção de cliente para nota fiscal */
+function ClienteSelectorModal({
+  isOpen,
+  onClose,
+  clientes,
+  onSelect,
+  selected,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  clientes: Cliente[];
+  onSelect: (c: Cliente | null) => void;
+  selected: Cliente | null;
+}) {
+  const [busca, setBusca] = useState("");
+  const filtrados = clientes.filter(c => {
+    const q = busca.toLowerCase();
+    return (
+      c.nome.toLowerCase().includes(q) ||
+      (c.apelido || "").toLowerCase().includes(q) ||
+      (c.cpf || "").includes(q)
+    );
+  });
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Vincular cliente à nota fiscal">
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Selecione um cliente para incluir nome e CPF no cupom fiscal. Opcional para qualquer forma de pagamento.
+        </p>
+        <Input
+          autoFocus
+          placeholder="Buscar por nome, apelido ou CPF..."
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+        />
+        <div className="max-h-64 overflow-y-auto space-y-1 rounded-xl border border-border">
+          {/* Opção "sem cliente" */}
+          <button
+            onClick={() => { onSelect(null); onClose(); }}
+            className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-secondary transition-colors ${!selected ? 'bg-secondary font-semibold' : ''}`}
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Sem cliente vinculado</span>
+          </button>
+
+          {filtrados.length === 0 && busca && (
+            <p className="px-4 py-3 text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
+          )}
+
+          {filtrados.map(c => (
+            <button
+              key={c.id}
+              onClick={() => { onSelect(c); onClose(); }}
+              className={`w-full text-left px-4 py-3 hover:bg-secondary transition-colors flex flex-col ${selected?.id === c.id ? 'bg-primary/10' : ''}`}
+            >
+              <span className="font-semibold">
+                {c.apelido ? `${c.apelido}` : c.nome}
+                {c.apelido && <span className="text-muted-foreground font-normal"> ({c.nome})</span>}
+              </span>
+              {c.cpf && (
+                <span className="text-xs text-muted-foreground font-mono mt-0.5">CPF: {c.cpf}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <Button variant="ghost" className="w-full" onClick={onClose}>Cancelar</Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -36,6 +111,7 @@ export default function Pdv() {
   const registrarVenda = useRegistrarVendaWrapper();
   const imprimirCupom = useImprimirCupom();
   const { toast } = useToast();
+  const { data: clientes = [] } = useFiadoClientes();
 
   const [checkoutModal, setCheckoutModal] = useState<{
     isOpen: boolean;
@@ -43,12 +119,12 @@ export default function Pdv() {
   }>({ isOpen: false, paymentMethod: null });
 
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
-    isOpen: false,
-    texto: null,
+    isOpen: false, texto: null,
   });
 
+  const [clienteModal, setClienteModal] = useState(false);
+  const [clienteNota, setClienteNota] = useState<Cliente | null>(null);
   const [selectedCliente, setSelectedCliente] = useState<string>("");
-  const { data: clientes = [] } = useFiadoClientes();
 
   const handleAddToCart = (p: Produto) => {
     cart.addItem(p);
@@ -66,7 +142,7 @@ export default function Pdv() {
     if (method === 'fiado') {
       setCheckoutModal({ isOpen: true, paymentMethod: method });
     } else {
-      processVenda(method);
+      processVenda(method, clienteNota?.id);
     }
   };
 
@@ -74,7 +150,6 @@ export default function Pdv() {
     imprimirCupom.mutate({ data: { venda_id: vendaId } }, {
       onSuccess: (res: any) => {
         if (res?.simulado && res?.texto) {
-          // Impressora não encontrada — mostrar pré-visualização
           setCupomModal({ isOpen: true, texto: res.texto });
         } else if (!res?.ok) {
           toast({
@@ -104,11 +179,9 @@ export default function Pdv() {
       onSuccess: (venda) => {
         toast({ title: "✓ Venda Finalizada", description: "Imprimindo cupom...", className: "bg-green-600 text-white" });
         cart.clearCart();
+        setClienteNota(null);
         setCheckoutModal({ isOpen: false, paymentMethod: null });
-        // Impressão obrigatória
-        if (venda?.id) {
-          imprimirAposVenda(venda.id);
-        }
+        if (venda?.id) imprimirAposVenda(venda.id);
       },
       onError: (err) => {
         toast({ title: "Erro na Venda", description: err.message, variant: "destructive" });
@@ -196,10 +269,45 @@ export default function Pdv() {
       {/* Right Area - Cart */}
       <div className="w-full lg:w-[400px] xl:w-[450px] bg-card border-l border-border flex flex-col flex-shrink-0 h-full">
         <div className="p-6 border-b border-border bg-secondary/10">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <ShoppingBag className="text-primary" />
-            Carrinho
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <ShoppingBag className="text-primary" />
+              Carrinho
+            </h2>
+            <button
+              onClick={() => setClienteModal(true)}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
+                clienteNota
+                  ? "bg-primary/10 border-primary/30 text-primary font-semibold"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+              title="Vincular cliente à nota fiscal"
+            >
+              <UserCheck className="w-4 h-4" />
+              {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
+            </button>
+          </div>
+
+          {/* Info do cliente vinculado */}
+          {clienteNota && (
+            <div className="mt-3 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-primary">
+                  {clienteNota.apelido ? `${clienteNota.apelido} (${clienteNota.nome})` : clienteNota.nome}
+                </p>
+                {clienteNota.cpf && (
+                  <p className="text-xs text-muted-foreground font-mono">CPF: {clienteNota.cpf}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setClienteNota(null)}
+                className="text-muted-foreground hover:text-destructive p-1"
+                title="Remover cliente"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -287,6 +395,15 @@ export default function Pdv() {
         </div>
       </div>
 
+      {/* Modal Vincular Cliente */}
+      <ClienteSelectorModal
+        isOpen={clienteModal}
+        onClose={() => setClienteModal(false)}
+        clientes={clientes as Cliente[]}
+        onSelect={setClienteNota}
+        selected={clienteNota}
+      />
+
       {/* Modal Fiado */}
       <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Fiado">
         <div className="space-y-4">
@@ -294,7 +411,7 @@ export default function Pdv() {
             <label className="block text-sm font-medium mb-1">Selecione o Cliente</label>
             <Select value={selectedCliente} onChange={(e) => setSelectedCliente(e.target.value)}>
               <option value="">-- Selecione --</option>
-              {clientes.map(c => (
+              {clientes.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.apelido ? `${c.apelido} (${c.nome})` : c.nome}</option>
               ))}
             </Select>

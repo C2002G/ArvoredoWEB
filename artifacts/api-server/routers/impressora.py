@@ -81,8 +81,12 @@ def _cupom_texto(venda: Venda, itens: list) -> str:
         RODAPE,
     ]
 
-    if venda.cliente_id and venda.pagamento == "fiado" and venda.cliente:
-        linhas.insert(-2, f"Cliente: {venda.cliente.nome}")
+    if venda.cliente_id and venda.cliente:
+        cliente = venda.cliente
+        nome_exib = cliente.apelido or cliente.nome
+        linhas.insert(-2, f"Cliente: {nome_exib}")
+        if hasattr(cliente, 'cpf') and cliente.cpf:
+            linhas.insert(-2, f"CPF: {cliente.cpf}")
 
     return "\n".join(linhas) + "\n\n\n"
 

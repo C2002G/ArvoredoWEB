@@ -8,6 +8,7 @@ import Fiado from "@/pages/fiado";
 import Caixa from "@/pages/caixa";
 import Historico from "@/pages/historico";
 import Produtos from "@/pages/produtos";
+import Dispositivos from "@/pages/dispositivos";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -29,6 +30,7 @@ function Router() {
         <Route path="/caixa" component={Caixa} />
         <Route path="/historico" component={Historico} />
         <Route path="/produtos" component={Produtos} />
+        <Route path="/dispositivos" component={Dispositivos} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

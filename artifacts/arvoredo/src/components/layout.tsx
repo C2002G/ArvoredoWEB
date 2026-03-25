@@ -8,6 +8,7 @@ import {
   Activity,
   Box,
   TreePine,
+  Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProdutosAlertas } from "@/hooks/use-produtos";
@@ -28,6 +29,7 @@ export function Layout({ children }: LayoutProps) {
     { name: "Sessão Caixa", href: "/caixa", icon: Wallet },
     { name: "Histórico", href: "/historico", icon: Activity },
     { name: "Produtos", href: "/produtos", icon: Package },
+    { name: "Dispositivos", href: "/dispositivos", icon: Cpu },
   ];
 
   return (
