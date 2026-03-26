@@ -25,7 +25,7 @@ export function Layout({ children }: LayoutProps) {
   const navItems = [
     { name: "PDV / Caixa", href: "/", icon: ShoppingCart },
     { name: "Estoque", href: "/estoque", icon: Box, badge: alertCount },
-    { name: "Fiado", href: "/fiado", icon: Users },
+    { name: "Comandas em Aberto", href: "/fiado", icon: Users },
     { name: "Sessão Caixa", href: "/caixa", icon: Wallet },
     { name: "Histórico", href: "/historico", icon: Activity },
     { name: "Produtos", href: "/produtos", icon: Package },

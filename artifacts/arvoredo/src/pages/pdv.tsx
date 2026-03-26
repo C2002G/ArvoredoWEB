@@ -382,7 +382,7 @@ export default function Pdv() {
             </Button>
             <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-destructive/20 hover:border-destructive hover:bg-destructive text-destructive hover:text-white" onClick={() => handleCheckoutClick('fiado')}>
               <Users className="w-6 h-6" />
-              <span>Fiado</span>
+              <span>Comanda</span>
             </Button>
           </div>
 
@@ -405,7 +405,7 @@ export default function Pdv() {
       />
 
       {/* Modal Fiado */}
-      <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Fiado">
+      <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Comanda em Aberto">
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Selecione o Cliente</label>
@@ -426,7 +426,7 @@ export default function Pdv() {
             disabled={!selectedCliente || registrarVenda.isPending}
             onClick={() => processVenda('fiado', Number(selectedCliente))}
           >
-            {registrarVenda.isPending ? "Registrando..." : "Confirmar Venda no Fiado"}
+            {registrarVenda.isPending ? "Registrando..." : "Confirmar na Comanda"}
           </Button>
         </div>
       </Modal>

@@ -39,7 +39,7 @@ export default function Historico() {
               <div className="flex justify-between"><span className="text-muted-foreground">Dinheiro</span><span className="font-mono font-bold text-green-600">{formatMoney(resumo.total_dinheiro)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">PIX</span><span className="font-mono font-bold">{formatMoney(resumo.total_pix)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Cartão</span><span className="font-mono font-bold">{formatMoney(resumo.total_cartao)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Fiado</span><span className="font-mono font-bold text-destructive">{formatMoney(resumo.total_fiado)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Comandas</span><span className="font-mono font-bold text-destructive">{formatMoney(resumo.total_fiado)}</span></div>
             </div>
           </div>
 

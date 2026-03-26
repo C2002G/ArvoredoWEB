@@ -169,7 +169,7 @@ export default function Caixa() {
                   <p className="font-mono font-bold">{formatMoney(status.sessao!.total_cartao)}</p>
                 </div>
                 <div className="p-4 bg-muted/50 rounded-xl">
-                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Fiado</p>
+                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Comandas</p>
                   <p className="font-mono font-bold text-destructive">{formatMoney(status.sessao!.total_fiado)}</p>
                 </div>
                 <div className="p-4 bg-muted/50 rounded-xl">

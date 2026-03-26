@@ -65,7 +65,10 @@ export default function Fiado() {
       <div className="w-full md:w-80 bg-card border-r border-border flex flex-col h-full flex-shrink-0">
         <div className="p-6 border-b border-border space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold">Clientes</h2>
+            <div>
+              <h2 className="text-xl font-bold">Comandas em Aberto</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Clientes com saldo devedor</p>
+            </div>
             <Button size="icon" variant="ghost" onClick={() => setNovoModal(true)}>
               <UserPlus className="w-5 h-5" />
             </Button>
