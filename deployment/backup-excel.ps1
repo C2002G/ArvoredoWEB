@@ -21,10 +21,21 @@ Write-Host ""
 # Configurar DATABASE_URL se necessario
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
     if ([string]::IsNullOrEmpty($PgPassword)) {
-        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Yellow
-        $PgPassword = Read-Host -AsSecureString
-        $PgPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($PgPassword))
+        # Tentar ler do .env
+        $envFile = Join-Path $ProjectRoot ".env"
+        if (Test-Path $envFile) {
+            $envContent = Get-Content $envFile -Raw
+            if ($envContent -match "postgres:([^@]+)@") {
+                $PgPassword = $Matches[1]
+            }
+        }
     }
+    
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
+        $PgPassword = Read-Host
+    }
+    
     $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
 }
 

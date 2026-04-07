@@ -141,8 +141,7 @@ Write-Host "[3/9] Configuracao do PostgreSQL..." -ForegroundColor Yellow
 
 if ([string]::IsNullOrEmpty($PgPassword)) {
     Write-Host "      Digite a senha do usuario 'postgres': " -NoNewline -ForegroundColor Cyan
-    $PgPassword = Read-Host -AsSecureString
-    $PgPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($PgPassword))
+    $PgPassword = Read-Host
 }
 
 # Testar conexao

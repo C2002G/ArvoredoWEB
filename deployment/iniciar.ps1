@@ -18,11 +18,21 @@ Write-Host ""
 # Configurar DATABASE_URL se nao existir
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
     if ([string]::IsNullOrEmpty($PgPassword)) {
-        Write-Host "ERRO: Defina a variavel DATABASE_URL ou passe -PgPassword" -ForegroundColor Red
-        Write-Host ""
-        Write-Host '  .\iniciar.ps1 -PgPassword "SUASENHA"' -ForegroundColor Yellow
-        exit 1
+        # Tentar ler do .env
+        $envFile = Join-Path $ProjectRoot ".env"
+        if (Test-Path $envFile) {
+            $envContent = Get-Content $envFile -Raw
+            if ($envContent -match "postgres:([^@]+)@") {
+                $PgPassword = $Matches[1]
+            }
+        }
     }
+    
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
+        $PgPassword = Read-Host
+    }
+    
     $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
 }
 
