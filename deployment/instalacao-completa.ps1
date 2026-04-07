@@ -65,9 +65,8 @@ $ScriptDir = Join-Path $InstallPath "deployment"
 Write-Host ""
 Write-Host "[2/9] Verificando PostgreSQL..." -ForegroundColor Yellow
 
-# Verificar se psql esta disponivel
+# Verificar se psql esta disponvel
 $psqlPath = $null
-$pgVersion = $null
 
 # Tentar encontrar psql
 $psqlLocations = @(
@@ -76,7 +75,7 @@ $psqlLocations = @(
     "C:\Program Files\PostgreSQL\16\bin\psql.exe",
     "C:\Program Files\PostgreSQL\15\bin\psql.exe",
     "C:\Program Files\PostgreSQL\14\bin\psql.exe",
-    "psql.exe"  # Se estiver no PATH
+    "psql.exe"
 )
 
 foreach ($loc in $psqlLocations) {
@@ -87,7 +86,6 @@ foreach ($loc in $psqlLocations) {
 }
 
 if (-not $psqlPath) {
-    # Tentar via Get-Command
     try {
         $psqlPath = (Get-Command psql -ErrorAction SilentlyContinue).Source
     } catch { }
@@ -111,7 +109,6 @@ $pgService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue | Whe
 if (-not $pgService) {
     Write-Host "      PostgreSQL nao esta rodando. Tentando iniciar..." -ForegroundColor Yellow
     
-    # Tentar iniciar o servico
     $serviceName = "postgresql-x64-18"
     if (-not (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)) {
         $serviceName = "postgresql-x64-17"
@@ -144,13 +141,17 @@ if ([string]::IsNullOrEmpty($PgPassword)) {
     $PgPassword = Read-Host
 }
 
+# Usar variavel de ambiente para senha (mais confiavel no Windows)
+$env:PGPASSWORD = $PgPassword
+
 # Testar conexao
 Write-Host "      Testando conexao com PostgreSQL..." -ForegroundColor Yellow
-$testOutput = & $psqlPath -h localhost -U postgres -d postgres -c "SELECT version();" -w $PgPassword 2>&1
+$testOutput = & $psqlPath -h localhost -U postgres -d postgres -c "SELECT version();" 2>&1
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      ERRO: Nao foi possivel conectar ao PostgreSQL" -ForegroundColor Red
     Write-Host "      Verifique se a senha esta correta" -ForegroundColor Yellow
+    Write-Host "      Ou crie o banco manualmente pelo pgAdmin" -ForegroundColor Yellow
     exit 1
 }
 
@@ -162,20 +163,24 @@ Write-Host "      Conexao OK!" -ForegroundColor Green
 Write-Host ""
 Write-Host "[4/9] Verificando banco de dados 'arvoredo'..." -ForegroundColor Yellow
 
-$checkDb = & $psqlPath -h localhost -U postgres -d postgres -c "SELECT 1 FROM pg_database WHERE datname = 'arvoredo';" -w $PgPassword -t 2>&1
+$checkDb = & $psqlPath -h localhost -U postgres -d postgres -c "SELECT 1 FROM pg_database WHERE datname = 'arvoredo';" -t 2>&1
 $dbExists = $checkDb -match "1"
 
 if ($dbExists) {
     Write-Host "      Banco 'arvoredo' ja existe" -ForegroundColor Green
 } else {
     Write-Host "      Criando banco 'arvoredo'..." -ForegroundColor Yellow
-    $createDb = & $psqlPath -h localhost -U postgres -d postgres -c "CREATE DATABASE arvoredo;" -w $PgPassword 2>&1
+    $createDb = & $psqlPath -h localhost -U postgres -d postgres -c "CREATE DATABASE arvoredo;" 2>&1
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "      Banco 'arvoredo' criado!" -ForegroundColor Green
     } else {
-        Write-Host "      ERRO ao criar banco: $createDb" -ForegroundColor Red
-        exit 1
+        Write-Host "      AVISO: Nao foi possivel criar banco via psql" -ForegroundColor Yellow
+        Write-Host "      Crie o banco manualmente pelo pgAdmin:" -ForegroundColor Yellow
+        Write-Host "      - Abra pgAdmin" -ForegroundColor Gray
+        Write-Host "      - Clique com botao direito em 'Databases' > 'Create' > 'Database'" -ForegroundColor Gray
+        Write-Host "      - Nome: 'arvoredo'" -ForegroundColor Gray
+        Write-Host "      - Owner: 'postgres'" -ForegroundColor Gray
     }
 }
 
@@ -254,6 +259,7 @@ try {
         Write-Host "      Tabelas criadas!" -ForegroundColor Green
     } else {
         Write-Host "      AVISO: Problema ao criar tabelas" -ForegroundColor Yellow
+        Write-Host "      Verifique se o banco 'arvoredo' existe" -ForegroundColor Yellow
     }
 } catch {
     Write-Host "      ERRO ao criar tabelas: $_" -ForegroundColor Red
@@ -273,6 +279,9 @@ PORT=8080
 
 $envContent | Out-File -FilePath $envFile -Encoding UTF8
 Write-Host "      .env configurado!" -ForegroundColor Green
+
+# Limpar senha da memoria
+$env:PGPASSWORD = $null
 
 # ============================================
 # FIM
@@ -294,16 +303,16 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  ABRIR O SISTEMA:" -ForegroundColor White
 Write-Host "  cd $InstallPath" -ForegroundColor Gray
-Write-Host "  .\deployment\iniciar.ps1" -ForegroundColor Gray
+Write-Host "  powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  FAZER BACKUP EXCEL:" -ForegroundColor White
-Write-Host "  .\deployment\backup-excel.ps1 -OpenAfter" -ForegroundColor Gray
+Write-Host "  powershell -ExecutionPolicy Bypass -File .\deployment\backup-excel.ps1 -OpenAfter" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  ATUALIZAR (quando voce enviar mudancas):" -ForegroundColor White
-Write-Host "  .\deployment\atualizar.ps1" -ForegroundColor Gray
+Write-Host "  powershell -ExecutionPolicy Bypass -File .\deployment\atualizar.ps1" -ForegroundColor Gray
 Write-Host ""
 Write-Host "  PARAR O SISTEMA:" -ForegroundColor White
-Write-Host "  .\deployment\parar.ps1" -ForegroundColor Gray
+Write-Host "  powershell -ExecutionPolicy Bypass -File .\deployment\parar.ps1" -ForegroundColor Gray
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "  URLs do sistema:" -ForegroundColor White

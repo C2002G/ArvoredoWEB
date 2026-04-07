@@ -1,5 +1,4 @@
 # Arvoredo PDV - Menu Interativo
-# Execute este script para ter um menu simples de opções
 
 param(
     [switch]$SkipPassword
@@ -12,7 +11,7 @@ $ProjectRoot = (Get-Item $ProjectRoot).Parent.FullName
 
 Set-Location $ProjectRoot
 
-# Carregar senha do .env se existir
+# Load password from .env
 $PgPassword = $null
 $envFile = Join-Path $ProjectRoot ".env"
 if (Test-Path $envFile) {
@@ -22,7 +21,6 @@ if (Test-Path $envFile) {
     }
 }
 
-# Se nao tem senha e nao quer pular, pedir
 if ([string]::IsNullOrEmpty($PgPassword) -and -not $SkipPassword) {
     Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
     $input = Read-Host
@@ -31,14 +29,8 @@ if ([string]::IsNullOrEmpty($PgPassword) -and -not $SkipPassword) {
     }
 }
 
-function ClearScreen {
-    Clear-Host
-}
-
 function Show-Menu {
-    param([string]$Title = "Arvoredo PDV")
-    
-    ClearScreen
+    Clear-Host
     Write-Host ""
     Write-Host "======================================" -ForegroundColor Cyan
     Write-Host "       Arvoredo PDV - Menu" -ForegroundColor Cyan
@@ -53,19 +45,6 @@ function Show-Menu {
     Write-Host "  0. Sair" -ForegroundColor Gray
     Write-Host ""
     Write-Host "======================================" -ForegroundColor Cyan
-}
-
-function Test-ServiceRunning {
-    param([string]$Url, [string]$Name)
-    try {
-        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
-            Write-Host "  $Name: ONLINE" -ForegroundColor Green
-            return $true
-        }
-    } catch { }
-    Write-Host "  $Name: OFFLINE" -ForegroundColor Red
-    return $false
 }
 
 function Start-System {
@@ -137,24 +116,6 @@ function Backup-Excel {
     Write-Host ""
     Write-Host "Gerando backup Excel..." -ForegroundColor Yellow
     
-    if (-not [string]::IsNullOrEmpty($PgPassword)) {
-        $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
-    }
-    
-    $dateStr = Get-Date -Format "yyyy-MM-dd"
-    $outputDir = Join-Path $ProjectRoot "Backups"
-    if (-not (Test-Path $outputDir)) {
-        New-Item -ItemType Directory -Path $outputDir | Out-Null
-    }
-    $outputPath = Join-Path $outputDir "Arvoredo_Backup_${dateStr}.xlsx"
-
-    $script = @"
-// Inline backup
-const { Client } = require('pg');
-const XLSX = require('xlsx');
-"@
-
-    # Tentar executar via script existente
     $backupScript = Join-Path $ProjectRoot "deployment\backup-excel.ps1"
     if (Test-Path $backupScript) {
         if (-not [string]::IsNullOrEmpty($PgPassword)) {
@@ -186,18 +147,28 @@ function Check-Status {
     Write-Host ""
     Write-Host "Verificando servicos..." -ForegroundColor Yellow
     
-    $apiOnline = Test-ServiceRunning -Url "http://localhost:8080/api/healthz" -Name "API (porta 8080)"
-    $frontendOnline = Test-ServiceRunning -Url "http://localhost:5173" -Name "Frontend (porta 5173)"
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8080/api/healthz" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) {
+            Write-Host "  API (8080): ONLINE" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "  API (8080): OFFLINE" -ForegroundColor Red
+    }
+    
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:5173" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) {
+            Write-Host "  Frontend (5173): ONLINE" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "  Frontend (5173): OFFLINE" -ForegroundColor Red
+    }
     
     Write-Host ""
-    if ($apiOnline -and $frontendOnline) {
-        Write-Host "Sistema ONLINE!" -ForegroundColor Green
-    } else {
-        Write-Host "Sistema OFFLINE ou parcialmente ativo" -ForegroundColor Yellow
-    }
 }
 
-# Loop principal
+# Main loop
 do {
     Show-Menu
     $choice = Read-Host "Escolha uma opcao"
