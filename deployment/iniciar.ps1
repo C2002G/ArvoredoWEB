@@ -119,6 +119,7 @@ $frontendLog = Join-Path $logsDir "frontend-$(Get-Date -Format yyyyMMdd-HHmmss).
 $frontendJob = Start-Job -ScriptBlock {
     param($WorkDir, $LogFile, $DbUrl)
     $env:DATABASE_URL = $DbUrl
+    $env:PORT = "5173"
     Set-Location $WorkDir
     pnpm --filter @workspace/arvoredo run dev 2>&1 | Tee-Object -FilePath $LogFile
 } -ArgumentList $ProjectRoot, $frontendLog, $env:DATABASE_URL

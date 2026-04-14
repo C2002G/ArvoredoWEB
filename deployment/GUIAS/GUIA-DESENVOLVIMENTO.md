@@ -1,4 +1,4 @@
-# Guia de Desenvolvimento - Arvoredo PDV
+claudecode# Guia de Desenvolvimento - Arvoredo PDV
 
 Este guia é para **você** desenvolver e testar o sistema no seu PC.
 
@@ -25,7 +25,22 @@ npm install -g pnpm
 
 ---
 
-## Configuração do Banco de Dados
+## aboa
+pnpm install
+$env:DATABASE_URL="postgresql://postgres:1234@localhost:5432/arvoredo"
+$env:PORT="8080"
+pnpm --filter @workspace/db run push
+
+    dps
+powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
+
+
+## Pra parar
+powershell -ExecutionPolicy Bypass -File .\deployment\parar.ps1
+
+## Script para começar dnv
+powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
+
 
 ### 1. Abra o pgAdmin
 - Menu Iniciar → procure "pgAdmin 4"

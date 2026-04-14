@@ -90,6 +90,7 @@ function Start-System {
     Start-Job -ScriptBlock {
         param($WorkDir, $DbUrl)
         $env:DATABASE_URL = $DbUrl
+        $env:PORT = "5173"
         Set-Location $WorkDir
         pnpm --filter @workspace/arvoredo run dev
     } -ArgumentList $ProjectRoot, $env:DATABASE_URL | Out-Null
