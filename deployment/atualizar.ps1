@@ -64,8 +64,13 @@ if ($LASTEXITCODE -ne 0) {
 
 # 3. Verificar se ha atualizacoes
 Write-Host "[3/6] Verificando atualizacoes..." -ForegroundColor Yellow
+$branch = git branch --show-current
+if ([string]::IsNullOrEmpty($branch)) {
+    $branch = "main"
+}
+
 $localCommit = git rev-parse HEAD
-$remoteCommit = git rev-parse origin/master
+$remoteCommit = git rev-parse "origin/$branch"
 
 if ($localCommit -eq $remoteCommit) {
     Write-Host "      Sistema ja esta na versao mais recente" -ForegroundColor Green
@@ -78,7 +83,7 @@ if ($localCommit -eq $remoteCommit) {
 # 4. Pull se houver atualizacoes
 if ($hasUpdates) {
     Write-Host "[4/6] Baixando atualizacoes..." -ForegroundColor Yellow
-    git pull origin master 2>&1
+    git pull origin $branch 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "      ERRO no git pull. Voce pode ter mudancas locais." -ForegroundColor Red
         Write-Host "      Use 'git status' para ver conflitos" -ForegroundColor Yellow

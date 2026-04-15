@@ -1,146 +1,70 @@
-# Guia de Instalação - PC do Estabelecimento
+# Guia de Instalacao no PC do Estabelecimento
 
-Este guia é para instalar o sistema no PC da **dona do estabelecimento**.
+Objetivo: deixar o sistema rodando localmente no PC da loja, sem hospedagem externa.
 
----
+## 1) Pre requisitos
+- PostgreSQL instalado (senha do usuario `postgres` anotada)
+- Node.js LTS (22+)
+- pnpm
+- Git (somente se for atualizar por `git pull`)
 
-## Pré-requisitos Já Instalados
-
-- PostgreSQL 18 ✅ (já instalado)
-- Git ✅ (precisa verificar se está instalado)
-- Node.js ✅ (precisa verificar se está instalado)
-
----
-
-## PASSO 1: Verificar se Git e Node estão instalados
-
-Abra o **PowerShell como Administrador** e execute:
-
-```powershell
-git --version
-node -v
-pnpm -v
-```
-
-Se algum não estiver instalado, baixe e instale:
-- Git: https://git-scm.com/download/win
-- Node.js: https://nodejs.org (escolha LTS)
-
----
-
-## PASSO 2: Clonar o Repositório
-
-No PowerShell como Administrador:
-
+## 2) Instalar codigo no PC da loja
+Exemplo em `C:\Arvoredo`:
 ```powershell
 cd C:\
-git clone https://github.com/C2002G/ArvoredoWEB.git
+git clone https://github.com/C2002G/ArvoredoWEB.git Arvoredo
+cd C:\Arvoredo
 ```
 
----
-
-## PASSO 3: Executar a Instalação Completa
-
+## 3) Instalacao inicial (uma vez)
 ```powershell
-cd C:\Arvoredo
 powershell -ExecutionPolicy Bypass -File .\deployment\instalacao-completa.ps1
 ```
 
-**O script vai pedir:**
-- A senha do PostgreSQL (a mesma do pgAdmin, ex: 1234)
+O script:
+- valida PostgreSQL
+- instala dependencias
+- cria banco `arvoredo` se necessario
+- executa `db push`
+- cria `.env`
 
-**O script vai fazer:**
-- Criar o banco de dados "arvoredo"
-- Criar as tabelas
-- Instalar dependências
-- Configurar tudo automaticamente
-
----
-
-## PASSO 4: Iniciar o Sistema (Todo Dia)
-
+## 4) Abrir sistema no dia a dia
 ```powershell
 cd C:\Arvoredo
 powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
 ```
 
-Digite a senha quando pedir (ex: 1234)
+## 5) Fechar sistema
+```powershell
+cd C:\Arvoredo
+powershell -ExecutionPolicy Bypass -File .\deployment\parar.ps1
+```
 
-O navegador vai abrir automaticamente em **http://localhost:5173**
+## 6) URLs locais
+- Frontend: http://localhost:5173
+- API health: http://localhost:8080/api/healthz
 
----
-
-## PASSO 5: Fazer Backup Excel (Todo Dia)
-
+## 7) Backup
+Manual:
 ```powershell
 cd C:\Arvoredo
 powershell -ExecutionPolicy Bypass -File .\deployment\backup-excel.ps1 -OpenAfter
 ```
 
-O arquivo será salvo em: **C:\Arvoredo\Backups\**
+Automatico diario (Task Scheduler):
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Arvoredo\deployment\backup-diario.ps1"
+```
 
----
-
-## PASSO 6: Atualizar o Sistema
-
-Quando você enviar atualizações do seu PC de desenvolvimento:
-
+## 8) Atualizacao do sistema
 ```powershell
 cd C:\Arvoredo
-git pull
 powershell -ExecutionPolicy Bypass -File .\deployment\atualizar.ps1
 ```
 
----
-
-## Comandos do Dia a Dia
-
-| Ação | Comando |
-|------|---------|
-| **Abrir sistema** | `cd C:\Arvoredo` → `powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1` |
-| **Fazer backup** | `cd C:\Arvoredo` → `powershell -ExecutionPolicy Bypass -File .\deployment\backup-excel.ps1 -OpenAfter` |
-| **Atualizar** | `cd C:\Arvoredo` → `git pull` → `powershell -ExecutionPolicy Bypass -File .\deployment\atualizar.ps1` |
-| **Parar sistema** | `cd C:\Arvoredo` → `powershell -ExecutionPolicy Bypass -File .\deployment\parar.ps1` |
-
----
-
-## URLs do Sistema
-
-| Serviço | URL |
-|---------|-----|
-| **Frontend** | http://localhost:5173 |
-| **API** | http://localhost:8080/api/healthz |
-
----
-
-## Pasta de Arquivos
-
-| Pasta | Conteúdo |
-|-------|----------|
-| `C:\Arvoredo\deployment\` | Scripts de gestão |
-| `C:\Arvoredo\Backups\` | Relatórios Excel |
-| `C:\Arvoredo\Logs\` | Logs do sistema |
-| `C:\Arvoredo\.env` | Configurações |
-
----
-
-## Problemas Comuns
-
-### "PostgreSQL não encontrado"
-- Verifique se o PostgreSQL está instalado
-- Abra o pgAdmin para verificar
-
-### "Erro ao conectar no banco"
-- Verifique a senha está correta
-- O banco "arvoredo" existe no pgAdmin?
-
-### "Sistema não abre"
-- Verifique as URLs no navegador
-- Tente http://localhost:5173
-- Tente http://localhost:8080/api/healthz
-
----
-
-## Suporte
-
-Se tiver algum problema, entre em contato!
+## 9) Checklist operacional
+- PostgreSQL rodando no Windows
+- `.env` presente com `DATABASE_URL` correto
+- API responde `/api/healthz`
+- Frontend abre em `5173`
+- Backup diario habilitado

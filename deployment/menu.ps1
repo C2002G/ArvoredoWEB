@@ -135,8 +135,13 @@ function Backup-Excel {
 function Update-System {
     Write-Host ""
     Write-Host "Atualizando sistema..." -ForegroundColor Yellow
-    
-    git pull origin master 2>&1
+
+    $branch = git branch --show-current
+    if ([string]::IsNullOrEmpty($branch)) {
+        $branch = "main"
+    }
+
+    git pull origin $branch 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Sistema atualizado!" -ForegroundColor Green
     } else {

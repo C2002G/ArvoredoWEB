@@ -10,6 +10,7 @@ out-tsc
 
 # dependencies
 node_modules
+.pnpm-store
 
 # IDEs and editors
 /.idea
@@ -47,6 +48,10 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+.replit-artifact/
 
-# MD & Env
-*.md
+# Runtime / Local env
+.env
+.env.*
+!.env.example
+Logs/
