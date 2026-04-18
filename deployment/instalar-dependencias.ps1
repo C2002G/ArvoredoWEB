@@ -49,9 +49,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "      Dependencias OK" -ForegroundColor Green
 
-# Instalar dependencias extras para backup Excel
+# Instalar dependencias extras para backup Excel (workspace root)
 Write-Host "[4/4] Instalando dependencias extras (xlsx, pg)..." -ForegroundColor Yellow
-npm install xlsx pg 2>&1
+pnpm add -w xlsx pg 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      AVISO: Erro ao instalar xlsx/pg" -ForegroundColor Yellow
     Write-Host "      O backup Excel pode nao funcionar" -ForegroundColor Yellow

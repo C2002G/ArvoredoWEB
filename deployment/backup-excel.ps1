@@ -353,13 +353,14 @@ if (-not (Test-Path $nodeModulesXlsx)) {
 
 if ($needInstallXlsx) {
     try {
-        npm install xlsx --prefix $ProjectRoot 2>&1 | Out-Null
+        Set-Location $ProjectRoot
+        pnpm add -w xlsx 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Erro ao instalar xlsx"
         }
     } catch {
         Write-Host "ERRO: Nao foi possivel instalar a biblioteca xlsx" -ForegroundColor Red
-        Write-Host "Tente instalar manualmente: npm install xlsx --prefix . " -ForegroundColor Yellow
+        Write-Host "Tente instalar manualmente: pnpm add -w xlsx" -ForegroundColor Yellow
         Remove-Item $tempScriptPath -Force -ErrorAction SilentlyContinue
         exit 1
     }

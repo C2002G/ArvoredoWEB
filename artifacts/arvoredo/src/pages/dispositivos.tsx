@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTestarImpressora } from "@/hooks/use-impressora";
+import { useMaquininhaConfig, useSalvarMaquininhaConfig, useTestarMaquininha } from "@/hooks/use-maquininha";
 import { Button } from "@/components/ui-elements";
-import { Printer, ScanBarcode, CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff, Loader2 } from "lucide-react";
+import { Printer, ScanBarcode, CheckCircle2, XCircle, AlertCircle, Wifi, Loader2, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type StatusImpressora = "idle" | "testando" | "ok" | "erro";
@@ -31,9 +32,29 @@ function StatusBadge({ status, erro }: { status: StatusImpressora; erro?: string
 
 export default function Dispositivos() {
   const testarImpressora = useTestarImpressora();
+  const configMaquininha = useMaquininhaConfig();
+  const salvarMaquininha = useSalvarMaquininhaConfig();
+  const testarMaquininha = useTestarMaquininha();
   const { toast } = useToast();
   const [statusImpressora, setStatusImpressora] = useState<StatusImpressora>("idle");
   const [erroImpressora, setErroImpressora] = useState<string>("");
+  const [formMaquininha, setFormMaquininha] = useState({
+    ativo: true,
+    modo_conexao: "manual" as "manual" | "api" | "usb_bridge",
+    api_url: "",
+    api_token: "",
+    timeout_ms: 8000,
+    empresa_nome: "NOME DA EMPRESA",
+    empresa_cnpj: "00.000.000/0000-00",
+    empresa_regra_padrao:
+      "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  });
+
+  useEffect(() => {
+    if (configMaquininha.data) {
+      setFormMaquininha(configMaquininha.data);
+    }
+  }, [configMaquininha.data]);
 
   const handleTestarImpressora = () => {
     setStatusImpressora("testando");
@@ -52,6 +73,45 @@ export default function Dispositivos() {
         setStatusImpressora("erro");
         setErroImpressora("Erro de comunicação com o servidor");
       }
+    });
+  };
+
+  const handleSalvarMaquininha = () => {
+    salvarMaquininha.mutate(formMaquininha, {
+      onSuccess: () => {
+        toast({
+          title: "Maquininha salva",
+          description: "Configuracao gravada com sucesso.",
+          className: "bg-green-600 text-white",
+        });
+        configMaquininha.refetch();
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Erro ao salvar maquininha",
+          description: err instanceof Error ? err.message : "Falha ao salvar configuracao",
+          variant: "destructive",
+        });
+      },
+    });
+  };
+
+  const handleTestarMaquininha = () => {
+    testarMaquininha.mutate(undefined, {
+      onSuccess: (res) => {
+        toast({
+          title: "Teste da maquininha",
+          description: res?.mensagem || "Teste executado",
+          className: "bg-blue-600 text-white",
+        });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Erro no teste",
+          description: err instanceof Error ? err.message : "Falha ao testar",
+          variant: "destructive",
+        });
+      },
     });
   };
 
@@ -113,6 +173,149 @@ export default function Dispositivos() {
                     <Printer className="w-4 h-4" />
                   )}
                   {statusImpressora === "testando" ? "Testando..." : "Testar Impressão"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Maquininha de Cartao */}
+        <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
+          <div className="flex items-start gap-4">
+            <div className="bg-emerald-100 p-3 rounded-xl flex-shrink-0">
+              <CreditCard className="w-7 h-7 text-emerald-600" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold">Maquininha de Cartao</h2>
+                  <p className="text-muted-foreground text-sm mt-0.5">
+                    Integracao generica (sem marca fixa): debito, credito e PIX
+                  </p>
+                </div>
+                <span className="text-xs px-3 py-1 rounded-full border border-border bg-secondary/50 text-muted-foreground">
+                  {configMaquininha.isLoading ? "Carregando..." : `Modo: ${formMaquininha.modo_conexao}`}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">Ativar integração</span>
+                  <select
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    value={formMaquininha.ativo ? "sim" : "nao"}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, ativo: e.target.value === "sim" }))}
+                  >
+                    <option value="sim">Sim</option>
+                    <option value="nao">Nao</option>
+                  </select>
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">Modo de conexão</span>
+                  <select
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    value={formMaquininha.modo_conexao}
+                    onChange={(e) =>
+                      setFormMaquininha(prev => ({
+                        ...prev,
+                        modo_conexao: e.target.value as "manual" | "api" | "usb_bridge",
+                      }))
+                    }
+                  >
+                    <option value="manual">Manual (sem integração direta)</option>
+                    <option value="api">API/Gateway</option>
+                    <option value="usb_bridge">USB com bridge local</option>
+                  </select>
+                </label>
+
+                <label className="text-sm md:col-span-2">
+                  <span className="block text-muted-foreground mb-1">URL da API/Gateway da maquininha</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="http://localhost:4005/tef/pagar"
+                    value={formMaquininha.api_url}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, api_url: e.target.value }))}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">Token (opcional)</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Bearer token"
+                    value={formMaquininha.api_token}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, api_token: e.target.value }))}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">Timeout (ms)</span>
+                  <input
+                    type="number"
+                    min={1500}
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    value={formMaquininha.timeout_ms}
+                    onChange={(e) =>
+                      setFormMaquininha(prev => ({ ...prev, timeout_ms: Number(e.target.value || 8000) }))
+                    }
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">Nome da empresa</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    value={formMaquininha.empresa_nome}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, empresa_nome: e.target.value }))}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">CNPJ da empresa</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    value={formMaquininha.empresa_cnpj}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, empresa_cnpj: e.target.value }))}
+                  />
+                </label>
+
+                <label className="text-sm md:col-span-2">
+                  <span className="block text-muted-foreground mb-1">Regra padrão da empresa</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
+                    value={formMaquininha.empresa_regra_padrao}
+                    onChange={(e) =>
+                      setFormMaquininha(prev => ({ ...prev, empresa_regra_padrao: e.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
+                No PDV, ao escolher <strong>Debito</strong>, <strong>Credito</strong> ou <strong>PIX</strong>,
+                o sistema envia automaticamente valor e itens para esta integracao.
+                A confirmacao final da venda continua manual, conforme sua regra atual.
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button
+                  onClick={handleSalvarMaquininha}
+                  disabled={salvarMaquininha.isPending}
+                  className="gap-2"
+                >
+                  {salvarMaquininha.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Salvar configuração
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleTestarMaquininha}
+                  disabled={testarMaquininha.isPending}
+                  className="gap-2"
+                >
+                  {testarMaquininha.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Testar conexão
                 </Button>
               </div>
             </div>

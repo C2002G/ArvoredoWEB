@@ -5,6 +5,7 @@ import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
 import { useCaixaStatus } from "@/hooks/use-caixa";
 import { useFiadoClientes } from "@/hooks/use-fiado";
 import { useImprimirCupom } from "@/hooks/use-impressora";
+import { useEnviarParaMaquininha } from "@/hooks/use-maquininha";
 import { formatMoney } from "@/lib/utils";
 import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer, UserCheck, X } from "lucide-react";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
@@ -110,12 +111,13 @@ export default function Pdv() {
   const cart = useCart();
   const registrarVenda = useRegistrarVendaWrapper();
   const imprimirCupom = useImprimirCupom();
+  const enviarMaquininha = useEnviarParaMaquininha();
   const { toast } = useToast();
   const { data: clientes = [] } = useFiadoClientes();
 
   const [checkoutModal, setCheckoutModal] = useState<{
     isOpen: boolean;
-    paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'fiado' | null;
+    paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado' | null;
   }>({ isOpen: false, paymentMethod: null });
 
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
@@ -130,7 +132,7 @@ export default function Pdv() {
     cart.addItem(p);
   };
 
-  const handleCheckoutClick = (method: 'dinheiro' | 'pix' | 'cartao' | 'fiado') => {
+  const handleCheckoutClick = (method: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado') => {
     if (!statusCaixa?.aberto) {
       toast({ title: "Caixa Fechado", description: "Abra o caixa antes de registrar uma venda.", variant: "destructive" });
       return;
@@ -162,17 +164,57 @@ export default function Pdv() {
     });
   }, [imprimirCupom, toast]);
 
-  const processVenda = (method: 'dinheiro' | 'pix' | 'cartao' | 'fiado', clienteId?: number) => {
+  const processVenda = async (method: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado', clienteId?: number) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
     const hasMercado = cart.items.some(i => !i.is_cozinha);
     const saleCategory = hasCozinha && !hasMercado ? 'cozinha' : 'mercado';
+    const tipoMaquininha = method === 'debito' || method === 'credito' || method === 'pix';
+
+    if (tipoMaquininha) {
+      try {
+        const resposta = await enviarMaquininha.mutateAsync({
+          venda_local_id: `local-${Date.now()}`,
+          metodo: method === "pix" ? "pix" : method,
+          valor_total: cart.getTotal(),
+          desconto: cart.desconto,
+          itens: cart.items.map((item) => ({
+            produto_id: item.produto_id,
+            nome: item.nome_snap,
+            quantidade: item.quantidade,
+            preco_unit: item.preco_unit,
+            subtotal: item.subtotal,
+          })),
+        });
+        toast({
+          title: "Maquininha acionada",
+          description: resposta.mensagem,
+          className: "bg-blue-600 text-white",
+        });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Falha ao enviar para maquininha";
+        toast({
+          title: "Erro na maquininha",
+          description: msg,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const pagamentoVenda = method === "debito" || method === "credito" ? "cartao" : method;
+    const observacaoForma =
+      method === "debito" ? "Pagamento em cartao de debito (maquininha)." :
+      method === "credito" ? "Pagamento em cartao de credito (maquininha)." :
+      method === "pix" ? "Pagamento via PIX (maquininha)." :
+      null;
 
     registrarVenda.mutate({
       data: {
         categoria: saleCategory,
-        pagamento: method,
+        pagamento: pagamentoVenda,
         desconto: cart.desconto,
         cliente_id: clienteId,
+        observacao: observacaoForma,
         itens: cart.getPayloadItens(),
       }
     }, {
@@ -376,9 +418,13 @@ export default function Pdv() {
               <QrCode className="w-6 h-6" />
               <span>PIX</span>
             </Button>
-            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('cartao')}>
+            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('debito')}>
               <CreditCard className="w-6 h-6" />
-              <span>Cartão</span>
+              <span>Débito</span>
+            </Button>
+            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('credito')}>
+              <CreditCard className="w-6 h-6" />
+              <span>Crédito</span>
             </Button>
             <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-destructive/20 hover:border-destructive hover:bg-destructive text-destructive hover:text-white" onClick={() => handleCheckoutClick('fiado')}>
               <Users className="w-6 h-6" />
