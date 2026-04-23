@@ -120,6 +120,9 @@ export default function Pdv() {
     paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado' | null;
   }>({ isOpen: false, paymentMethod: null });
 
+  const [dinheiroModal, setDinheiroModal] = useState(false);
+  const [valorRecebidoStr, setValorRecebidoStr] = useState("");
+
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
     isOpen: false, texto: null,
   });
@@ -143,6 +146,9 @@ export default function Pdv() {
     }
     if (method === 'fiado') {
       setCheckoutModal({ isOpen: true, paymentMethod: method });
+    } else if (method === 'dinheiro') {
+      setValorRecebidoStr(cart.getTotal().toFixed(2));
+      setDinheiroModal(true);
     } else {
       processVenda(method, clienteNota?.id);
     }
@@ -164,7 +170,11 @@ export default function Pdv() {
     });
   }, [imprimirCupom, toast]);
 
-  const processVenda = async (method: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado', clienteId?: number) => {
+  const processVenda = async (
+    method: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado',
+    clienteId?: number,
+    observacaoDinheiro?: string | null,
+  ) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
     const hasMercado = cart.items.some(i => !i.is_cozinha);
     const saleCategory = hasCozinha && !hasMercado ? 'cozinha' : 'mercado';
@@ -203,10 +213,12 @@ export default function Pdv() {
 
     const pagamentoVenda = method === "debito" || method === "credito" ? "cartao" : method;
     const observacaoForma =
-      method === "debito" ? "Pagamento em cartao de debito (maquininha)." :
-      method === "credito" ? "Pagamento em cartao de credito (maquininha)." :
-      method === "pix" ? "Pagamento via PIX (maquininha)." :
-      null;
+      method === "dinheiro" && observacaoDinheiro
+        ? observacaoDinheiro
+        : method === "debito" ? "Pagamento em cartao de debito (maquininha)." :
+        method === "credito" ? "Pagamento em cartao de credito (maquininha)." :
+        method === "pix" ? "Pagamento via PIX (maquininha)." :
+        null;
 
     registrarVenda.mutate({
       data: {
@@ -223,12 +235,32 @@ export default function Pdv() {
         cart.clearCart();
         setClienteNota(null);
         setCheckoutModal({ isOpen: false, paymentMethod: null });
+        setDinheiroModal(false);
+        setValorRecebidoStr("");
         if (venda?.id) imprimirAposVenda(venda.id);
       },
       onError: (err) => {
         toast({ title: "Erro na Venda", description: err.message, variant: "destructive" });
       }
     });
+  };
+
+  const totalVendaDinheiro = cart.getTotal();
+  const valorRecebidoNum = Number(String(valorRecebidoStr).replace(",", ".")) || 0;
+  const trocoCalculado = Math.max(0, valorRecebidoNum - totalVendaDinheiro);
+  const dinheiroSuficiente = valorRecebidoNum >= totalVendaDinheiro - 1e-9;
+
+  const confirmarVendaDinheiro = () => {
+    if (!dinheiroSuficiente) {
+      toast({
+        title: "Valor insuficiente",
+        description: "Informe um valor recebido maior ou igual ao total da venda.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const obs = `Dinheiro: recebido R$ ${valorRecebidoNum.toFixed(2)}; troco R$ ${trocoCalculado.toFixed(2)}`;
+    processVenda("dinheiro", clienteNota?.id, obs);
   };
 
   return (
@@ -449,6 +481,49 @@ export default function Pdv() {
         onSelect={setClienteNota}
         selected={clienteNota}
       />
+
+      <Modal
+        isOpen={dinheiroModal}
+        onClose={() => { setDinheiroModal(false); setValorRecebidoStr(""); }}
+        title="Pagamento em dinheiro"
+      >
+        <div className="space-y-4">
+          <div className="bg-secondary p-4 rounded-xl flex justify-between items-center">
+            <span className="font-semibold">Total da venda</span>
+            <span className="text-2xl font-bold font-mono text-primary">{formatMoney(totalVendaDinheiro)}</span>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Valor recebido (R$)</label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={valorRecebidoStr}
+              onChange={(e) => setValorRecebidoStr(e.target.value)}
+              className="font-mono text-lg"
+            />
+          </div>
+          <div className={`p-4 rounded-xl border ${dinheiroSuficiente ? "bg-muted/50 border-border" : "bg-destructive/10 border-destructive/30"}`}>
+            <p className="text-sm text-muted-foreground mb-1">Troco</p>
+            <p className="text-2xl font-black font-mono">{formatMoney(trocoCalculado)}</p>
+            {!dinheiroSuficiente && valorRecebidoStr !== "" && (
+              <p className="text-sm text-destructive mt-2">Valor recebido é menor que o total.</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setDinheiroModal(false); setValorRecebidoStr(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!dinheiroSuficiente || registrarVenda.isPending}
+              onClick={confirmarVendaDinheiro}
+            >
+              {registrarVenda.isPending ? "Registrando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal Fiado */}
       <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Comanda em Aberto">

@@ -81,6 +81,12 @@ export default function Caixa() {
     ? status.sessao.fundo_inicial + status.sessao.total_dinheiro - status.sessao.total_sangria 
     : 0;
 
+  const s = status?.sessao;
+  const totalFormasPagamento = s
+    ? s.total_dinheiro + s.total_pix + s.total_cartao + s.total_fiado
+    : 0;
+  const retiradaFundoMenosTotal = s ? s.fundo_inicial - totalFormasPagamento : 0;
+
   return (
     <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
       <div className="mb-8">
@@ -152,6 +158,18 @@ export default function Caixa() {
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <h3 className="font-bold text-lg mb-4 border-b border-border pb-4">Resumo da Sessão</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="p-4 bg-primary/10 border border-primary/25 rounded-xl">
+                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">TOTAL</p>
+                  <p className="font-mono font-bold text-lg text-primary">{formatMoney(totalFormasPagamento)}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-tight">Dinheiro + PIX + Cartão + Comandas</p>
+                </div>
+                <div className="p-4 bg-muted/50 rounded-xl border border-border">
+                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Retirada</p>
+                  <p className={`font-mono font-bold text-lg ${retiradaFundoMenosTotal < 0 ? "text-destructive" : "text-foreground"}`}>
+                    {formatMoney(retiradaFundoMenosTotal)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-tight">Fundo inicial − TOTAL</p>
+                </div>
                 <div className="p-4 bg-muted/50 rounded-xl">
                   <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Fundo Inicial</p>
                   <p className="font-mono font-bold">{formatMoney(status.sessao!.fundo_inicial)}</p>

@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useProdutos, useCriarProdutoWrapper, useEditarProdutoWrapper, useDeletarProdutoWrapper } from "@/hooks/use-produtos";
 import { formatMoney } from "@/lib/utils";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
-import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X } from "lucide-react";
+import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X, ListRestart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto, CriarProdutoInputCategoria } from "@workspace/api-client-react/src/generated/api.schemas";
 
@@ -11,6 +11,16 @@ function formatValidade(validade: string | null | undefined) {
   const [ano, mes, dia] = validade.split("-");
   return `${dia}/${mes}/${ano}`;
 }
+
+type SortCol =
+  | "codigo"
+  | "nome"
+  | "marca"
+  | "categoria"
+  | "preco"
+  | "estoque"
+  | "validade"
+  | "criado_em";
 
 function validadeStatus(validade: string | null | undefined): null | "vencido" | "vencendo" {
   if (!validade) return null;
@@ -119,6 +129,58 @@ export default function Produtos() {
   };
   const [formData, setFormData] = useState(defaultForm);
 
+  const [sortCol, setSortCol] = useState<SortCol | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = useCallback((col: SortCol) => {
+    setSortCol((prev) => {
+      if (prev === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return prev;
+      }
+      setSortDir("asc");
+      return col;
+    });
+  }, []);
+
+  const produtosOrdenados = useMemo(() => {
+    if (!sortCol) return produtos;
+    const list = [...produtos];
+    const dir = sortDir === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      const cmpStr = (sa: string, sb: string) => sa.localeCompare(sb, "pt-BR", { sensitivity: "base" }) * dir;
+      const cmpNum = (na: number, nb: number) => (na === nb ? 0 : na < nb ? -1 * dir : 1 * dir);
+
+      switch (sortCol) {
+        case "codigo":
+          return cmpStr((a.codigo || "").toLowerCase(), (b.codigo || "").toLowerCase());
+        case "nome":
+          return cmpStr(a.nome.toLowerCase(), b.nome.toLowerCase());
+        case "marca":
+          return cmpStr((a.marca || "").toLowerCase(), (b.marca || "").toLowerCase());
+        case "categoria":
+          return cmpStr(a.categoria, b.categoria);
+        case "preco":
+          return cmpNum(a.preco, b.preco);
+        case "estoque":
+          return cmpNum(a.estoque, b.estoque);
+        case "validade": {
+          const ta = a.validade ? new Date(a.validade + "T12:00:00").getTime() : null;
+          const tb = b.validade ? new Date(b.validade + "T12:00:00").getTime() : null;
+          if (ta === null && tb === null) return 0;
+          if (ta === null) return 1;
+          if (tb === null) return -1;
+          return (ta - tb) * dir;
+        }
+        case "criado_em":
+          return cmpNum(new Date(a.criado_em).getTime(), new Date(b.criado_em).getTime());
+        default:
+          return 0;
+      }
+    });
+    return list;
+  }, [produtos, sortCol, sortDir]);
+
   const handleOpenNew = () => {
     setEditingId(null);
     setFormData(defaultForm);
@@ -198,8 +260,8 @@ export default function Produtos() {
       </div>
 
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-border bg-secondary/20 flex items-center">
-          <div className="relative w-full max-w-md">
+        <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative w-full max-w-md flex-1">
             <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
             <Input 
               placeholder="Buscar por nome, marca ou código..." 
@@ -208,6 +270,21 @@ export default function Produtos() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+          {sortCol != null && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => {
+                setSortCol(null);
+                setSortDir("asc");
+              }}
+            >
+              <ListRestart className="w-4 h-4" />
+              Limpar ordenação
+            </Button>
+          )}
         </div>
         
         <div className="overflow-x-auto flex-1">
@@ -217,19 +294,68 @@ export default function Produtos() {
             <table className="w-full text-left">
               <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
                 <tr>
-                  <th className="px-4 py-4 font-medium">Cód.</th>
-                  <th className="px-4 py-4 font-medium">Nome</th>
-                  <th className="px-4 py-4 font-medium">Marca</th>
-                  <th className="px-4 py-4 font-medium">Cat.</th>
-                  <th className="px-4 py-4 font-medium text-right">Preço</th>
-                  <th className="px-4 py-4 font-medium text-right">Estoque</th>
-                  <th className="px-4 py-4 font-medium">Validade</th>
-                  <th className="px-4 py-4 font-medium">Cadastro</th>
-                  <th className="px-4 py-4 font-medium text-center">Ações</th>
+                  <th
+                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "codigo" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("codigo")}
+                  >
+                    Cód.{sortCol === "codigo" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "nome" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("nome")}
+                  >
+                    Nome{sortCol === "nome" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "marca" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("marca")}
+                  >
+                    Marca{sortCol === "marca" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "categoria" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("categoria")}
+                  >
+                    Cat.{sortCol === "categoria" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 ${sortCol === "preco" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("preco")}
+                  >
+                    Preço{sortCol === "preco" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 ${sortCol === "estoque" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("estoque")}
+                  >
+                    Estoque{sortCol === "estoque" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "validade" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("validade")}
+                  >
+                    Validade{sortCol === "validade" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "criado_em" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("criado_em")}
+                  >
+                    Cadastro{sortCol === "criado_em" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className="px-4 py-4 font-medium text-center cursor-pointer select-none hover:bg-muted/80"
+                    onClick={() => {
+                      setSortCol(null);
+                      setSortDir("asc");
+                    }}
+                    title="Limpar ordenação"
+                  >
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {produtos.map(p => {
+                {produtosOrdenados.map(p => {
                   const vs = validadeStatus(p.validade);
                   return (
                     <tr key={p.id} className="hover:bg-muted/30">
@@ -275,7 +401,7 @@ export default function Produtos() {
                     </tr>
                   );
                 })}
-                {produtos.length === 0 && (
+                {produtosOrdenados.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
                       Nenhum produto encontrado. Clique em "Novo Produto" para adicionar.

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useFiadoResumo, useFiadoExtrato, useCriarClienteWrapper, usePagarFiadoWrapper } from "@/hooks/use-fiado";
+import { useVendaItens } from "@/hooks/use-vendas";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { Button, Input, Modal } from "@/components/ui-elements";
 import { Search, UserPlus, CheckCircle2, ChevronRight, History } from "lucide-react";
@@ -14,6 +15,9 @@ export default function Fiado() {
   const criarCliente = useCriarClienteWrapper();
   const pagarFiado = usePagarFiadoWrapper();
   const { toast } = useToast();
+
+  const [vendaItensModalId, setVendaItensModalId] = useState<number | null>(null);
+  const { data: itensVenda = [], isLoading: loadingItensVenda } = useVendaItens(vendaItensModalId);
 
   const [novoModal, setNovoModal] = useState(false);
   const [pagarModal, setPagarModal] = useState(false);
@@ -171,8 +175,15 @@ export default function Fiado() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {extrato.fiados.map(f => (
-                      <tr key={f.id} className="hover:bg-muted/30">
+                    {extrato.fiados.map(f => {
+                      const podeVerItens = f.venda_id != null;
+                      return (
+                      <tr
+                        key={f.id}
+                        onClick={() => podeVerItens && setVendaItensModalId(f.venda_id)}
+                        className={`hover:bg-muted/30 ${podeVerItens ? "cursor-pointer" : ""}`}
+                        title={podeVerItens ? "Clique para ver os produtos desta compra" : undefined}
+                      >
                         <td className="px-6 py-4">{formatDate(f.criado_em)}</td>
                         <td className="px-6 py-4 font-medium">
                           {f.pago && f.venda_id === null ? 'Pagamento' : `Compra #${f.venda_id || ''}`}
@@ -190,7 +201,8 @@ export default function Fiado() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                     {extrato.fiados.length === 0 && (
                       <tr><td colSpan={4} className="text-center py-8 text-muted-foreground">Nenhum registro encontrado</td></tr>
                     )}
@@ -241,6 +253,35 @@ export default function Fiado() {
             <Button type="submit" disabled={criarCliente.isPending}>Salvar</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={vendaItensModalId != null}
+        onClose={() => setVendaItensModalId(null)}
+        title={`Produtos da compra #${vendaItensModalId ?? ""}`}
+      >
+        {loadingItensVenda ? (
+          <div className="py-8 text-center text-muted-foreground">Carregando itens...</div>
+        ) : itensVenda.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">Nenhum item encontrado para esta venda.</div>
+        ) : (
+          <div className="space-y-4">
+            {itensVenda.map((item) => (
+              <div
+                key={item.id}
+                className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border"
+              >
+                <div>
+                  <p className="font-bold text-foreground">{item.nome_snap}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.quantidade}x {formatMoney(item.preco_unit)}
+                  </p>
+                </div>
+                <div className="font-mono font-bold text-lg">{formatMoney(item.subtotal)}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
 
       <Modal isOpen={pagarModal} onClose={() => setPagarModal(false)} title="Registrar Pagamento">

@@ -15,6 +15,7 @@ export const produtosTable = pgTable("produtos", {
   estoque: real("estoque").notNull().default(0),
   estoque_min: real("estoque_min").notNull().default(5),
   unidade: text("unidade").notNull().default("un"),
+  validade: text("validade"),
   ativo: boolean("ativo").notNull().default(true),
   criado_em: timestamp("criado_em").notNull().defaultNow(),
 });
