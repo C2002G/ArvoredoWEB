@@ -12,4 +12,5 @@ export type ListarProdutosCategoria =
 export const ListarProdutosCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;

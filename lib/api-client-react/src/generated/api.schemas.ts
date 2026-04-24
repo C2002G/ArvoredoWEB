@@ -20,6 +20,7 @@ export type ProdutoCategoria =
 export const ProdutoCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;
 
 export interface Produto {
@@ -53,6 +54,7 @@ export type CriarProdutoInputCategoria =
 export const CriarProdutoInputCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;
 
 export interface CriarProdutoInput {
@@ -76,6 +78,7 @@ export type EditarProdutoInputCategoria =
 export const EditarProdutoInputCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;
 
 export interface EditarProdutoInput {
@@ -98,6 +101,8 @@ export interface ItemVendaInput {
   produto_id: number;
   quantidade: number;
   preco_unit: number;
+  /** Feira: peças; quantidade = peso em kg */
+  unidades?: number;
 }
 
 export type RegistrarVendaInputCategoria =
@@ -106,6 +111,7 @@ export type RegistrarVendaInputCategoria =
 export const RegistrarVendaInputCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;
 
 export type RegistrarVendaInputPagamento =
@@ -133,6 +139,7 @@ export interface ItemVenda {
   produto_id: number;
   nome_snap: string;
   quantidade: number;
+  unidades?: number | null;
   preco_unit: number;
   subtotal: number;
 }
@@ -159,6 +166,7 @@ export interface ResumoVendas {
   num_vendas: number;
   mercado: number;
   cozinha: number;
+  feira?: number;
 }
 
 export type MovimentoEstoqueInputTipo =
@@ -298,6 +306,7 @@ export type ListarProdutosCategoria =
 export const ListarProdutosCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;
 
 export type BuscarProdutoParams = {

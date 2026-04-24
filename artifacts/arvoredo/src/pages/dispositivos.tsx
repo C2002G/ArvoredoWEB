@@ -142,7 +142,7 @@ export default function Dispositivos() {
                 <p>Modelo: <span className="text-foreground font-semibold">Elgin i7plus</span></p>
                 <p>Interface: <span className="text-foreground font-semibold">USB (ESC/POS)</span></p>
                 <p>CNPJ impresso: <span className="text-foreground font-semibold">60.242.783/0001-41</span></p>
-                <p>Papel: <span className="text-foreground font-semibold">80mm — 48 colunas</span></p>
+                <p>Papel: <span className="text-foreground font-semibold">80mm — modo retrato / 42 colunas</span></p>
               </div>
 
               {statusImpressora === "erro" && (

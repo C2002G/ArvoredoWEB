@@ -10,4 +10,5 @@ export interface ItemVendaInput {
   produto_id: number;
   quantidade: number;
   preco_unit: number;
+  unidades?: number;
 }

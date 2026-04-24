@@ -49,7 +49,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [mercado, cozinha]
+            enum: [mercado, cozinha, feira]
       responses:
         "200":
           description: Lista de produtos
@@ -598,7 +598,7 @@ components:
           nullable: true
         categoria:
           type: string
-          enum: [mercado, cozinha]
+          enum: [mercado, cozinha, feira]
         preco:
           type: number
         custo:
@@ -664,7 +664,7 @@ components:
           nullable: true
         categoria:
           type: string
-          enum: [mercado, cozinha]
+          enum: [mercado, cozinha, feira]
         preco:
           type: number
         custo:
@@ -700,7 +700,7 @@ components:
           nullable: true
         categoria:
           type: string
-          enum: [mercado, cozinha]
+          enum: [mercado, cozinha, feira]
         preco:
           type: number
         custo:
@@ -726,6 +726,9 @@ components:
           type: number
         preco_unit:
           type: number
+        unidades:
+          type: number
+          description: "Feira: número de unidades (peças). A quantidade continua em kg (peso) para cálculo."
       required:
         - produto_id
         - quantidade
@@ -736,7 +739,7 @@ components:
       properties:
         categoria:
           type: string
-          enum: [mercado, cozinha]
+          enum: [mercado, cozinha, feira]
         desconto:
           type: number
           default: 0
@@ -771,6 +774,9 @@ components:
           type: string
         quantidade:
           type: number
+        unidades:
+          type: number
+          nullable: true
         preco_unit:
           type: number
         subtotal:
@@ -838,6 +844,8 @@ components:
           type: number
         cozinha:
           type: number
+        feira:
+          type: number
       required:
         - total
         - total_dinheiro
@@ -847,6 +855,7 @@ components:
         - num_vendas
         - mercado
         - cozinha
+        - feira
 
     MovimentoEstoqueInput:
       type: object

@@ -214,7 +214,7 @@ export default function Produtos() {
   const [importingXml, setImportingXml] = useState(false);
   
   const defaultForm = {
-    nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria, 
+    nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria,
     ncm: "", cst: "", preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
   };
   const [formData, setFormData] = useState(defaultForm);
@@ -607,7 +607,13 @@ export default function Produtos() {
                       <td className="px-4 py-4 font-bold">{p.nome}</td>
                       <td className="px-4 py-4 text-muted-foreground">{p.marca || '-'}</td>
                       <td className="px-4 py-4">
-                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.categoria === 'cozinha' ? 'bg-orange-100 text-orange-700' : 'bg-primary/10 text-primary'}`}>
+                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                          p.categoria === "cozinha"
+                            ? "bg-orange-100 text-orange-700"
+                            : p.categoria === "feira"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-primary/10 text-primary"
+                        }`}>
                           {p.categoria}
                         </span>
                       </td>
@@ -685,6 +691,7 @@ export default function Produtos() {
             <Select required value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value as CriarProdutoInputCategoria})}>
               <option value="mercado">Mercado</option>
               <option value="cozinha">Cozinha / Lanchonete</option>
+              <option value="feira">Feira (peso)</option>
             </Select>
           </div>
 

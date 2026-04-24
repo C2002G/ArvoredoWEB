@@ -12,6 +12,7 @@ export interface ItemVenda {
   produto_id: number;
   nome_snap: string;
   quantidade: number;
+  unidades?: number | null;
   preco_unit: number;
   subtotal: number;
 }

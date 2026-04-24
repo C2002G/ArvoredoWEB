@@ -12,4 +12,5 @@ export type CriarProdutoInputCategoria =
 export const CriarProdutoInputCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;

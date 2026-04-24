@@ -3,6 +3,7 @@ type CupomItem = {
   quantidade: number;
   preco_unit: number;
   subtotal: number;
+  unidades?: number | null;
 };
 
 type CupomVenda = {
@@ -56,6 +57,18 @@ function padRight(value: string, size: number) {
   return `${value}${" ".repeat(size - value.length)}`;
 }
 
+function qtdLabelFeiraUnKg(item: CupomItem) {
+  const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
+  if (u > 0) {
+    return padRight(`${u}un`, 8);
+  }
+  const isInteiro = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
+  if (isInteiro) {
+    return padRight(`${item.quantidade.toFixed(0)}un`, 8);
+  }
+  return padRight(`${item.quantidade.toFixed(3).replace(".", ",")}kg`, 8);
+}
+
 export function buildCupomText(venda: CupomVenda, itens: CupomItem[], clienteNome?: string) {
   const rows: string[] = [];
   rows.push(PRINTER_LAYOUT.empresa.nome.padStart(34));
@@ -70,10 +83,21 @@ export function buildCupomText(venda: CupomVenda, itens: CupomItem[], clienteNom
   for (const item of itens) {
     const codigo = String(item.nome_snap).slice(0, 5).padStart(5, "0");
     const descricao = padRight(String(item.nome_snap).replace(/\s+/g, " "), 25);
-    const qtd = `${item.quantidade.toFixed(2).replace(".00", ",00")}UN`;
+    const qtd = qtdLabelFeiraUnKg(item);
     rows.push(
-      `${codigo} ${descricao} ${padRight(qtd, 8)} ${padRight(formatMoney(item.preco_unit), 10)} ${formatMoney(item.subtotal)}`
+      `${codigo} ${descricao} ${qtd} ${padRight(formatMoney(item.preco_unit), 10)} ${formatMoney(item.subtotal)}`,
     );
+    const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
+    const isInteiroQtd = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
+    if (u > 0) {
+      rows.push(
+        `   Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg x ${formatMoney(item.preco_unit)} /kg`,
+      );
+    } else if (!isInteiroQtd) {
+      rows.push(
+        `   ${item.quantidade.toFixed(3).replace(".", ",")} kg x ${formatMoney(item.preco_unit)} /kg`,
+      );
+    }
   }
 
   rows.push(drawLine());

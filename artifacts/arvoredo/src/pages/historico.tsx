@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { Input, Select, Modal } from "@/components/ui-elements";
-import { Search, TrendingUp, Calendar, Utensils, ShoppingBasket, Filter, Receipt } from "lucide-react";
+import { TrendingUp, Calendar, Utensils, ShoppingBasket, Filter, Receipt, Leaf } from "lucide-react";
 
 export default function Historico() {
   const [dataFilter, setDataFilter] = useState(new Date().toISOString().split('T')[0]);
@@ -22,7 +22,7 @@ export default function Historico() {
       </div>
 
       {resumo && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <div className="bg-primary text-primary-foreground p-6 rounded-2xl shadow-md relative overflow-hidden">
             <TrendingUp className="absolute -right-4 -bottom-4 w-24 h-24 opacity-10" />
             <p className="font-semibold text-primary-foreground/80 mb-2 uppercase text-sm tracking-wider">Receita Hoje</p>
@@ -62,6 +62,15 @@ export default function Historico() {
               </div>
             </div>
           </div>
+          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
+            <div className="flex items-center gap-4">
+              <div className="bg-emerald-100 p-4 rounded-xl text-emerald-700"><Leaf className="w-8 h-8" /></div>
+              <div>
+                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Feira</p>
+                <p className="text-2xl font-bold font-mono text-emerald-700">{formatMoney(resumo.feira || 0)}</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -79,6 +88,7 @@ export default function Historico() {
                 <option value="">Todas Categorias</option>
                 <option value="mercado">Mercado</option>
                 <option value="cozinha">Cozinha</option>
+                <option value="feira">Feira</option>
               </Select>
             </div>
           </div>
@@ -104,7 +114,13 @@ export default function Historico() {
                   <tr key={v.id} className="hover:bg-muted/30">
                     <td className="px-6 py-4">{formatDate(v.criado_em)}</td>
                     <td className="px-6 py-4 capitalize">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${v.categoria === 'cozinha' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                        v.categoria === "cozinha"
+                          ? "bg-orange-100 text-orange-700"
+                          : v.categoria === "feira"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}>
                         {v.categoria}
                       </span>
                     </td>
@@ -134,7 +150,11 @@ export default function Historico() {
               <div key={item.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border">
                 <div>
                   <p className="font-bold text-foreground">{item.nome_snap}</p>
-                  <p className="text-sm text-muted-foreground">{item.quantidade}x {formatMoney(item.preco_unit)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.unidades != null && item.unidades > 0
+                      ? `${item.unidades} un — ${item.quantidade.toFixed(3)} kg × ${formatMoney(item.preco_unit)} /kg`
+                      : `${item.quantidade} × ${formatMoney(item.preco_unit)}`}
+                  </p>
                 </div>
                 <div className="font-mono font-bold text-lg">
                   {formatMoney(item.subtotal)}

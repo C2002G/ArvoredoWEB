@@ -19,7 +19,7 @@ export const HealthCheckResponse = zod.object({
  */
 export const ListarProdutosQueryParams = zod.object({
   q: zod.coerce.string().optional(),
-  categoria: zod.enum(["mercado", "cozinha"]).optional(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
 });
 
 export const ListarProdutosResponseItem = zod.object({
@@ -27,7 +27,7 @@ export const ListarProdutosResponseItem = zod.object({
   codigo: zod.string().nullish(),
   nome: zod.string(),
   marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha"]),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
   ncm: zod.string().nullish(),
   cst: zod.string().nullish(),
   preco: zod.number(),
@@ -53,7 +53,7 @@ export const CriarProdutoBody = zod.object({
   codigo: zod.string().nullish(),
   nome: zod.string(),
   marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha"]),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
   ncm: zod.string().nullish(),
   cst: zod.string().nullish(),
   preco: zod.number(),
@@ -78,7 +78,7 @@ export const BuscarProdutoResponseItem = zod.object({
   codigo: zod.string().nullish(),
   nome: zod.string(),
   marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha"]),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
   ncm: zod.string().nullish(),
   cst: zod.string().nullish(),
   preco: zod.number(),
@@ -102,7 +102,7 @@ export const AlertasEstoqueResponse = zod.object({
       codigo: zod.string().nullish(),
       nome: zod.string(),
       marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha"]),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
       ncm: zod.string().nullish(),
       cst: zod.string().nullish(),
       preco: zod.number(),
@@ -121,7 +121,7 @@ export const AlertasEstoqueResponse = zod.object({
       codigo: zod.string().nullish(),
       nome: zod.string(),
       marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha"]),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
       ncm: zod.string().nullish(),
       cst: zod.string().nullish(),
       preco: zod.number(),
@@ -140,7 +140,7 @@ export const AlertasEstoqueResponse = zod.object({
       codigo: zod.string().nullish(),
       nome: zod.string(),
       marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha"]),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
       ncm: zod.string().nullish(),
       cst: zod.string().nullish(),
       preco: zod.number(),
@@ -167,7 +167,7 @@ export const EditarProdutoBody = zod.object({
   codigo: zod.string().nullish(),
   nome: zod.string().optional(),
   marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha"]).optional(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
   ncm: zod.string().nullish(),
   cst: zod.string().nullish(),
   preco: zod.number().optional(),
@@ -184,7 +184,7 @@ export const EditarProdutoResponse = zod.object({
   codigo: zod.string().nullish(),
   nome: zod.string(),
   marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha"]),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
   ncm: zod.string().nullish(),
   cst: zod.string().nullish(),
   preco: zod.number(),
@@ -242,7 +242,7 @@ export const ListarVendasResponse = zod.array(ListarVendasResponseItem);
 export const registrarVendaBodyDescontoDefault = 0;
 
 export const RegistrarVendaBody = zod.object({
-  categoria: zod.enum(["mercado", "cozinha"]),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
   desconto: zod.number().default(registrarVendaBodyDescontoDefault),
   pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
   cliente_id: zod.number().nullish(),
@@ -252,6 +252,7 @@ export const RegistrarVendaBody = zod.object({
       produto_id: zod.number(),
       quantidade: zod.number(),
       preco_unit: zod.number(),
+      unidades: zod.number().optional(),
     }),
   ),
 });
@@ -268,6 +269,7 @@ export const ResumoHojeResponse = zod.object({
   num_vendas: zod.number(),
   mercado: zod.number(),
   cozinha: zod.number(),
+  feira: zod.number().optional(),
 });
 
 /**
@@ -283,6 +285,7 @@ export const ItensDaVendaResponseItem = zod.object({
   produto_id: zod.number(),
   nome_snap: zod.string(),
   quantidade: zod.number(),
+  unidades: zod.number().nullish(),
   preco_unit: zod.number(),
   subtotal: zod.number(),
 });

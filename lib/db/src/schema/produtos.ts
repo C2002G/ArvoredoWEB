@@ -2,7 +2,7 @@ import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } 
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha"]);
+export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
 
 export const produtosTable = pgTable(
   "produtos",

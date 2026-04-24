@@ -12,4 +12,5 @@ export type EditarProdutoInputCategoria =
 export const EditarProdutoInputCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;

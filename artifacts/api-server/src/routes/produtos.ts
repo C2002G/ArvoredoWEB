@@ -24,7 +24,7 @@ function isUniqueViolation(err: unknown) {
 router.get("/", async (req, res) => {
   const { q, categoria } = req.query as { q?: string; categoria?: string };
   const conditions = [eq(produtosTable.ativo, true)];
-  if (categoria === "mercado" || categoria === "cozinha") {
+  if (categoria === "mercado" || categoria === "cozinha" || categoria === "feira") {
     conditions.push(eq(produtosTable.categoria, categoria));
   }
   if (q) {

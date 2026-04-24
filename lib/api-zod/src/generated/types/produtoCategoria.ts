@@ -12,4 +12,5 @@ export type ProdutoCategoria =
 export const ProdutoCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;

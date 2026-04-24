@@ -26,6 +26,8 @@ export const itensVendaTable = pgTable("itens_venda", {
   produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
   nome_snap: text("nome_snap").notNull(),
   quantidade: real("quantidade").notNull(),
+  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
+  unidades: real("unidades"),
   preco_unit: real("preco_unit").notNull(),
   subtotal: real("subtotal").notNull(),
 });

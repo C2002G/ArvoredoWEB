@@ -1,5 +1,5 @@
-import React, { useState, useDeferredValue, useRef, useCallback } from "react";
-import { useCart } from "@/store/use-cart";
+import React, { useState, useDeferredValue, useCallback, useEffect } from "react";
+import { useCart, type CartItem } from "@/store/use-cart";
 import { useProdutos } from "@/hooks/use-produtos";
 import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
 import { useCaixaStatus } from "@/hooks/use-caixa";
@@ -13,6 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
 
 type Cliente = { id: number; nome: string; apelido?: string | null; cpf?: string | null };
+type PaymentMethod = "dinheiro" | "pix" | "cartao" | "debito" | "credito" | "fiado";
+type PaymentAllocation = {
+  method: Exclude<PaymentMethod, "fiado">;
+  amount: number;
+};
 
 /* Pré-visualização do cupom quando impressora não está conectada */
 function TicketPreview({ texto, onClose }: { texto: string; onClose: () => void }) {
@@ -100,10 +105,92 @@ function ClienteSelectorModal({
   );
 }
 
+function FeiraLineEditor({
+  item,
+  onFeiraChange,
+  onRemove,
+  onNudgePeso,
+}: {
+  item: CartItem;
+  onFeiraChange: (id: number, p: { peso_kg: number; unidades: number }) => void;
+  onRemove: () => void;
+  onNudgePeso: (delta: number) => void;
+}) {
+  const [gStr, setGStr] = useState(() => String(Math.round(item.quantidade * 1000)));
+  const [uStr, setUStr] = useState(() => String(item.unidades));
+
+  useEffect(() => {
+    setGStr(String(Math.round(item.quantidade * 1000)));
+    setUStr(String(item.unidades));
+  }, [item.produto_id, item.quantidade, item.unidades]);
+
+  const apply = () => {
+    const g = Number(String(gStr).replace(",", "."));
+    const u = Math.max(1, Math.floor(Number(String(uStr).replace(",", ".")) || 1));
+    if (!Number.isFinite(g) || g <= 0) {
+      setGStr(String(Math.round(item.quantidade * 1000)));
+      setUStr(String(item.unidades));
+      return;
+    }
+    onFeiraChange(item.produto_id, { peso_kg: g / 1000, unidades: u });
+  };
+
+  return (
+    <div className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
+      <div className="flex justify-between items-start mb-2">
+        <span className="font-semibold">{item.nome_snap}</span>
+        <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1">
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div>
+          <label className="text-xs text-muted-foreground">Peso (g)</label>
+          <Input
+            className="font-mono h-9"
+            type="text"
+            inputMode="decimal"
+            value={gStr}
+            onChange={(e) => setGStr(e.target.value)}
+            onBlur={apply}
+            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Unid. (peças)</label>
+          <Input
+            className="font-mono h-9"
+            type="text"
+            inputMode="numeric"
+            value={uStr}
+            onChange={(e) => setUStr(e.target.value)}
+            onBlur={apply}
+            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2 bg-background border border-border rounded-lg p-1">
+          <button type="button" onClick={() => onNudgePeso(-0.1)} className="p-1 hover:bg-secondary rounded" title="−100g">
+            <Minus className="w-4 h-4" />
+          </button>
+          <span className="text-xs text-muted-foreground w-14 text-center">
+            {item.quantidade.toFixed(3)} kg
+          </span>
+          <button type="button" onClick={() => onNudgePeso(0.1)} className="p-1 hover:bg-secondary rounded" title="+100g">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+        <span className="font-mono font-bold text-primary">{formatMoney(item.subtotal)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Pdv() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
-  const [categoria, setCategoria] = useState<"mercado" | "cozinha" | "">("");
+  const [categoria, setCategoria] = useState<"mercado" | "cozinha" | "feira" | "">("");
   
   const { data: produtos = [], isLoading } = useProdutos({ q: deferredSearch, categoria: categoria || undefined });
   const { data: statusCaixa } = useCaixaStatus();
@@ -117,11 +204,18 @@ export default function Pdv() {
 
   const [checkoutModal, setCheckoutModal] = useState<{
     isOpen: boolean;
-    paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado' | null;
+    paymentMethod: PaymentMethod | null;
   }>({ isOpen: false, paymentMethod: null });
 
-  const [dinheiroModal, setDinheiroModal] = useState(false);
-  const [valorRecebidoStr, setValorRecebidoStr] = useState("");
+  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; method: Exclude<PaymentMethod, "fiado"> | null }>({
+    isOpen: false,
+    method: null,
+  });
+  const [valorPagamentoStr, setValorPagamentoStr] = useState("");
+  const [pagamentosParciais, setPagamentosParciais] = useState<PaymentAllocation[]>([]);
+  const [feiraModal, setFeiraModal] = useState<{ isOpen: boolean; produto: Produto | null }>({ isOpen: false, produto: null });
+  const [pesoGramasStr, setPesoGramasStr] = useState("");
+  const [unidadesFeiraStr, setUnidadesFeiraStr] = useState("1");
 
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
     isOpen: false, texto: null,
@@ -131,11 +225,21 @@ export default function Pdv() {
   const [clienteNota, setClienteNota] = useState<Cliente | null>(null);
   const [selectedCliente, setSelectedCliente] = useState<string>("");
 
+  useEffect(() => {
+    setPagamentosParciais([]);
+  }, [cart.items, cart.desconto]);
+
   const handleAddToCart = (p: Produto) => {
+    if (p.categoria === "feira") {
+      setPesoGramasStr("");
+      setUnidadesFeiraStr("1");
+      setFeiraModal({ isOpen: true, produto: p });
+      return;
+    }
     cart.addItem(p);
   };
 
-  const handleCheckoutClick = (method: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado') => {
+  const handleCheckoutClick = (method: PaymentMethod) => {
     if (!statusCaixa?.aberto) {
       toast({ title: "Caixa Fechado", description: "Abra o caixa antes de registrar uma venda.", variant: "destructive" });
       return;
@@ -146,11 +250,10 @@ export default function Pdv() {
     }
     if (method === 'fiado') {
       setCheckoutModal({ isOpen: true, paymentMethod: method });
-    } else if (method === 'dinheiro') {
-      setValorRecebidoStr(cart.getTotal().toFixed(2));
-      setDinheiroModal(true);
     } else {
-      processVenda(method, clienteNota?.id);
+      const restante = Math.max(0, cart.getTotal() - pagamentosParciais.reduce((acc, p) => acc + p.amount, 0));
+      setValorPagamentoStr(restante.toFixed(2));
+      setPaymentModal({ isOpen: true, method });
     }
   };
 
@@ -171,13 +274,20 @@ export default function Pdv() {
   }, [imprimirCupom, toast]);
 
   const processVenda = async (
-    method: 'dinheiro' | 'pix' | 'cartao' | 'debito' | 'credito' | 'fiado',
+    method: PaymentMethod,
     clienteId?: number,
     observacaoDinheiro?: string | null,
+    pagamentosOverride?: PaymentAllocation[],
   ) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
-    const hasMercado = cart.items.some(i => !i.is_cozinha);
-    const saleCategory = hasCozinha && !hasMercado ? 'cozinha' : 'mercado';
+    const hasFeira = cart.items.some((i) => i.is_feira);
+    const hasMercado = cart.items.some(i => !i.is_cozinha && !i.is_feira);
+    const saleCategory =
+      hasFeira && !hasCozinha && !hasMercado
+        ? "feira"
+        : hasCozinha && !hasMercado && !hasFeira
+          ? "cozinha"
+          : "mercado";
     const tipoMaquininha = method === 'debito' || method === 'credito' || method === 'pix';
 
     if (tipoMaquininha) {
@@ -212,13 +322,21 @@ export default function Pdv() {
     }
 
     const pagamentoVenda = method === "debito" || method === "credito" ? "cartao" : method;
+    const pagamentosEfetivos = pagamentosOverride ?? pagamentosParciais;
+    const pagamentosTexto = pagamentosEfetivos.length
+      ? ` | MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}`
+      : "";
     const observacaoForma =
       method === "dinheiro" && observacaoDinheiro
-        ? observacaoDinheiro
+        ? `${observacaoDinheiro}${pagamentosTexto}`
         : method === "debito" ? "Pagamento em cartao de debito (maquininha)." :
         method === "credito" ? "Pagamento em cartao de credito (maquininha)." :
         method === "pix" ? "Pagamento via PIX (maquininha)." :
         null;
+    const observacaoFinal =
+      observacaoForma == null
+        ? pagamentosTexto ? `MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}` : null
+        : observacaoForma;
 
     registrarVenda.mutate({
       data: {
@@ -226,7 +344,7 @@ export default function Pdv() {
         pagamento: pagamentoVenda,
         desconto: cart.desconto,
         cliente_id: clienteId,
-        observacao: observacaoForma,
+        observacao: observacaoFinal,
         itens: cart.getPayloadItens(),
       }
     }, {
@@ -235,8 +353,9 @@ export default function Pdv() {
         cart.clearCart();
         setClienteNota(null);
         setCheckoutModal({ isOpen: false, paymentMethod: null });
-        setDinheiroModal(false);
-        setValorRecebidoStr("");
+        setPaymentModal({ isOpen: false, method: null });
+        setValorPagamentoStr("");
+        setPagamentosParciais([]);
         if (venda?.id) imprimirAposVenda(venda.id);
       },
       onError: (err) => {
@@ -245,22 +364,61 @@ export default function Pdv() {
     });
   };
 
-  const totalVendaDinheiro = cart.getTotal();
-  const valorRecebidoNum = Number(String(valorRecebidoStr).replace(",", ".")) || 0;
-  const trocoCalculado = Math.max(0, valorRecebidoNum - totalVendaDinheiro);
-  const dinheiroSuficiente = valorRecebidoNum >= totalVendaDinheiro - 1e-9;
+  const totalVenda = cart.getTotal();
+  const totalPago = pagamentosParciais.reduce((acc, p) => acc + p.amount, 0);
+  const restante = Math.max(0, totalVenda - totalPago);
+  const valorPagamentoNum = Number(String(valorPagamentoStr).replace(",", ".")) || 0;
+  const pagamentoValido = valorPagamentoNum > 0 && valorPagamentoNum <= restante + 1e-9;
 
-  const confirmarVendaDinheiro = () => {
-    if (!dinheiroSuficiente) {
+  const confirmarParcelaPagamento = () => {
+    if (!paymentModal.method) return;
+    if (!pagamentoValido) {
       toast({
-        title: "Valor insuficiente",
-        description: "Informe um valor recebido maior ou igual ao total da venda.",
+        title: "Valor inválido",
+        description: "Informe um valor maior que zero e menor ou igual ao restante.",
         variant: "destructive",
       });
       return;
     }
-    const obs = `Dinheiro: recebido R$ ${valorRecebidoNum.toFixed(2)}; troco R$ ${trocoCalculado.toFixed(2)}`;
-    processVenda("dinheiro", clienteNota?.id, obs);
+
+    const novosPagamentos = [...pagamentosParciais, { method: paymentModal.method, amount: Number(valorPagamentoNum.toFixed(2)) }];
+    const novoPago = novosPagamentos.reduce((acc, p) => acc + p.amount, 0);
+    const novoRestante = Math.max(0, totalVenda - novoPago);
+
+    setPagamentosParciais(novosPagamentos);
+    setPaymentModal({ isOpen: false, method: null });
+    setValorPagamentoStr("");
+
+    if (novoRestante <= 0.009) {
+      const ultimoMetodo = paymentModal.method === "debito" || paymentModal.method === "credito" ? paymentModal.method : paymentModal.method;
+      const obsDinheiro =
+        paymentModal.method === "dinheiro"
+          ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ 0,00`
+          : undefined;
+      processVenda(ultimoMetodo, clienteNota?.id, obsDinheiro, novosPagamentos);
+      return;
+    }
+
+    toast({
+      title: "Pagamento parcial registrado",
+      description: `Restante: ${formatMoney(novoRestante)}. Selecione a próxima forma de pagamento.`,
+      className: "bg-blue-600 text-white",
+    });
+  };
+
+  const confirmarPesoFeira = () => {
+    const produto = feiraModal.produto;
+    const gramas = Number(String(pesoGramasStr).replace(",", "."));
+    const unidades = Math.max(1, Math.floor(Number(String(unidadesFeiraStr).replace(",", ".")) || 1));
+    if (!produto || !Number.isFinite(gramas) || gramas <= 0) {
+      toast({ title: "Peso inválido", description: "Informe o peso em gramas.", variant: "destructive" });
+      return;
+    }
+    const kg = gramas / 1000;
+    cart.addWeightedItem(produto, kg, unidades);
+    setFeiraModal({ isOpen: false, produto: null });
+    setPesoGramasStr("");
+    setUnidadesFeiraStr("1");
   };
 
   return (
@@ -297,6 +455,12 @@ export default function Pdv() {
             >
               Cozinha
             </button>
+            <button
+              onClick={() => setCategoria("feira")}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "feira" ? "bg-emerald-600 text-white shadow-sm" : "text-muted-foreground"}`}
+            >
+              Feira
+            </button>
           </div>
         </div>
 
@@ -317,6 +481,8 @@ export default function Pdv() {
                     </span>
                     {p.categoria === 'cozinha' ? (
                       <span className="w-2 h-2 rounded-full bg-kitchen"></span>
+                    ) : p.categoria === "feira" ? (
+                      <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                     ) : (
                       <span className="w-2 h-2 rounded-full bg-primary"></span>
                     )}
@@ -391,30 +557,50 @@ export default function Pdv() {
               <p>O carrinho está vazio</p>
             </div>
           ) : (
-            cart.items.map((item) => (
-              <div key={item.produto_id} className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="font-semibold">{item.nome_snap}</span>
-                  <button onClick={() => cart.removeItem(item.produto_id)} className="text-muted-foreground hover:text-destructive p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3 bg-background border border-border rounded-lg p-1">
-                    <button onClick={() => cart.updateQuantity(item.produto_id, -1)} className="p-1 hover:bg-secondary rounded">
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="font-mono font-bold w-6 text-center">{item.quantidade}</span>
-                    <button onClick={() => cart.updateQuantity(item.produto_id, 1)} className="p-1 hover:bg-secondary rounded">
-                      <Plus className="w-4 h-4" />
+            cart.items.map((item) =>
+              item.is_feira ? (
+                <FeiraLineEditor
+                  key={item.produto_id}
+                  item={item}
+                  onFeiraChange={cart.setFeiraPesoUnidades}
+                  onRemove={() => cart.removeItem(item.produto_id)}
+                  onNudgePeso={(delta) => cart.updateQuantity(item.produto_id, delta)}
+                />
+              ) : (
+                <div key={item.produto_id} className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-semibold">{item.nome_snap}</span>
+                    <button
+                      type="button"
+                      onClick={() => cart.removeItem(item.produto_id)}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <span className="font-mono font-bold text-primary">
-                    {formatMoney(item.subtotal)}
-                  </span>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3 bg-background border border-border rounded-lg p-1">
+                      <button
+                        type="button"
+                        onClick={() => cart.updateQuantity(item.produto_id, -1)}
+                        className="p-1 hover:bg-secondary rounded"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="font-mono font-bold w-16 text-center">{item.quantidade}</span>
+                      <button
+                        type="button"
+                        onClick={() => cart.updateQuantity(item.produto_id, 1)}
+                        className="p-1 hover:bg-secondary rounded"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className="font-mono font-bold text-primary">{formatMoney(item.subtotal)}</span>
+                  </div>
                 </div>
-              </div>
-            ))
+              ),
+            )
           )}
         </div>
 
@@ -437,9 +623,19 @@ export default function Pdv() {
           <div className="flex justify-between items-end mb-6">
             <span className="text-xl font-bold">Total</span>
             <span className="text-4xl font-black font-mono text-primary tracking-tight">
-              {formatMoney(cart.getTotal())}
+              {formatMoney(restante)}
             </span>
           </div>
+          {pagamentosParciais.length > 0 && (
+            <div className="mb-4 p-3 rounded-xl border border-primary/20 bg-primary/5 space-y-1">
+              <p className="text-xs font-semibold text-primary">Pagamentos parciais:</p>
+              {pagamentosParciais.map((p, idx) => (
+                <p key={`${p.method}-${idx}`} className="text-xs text-muted-foreground">
+                  {p.method.toUpperCase()}: {formatMoney(p.amount)}
+                </p>
+              ))}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Button size="lg" variant="default" className="w-full flex-col h-auto py-3 gap-1" onClick={() => handleCheckoutClick('dinheiro')}>
@@ -483,43 +679,99 @@ export default function Pdv() {
       />
 
       <Modal
-        isOpen={dinheiroModal}
-        onClose={() => { setDinheiroModal(false); setValorRecebidoStr(""); }}
-        title="Pagamento em dinheiro"
+        isOpen={paymentModal.isOpen}
+        onClose={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}
+        title={`Pagamento - ${paymentModal.method?.toUpperCase() ?? ""}`}
       >
         <div className="space-y-4">
           <div className="bg-secondary p-4 rounded-xl flex justify-between items-center">
-            <span className="font-semibold">Total da venda</span>
-            <span className="text-2xl font-bold font-mono text-primary">{formatMoney(totalVendaDinheiro)}</span>
+            <span className="font-semibold">Restante da venda</span>
+            <span className="text-2xl font-bold font-mono text-primary">{formatMoney(restante)}</span>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Valor recebido (R$)</label>
+            <label className="block text-sm font-medium mb-1">Valor a pagar agora (R$)</label>
             <Input
               type="number"
               min="0"
               step="0.01"
-              value={valorRecebidoStr}
-              onChange={(e) => setValorRecebidoStr(e.target.value)}
+              value={valorPagamentoStr}
+              onChange={(e) => setValorPagamentoStr(e.target.value)}
               className="font-mono text-lg"
             />
           </div>
-          <div className={`p-4 rounded-xl border ${dinheiroSuficiente ? "bg-muted/50 border-border" : "bg-destructive/10 border-destructive/30"}`}>
-            <p className="text-sm text-muted-foreground mb-1">Troco</p>
-            <p className="text-2xl font-black font-mono">{formatMoney(trocoCalculado)}</p>
-            {!dinheiroSuficiente && valorRecebidoStr !== "" && (
-              <p className="text-sm text-destructive mt-2">Valor recebido é menor que o total.</p>
+          <div className={`p-4 rounded-xl border ${pagamentoValido ? "bg-muted/50 border-border" : "bg-destructive/10 border-destructive/30"}`}>
+            <p className="text-sm text-muted-foreground mb-1">Restante após confirmar</p>
+            <p className="text-2xl font-black font-mono">{formatMoney(Math.max(0, restante - valorPagamentoNum))}</p>
+            {!pagamentoValido && valorPagamentoStr !== "" && (
+              <p className="text-sm text-destructive mt-2">Valor deve ser maior que zero e menor ou igual ao restante.</p>
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setDinheiroModal(false); setValorRecebidoStr(""); }}>
+            <Button variant="outline" className="flex-1" onClick={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}>
               Cancelar
             </Button>
             <Button
               className="flex-1"
-              disabled={!dinheiroSuficiente || registrarVenda.isPending}
-              onClick={confirmarVendaDinheiro}
+              disabled={!pagamentoValido || registrarVenda.isPending}
+              onClick={confirmarParcelaPagamento}
             >
               {registrarVenda.isPending ? "Registrando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={feiraModal.isOpen}
+        onClose={() => setFeiraModal({ isOpen: false, produto: null })}
+        title="Produto da Feira - Pesagem"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Informe o peso em gramas para calcular automaticamente o valor por kg.
+          </p>
+          <div className="bg-secondary p-4 rounded-xl">
+            <p className="font-semibold">{feiraModal.produto?.nome}</p>
+            <p className="text-sm text-muted-foreground">
+              Preco por kg: {formatMoney(feiraModal.produto?.preco ?? 0)}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={pesoGramasStr}
+                onChange={(e) => setPesoGramasStr(e.target.value)}
+                placeholder="Ex: 500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Unidades (peças)</label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={unidadesFeiraStr}
+                onChange={(e) => setUnidadesFeiraStr(e.target.value)}
+                placeholder="1"
+              />
+            </div>
+          </div>
+          <div className="bg-muted/50 border border-border rounded-xl p-3">
+            <p className="text-sm text-muted-foreground">Subtotal estimado</p>
+            <p className="text-2xl font-black font-mono text-primary">
+              {formatMoney(((Number(pesoGramasStr || "0") / 1000) * (feiraModal.produto?.preco ?? 0)) || 0)}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setFeiraModal({ isOpen: false, produto: null })}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={confirmarPesoFeira}>
+              Adicionar ao carrinho
             </Button>
           </div>
         </div>

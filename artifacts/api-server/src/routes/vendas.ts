@@ -76,6 +76,7 @@ router.get("/resumo/hoje", async (_req, res) => {
     num_vendas: vendas.length,
     mercado: 0,
     cozinha: 0,
+    feira: 0,
   };
 
   for (const v of vendas) {
@@ -86,6 +87,7 @@ router.get("/resumo/hoje", async (_req, res) => {
     if (v.pagamento === "fiado") resumo.total_fiado += v.total;
     if (v.categoria === "mercado") resumo.mercado += v.total;
     if (v.categoria === "cozinha") resumo.cozinha += v.total;
+    if (v.categoria === "feira") resumo.feira += v.total;
   }
 
   res.json(resumo);
@@ -146,16 +148,28 @@ router.post("/", async (req, res) => {
       ? `${produto.nome} - ${produto.marca}`
       : produto.nome;
 
+    const uProd = (produto.unidade || "").trim().toLowerCase();
+    const isFeiraPeca =
+      produto.categoria === "feira" &&
+      (uProd === "un" || uProd === "un." || uProd === "pc" || uProd === "pç" || uProd === "pec");
+    const un = item.unidades;
+    const qtdBaixaEstoque = isFeiraPeca
+      ? un != null && un > 0
+        ? un
+        : item.quantidade
+      : item.quantidade;
+
     await db.insert(itensVendaTable).values({
       venda_id: venda.id,
       produto_id: item.produto_id,
       nome_snap,
       quantidade: item.quantidade,
+      unidades: produto.categoria === "feira" && un != null && un > 0 ? un : null,
       preco_unit: item.preco_unit,
       subtotal: item.quantidade * item.preco_unit,
     });
 
-    const novoEstoque = produto.estoque - item.quantidade;
+    const novoEstoque = produto.estoque - qtdBaixaEstoque;
     if (novoEstoque < 0) {
       req.log.warn({ produto_id: produto.id, estoque: novoEstoque }, "Estoque negativo");
     }

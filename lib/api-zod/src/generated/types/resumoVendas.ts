@@ -15,4 +15,5 @@ export interface ResumoVendas {
   num_vendas: number;
   mercado: number;
   cozinha: number;
+  feira?: number;
 }

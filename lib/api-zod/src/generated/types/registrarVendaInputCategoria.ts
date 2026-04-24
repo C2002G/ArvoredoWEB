@@ -12,4 +12,5 @@ export type RegistrarVendaInputCategoria =
 export const RegistrarVendaInputCategoria = {
   mercado: "mercado",
   cozinha: "cozinha",
+  feira: "feira",
 } as const;
