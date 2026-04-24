@@ -28,6 +28,8 @@ export interface Produto {
   nome: string;
   marca?: string | null;
   categoria: ProdutoCategoria;
+  ncm?: string | null;
+  cst?: string | null;
   preco: number;
   custo: number;
   estoque: number;
@@ -58,6 +60,8 @@ export interface CriarProdutoInput {
   nome: string;
   marca?: string | null;
   categoria: CriarProdutoInputCategoria;
+  ncm?: string | null;
+  cst?: string | null;
   preco: number;
   custo?: number;
   estoque?: number;
@@ -79,6 +83,8 @@ export interface EditarProdutoInput {
   nome?: string;
   marca?: string | null;
   categoria?: EditarProdutoInputCategoria;
+  ncm?: string | null;
+  cst?: string | null;
   preco?: number;
   custo?: number;
   estoque?: number;

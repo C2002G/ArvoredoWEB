@@ -12,6 +12,8 @@ export const produtosTable = pgTable(
     nome: text("nome").notNull(),
     marca: text("marca"),
     categoria: categoriaEnum("categoria").notNull().default("mercado"),
+    ncm: text("ncm"),
+    cst: text("cst"),
     preco: real("preco").notNull(),
     custo: real("custo").notNull().default(0),
     estoque: real("estoque").notNull().default(0),
