@@ -22,7 +22,12 @@ export function useFiadoResumo() {
 }
 
 export function useFiadoExtrato(clienteId: number | null) {
-  return useExtratoCliente(clienteId as number, { query: { enabled: !!clienteId } });
+  return useExtratoCliente(clienteId as number, {
+    query: {
+      queryKey: getExtratoClienteQueryKey(clienteId as number),
+      enabled: !!clienteId,
+    },
+  });
 }
 
 export function useCriarClienteWrapper() {

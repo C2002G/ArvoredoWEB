@@ -24,13 +24,12 @@ if ($nodeProcesses) {
     
     Write-Host "[2/2] Parando processos..." -ForegroundColor Yellow
     foreach ($proc in $nodeProcesses) {
-        $pid = $proc.ProcessId
-        $name = $proc.Name
+        $processId = $proc.ProcessId
         try {
-            Stop-Process -Id $pid -Force -ErrorAction Stop
-            Write-Host "      PID $pid parado" -ForegroundColor Green
+            Stop-Process -Id $processId -Force -ErrorAction Stop
+            Write-Host "      PID $processId parado" -ForegroundColor Green
         } catch {
-            Write-Host "      PID $pid nao pode ser parado (pode ja ter parado)" -ForegroundColor Yellow
+            Write-Host "      PID $processId nao pode ser parado (pode ja ter parado)" -ForegroundColor Yellow
         }
     }
 } else {

@@ -20,7 +20,7 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { data: alertas } = useProdutosAlertas();
-  const alertCount = alertas?.length || 0;
+  const alertCount = alertas?.total_alertas ?? 0;
 
   const navItems = [
     { name: "PDV / Caixa", href: "/", icon: ShoppingCart },

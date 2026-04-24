@@ -9,6 +9,8 @@ Este documento complementa o [GUIA-ESTABELECIMENTO.md](GUIA-ESTABELECIMENTO.md).
 
 ## Fluxo recomendado após `git pull`
 
+Checklist completo (parar, pull, install, Drizzle, build, iniciar): [GUIA-ATUALIZACOES.md](GUIA-ATUALIZACOES.md).
+
 1. **Parar o sistema** (se estiver rodando), com o script de parada que você já usa.
 2. **Atualizar o código** (no PC da loja, pasta do projeto, exemplo `C:\Arvoredo`):
    ```powershell

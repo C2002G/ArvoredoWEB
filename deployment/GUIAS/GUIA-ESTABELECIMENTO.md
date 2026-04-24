@@ -67,6 +67,8 @@ cd C:\Arvoredo
 powershell -ExecutionPolicy Bypass -File .\deployment\atualizar.ps1
 ```
 
+Detalhe do que fazer em cada atualização (Git, `pnpm`, banco Drizzle, parar/iniciar): veja o [GUIA-ATUALIZACOES.md](GUIA-ATUALIZACOES.md).
+
 ## 9) Checklist operacional
 - PostgreSQL rodando no Windows
 - `.env` presente com `DATABASE_URL` correto

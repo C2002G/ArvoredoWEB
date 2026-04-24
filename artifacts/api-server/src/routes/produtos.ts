@@ -67,7 +67,8 @@ router.put("/:id", async (req, res) => {
     .where(eq(produtosTable.id, id))
     .returning();
   if (!produto) {
-    return res.status(404).json({ ok: false, message: "Produto não encontrado" });
+    res.status(404).json({ ok: false, message: "Produto não encontrado" });
+    return;
   }
   res.json(formatProduto(produto));
 });

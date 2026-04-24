@@ -180,7 +180,7 @@ export default function Fiado() {
                       return (
                       <tr
                         key={f.id}
-                        onClick={() => podeVerItens && setVendaItensModalId(f.venda_id)}
+                        onClick={() => podeVerItens && setVendaItensModalId(f.venda_id ?? null)}
                         className={`hover:bg-muted/30 ${podeVerItens ? "cursor-pointer" : ""}`}
                         title={podeVerItens ? "Clique para ver os produtos desta compra" : undefined}
                       >

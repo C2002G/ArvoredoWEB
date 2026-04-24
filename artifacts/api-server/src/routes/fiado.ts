@@ -36,7 +36,10 @@ router.put("/clientes/:id", async (req, res) => {
     .set(data)
     .where(eq(clientesTable.id, id))
     .returning();
-  if (!cliente) return res.status(404).json({ ok: false, message: "Cliente não encontrado" });
+  if (!cliente) {
+    res.status(404).json({ ok: false, message: "Cliente não encontrado" });
+    return;
+  }
   res.json({ ...cliente, criado_em: cliente.criado_em.toISOString() });
 });
 
@@ -46,7 +49,10 @@ router.get("/clientes/:id/extrato", async (req, res) => {
     .select()
     .from(clientesTable)
     .where(eq(clientesTable.id, id));
-  if (!cliente) return res.status(404).json({ ok: false, message: "Cliente não encontrado" });
+  if (!cliente) {
+    res.status(404).json({ ok: false, message: "Cliente não encontrado" });
+    return;
+  }
 
   const fiados = await db
     .select()

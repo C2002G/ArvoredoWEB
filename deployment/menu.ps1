@@ -134,18 +134,19 @@ function Backup-Excel {
 
 function Update-System {
     Write-Host ""
-    Write-Host "Atualizando sistema..." -ForegroundColor Yellow
+    Write-Host "Atualizando sistema (Git + dependencias + banco + build)..." -ForegroundColor Yellow
+    Write-Host "Usando deployment\atualizar.ps1 ..." -ForegroundColor Gray
 
-    $branch = git branch --show-current
-    if ([string]::IsNullOrEmpty($branch)) {
-        $branch = "main"
+    $atualizarScript = Join-Path $ProjectRoot "deployment\atualizar.ps1"
+    if (-not (Test-Path $atualizarScript)) {
+        Write-Host "ERRO: atualizar.ps1 nao encontrado" -ForegroundColor Red
+        return
     }
 
-    git pull origin $branch 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Sistema atualizado!" -ForegroundColor Green
+    if (-not [string]::IsNullOrEmpty($PgPassword)) {
+        & powershell -ExecutionPolicy Bypass -File $atualizarScript -PgPassword $PgPassword
     } else {
-        Write-Host "ERRO na atualizacao" -ForegroundColor Red
+        & powershell -ExecutionPolicy Bypass -File $atualizarScript
     }
 }
 

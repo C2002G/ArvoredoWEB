@@ -3,6 +3,7 @@ import {
   useListarProdutos,
   useBuscarProduto,
   useAlertasEstoque,
+  getBuscarProdutoQueryKey,
   useCriarProduto,
   useEditarProduto,
   useDeletarProduto,
@@ -16,7 +17,12 @@ export function useProdutos(params?: ListarProdutosParams) {
 }
 
 export function useProdutosBusca(params: BuscarProdutoParams) {
-  return useBuscarProduto(params, { query: { enabled: !!params.q || !!params.codigo || !!params.nome } });
+  return useBuscarProduto(params, {
+    query: {
+      queryKey: getBuscarProdutoQueryKey(params),
+      enabled: !!params.q || !!params.codigo || !!params.nome,
+    },
+  });
 }
 
 export function useProdutosAlertas() {

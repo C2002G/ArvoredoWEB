@@ -22,11 +22,23 @@ if (-not (Test-Path (Join-Path $ProjectRoot ".git"))) {
     exit 1
 }
 
+# Preferir DATABASE_URL completa do .env (necessario para drizzle-kit push)
+$envFile = Join-Path $ProjectRoot ".env"
+if ([string]::IsNullOrEmpty($env:DATABASE_URL) -and (Test-Path $envFile)) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*DATABASE_URL\s*=\s*(.+)\s*$') {
+            $raw = $Matches[1].Trim().Trim('"').Trim("'")
+            if (-not [string]::IsNullOrEmpty($raw)) {
+                $env:DATABASE_URL = $raw
+            }
+        }
+    }
+}
+
 # Configurar DATABASE_URL se necessario
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
     if ([string]::IsNullOrEmpty($PgPassword)) {
-        # Tentar ler do .env
-        $envFile = Join-Path $ProjectRoot ".env"
+        # Tentar ler senha do .env (fallback se nao houver DATABASE_URL)
         if (Test-Path $envFile) {
             $envContent = Get-Content $envFile -Raw
             if ($envContent -match "postgres:([^@]+)@") {
@@ -44,7 +56,7 @@ if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
 }
 
 # 1. Verificar conexao com Git remote
-Write-Host "[1/6] Verificando conexao com Git..." -ForegroundColor Yellow
+Write-Host "[1/7] Verificando conexao com Git..." -ForegroundColor Yellow
 Set-Location $ProjectRoot
 git remote -v | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -54,7 +66,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "      Git OK" -ForegroundColor Green
 
 # 2. Buscar atualizacoes
-Write-Host "[2/6] Buscando atualizacoes..." -ForegroundColor Yellow
+Write-Host "[2/7] Buscando atualizacoes..." -ForegroundColor Yellow
 git fetch origin 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      AVISO: Nao foi possivel buscar atualizacoes (verifique internet)" -ForegroundColor Yellow
@@ -63,7 +75,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 3. Verificar se ha atualizacoes
-Write-Host "[3/6] Verificando atualizacoes..." -ForegroundColor Yellow
+Write-Host "[3/7] Verificando atualizacoes..." -ForegroundColor Yellow
 $branch = git branch --show-current
 if ([string]::IsNullOrEmpty($branch)) {
     $branch = "main"
@@ -82,7 +94,7 @@ if ($localCommit -eq $remoteCommit) {
 
 # 4. Pull se houver atualizacoes
 if ($hasUpdates) {
-    Write-Host "[4/6] Baixando atualizacoes..." -ForegroundColor Yellow
+    Write-Host "[4/7] Baixando atualizacoes..." -ForegroundColor Yellow
     git pull origin $branch 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "      ERRO no git pull. Voce pode ter mudancas locais." -ForegroundColor Red
@@ -92,18 +104,10 @@ if ($hasUpdates) {
     Write-Host "      Atualizacoes baixadas!" -ForegroundColor Green
 }
 
-# 5. Reinstalar dependencias se necessario
-Write-Host "[5/6] Verificando dependencias..." -ForegroundColor Yellow
-$needInstall = $false
-if ($hasUpdates) {
-    # Verificar se package.json foi alterado
-    git diff HEAD~1 --name-only | ForEach-Object {
-        if ($_ -match "package\.json$") { $needInstall = $true }
-    }
-}
-
-if ($needInstall -or $ForceRebuild) {
-    Write-Host "      Reinstalando dependencias..." -ForegroundColor Yellow
+# 5. Dependencias (apos pull, alinhar lockfile e pacotes)
+Write-Host "[5/7] Dependencias..." -ForegroundColor Yellow
+if ($hasUpdates -or $ForceRebuild) {
+    Write-Host "      Executando pnpm install..." -ForegroundColor Gray
     pnpm install 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "      ERRO na instalacao de dependencias" -ForegroundColor Red
@@ -111,12 +115,29 @@ if ($needInstall -or $ForceRebuild) {
     }
     Write-Host "      Dependencias OK" -ForegroundColor Green
 } else {
-    Write-Host "      Dependencias OK" -ForegroundColor Green
+    Write-Host "      Nada a instalar (ja na ultima versao)" -ForegroundColor Gray
 }
 
-# 6. Rebuild se necessario
+# 6. Schema do banco (Drizzle push) — evita erro de colunas faltando na API
+Write-Host "[6/7] Banco de dados (Drizzle push)..." -ForegroundColor Yellow
 if ($hasUpdates -or $ForceRebuild) {
-    Write-Host "[6/6] Rebuild do sistema..." -ForegroundColor Yellow
+    if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
+        Write-Host "      ERRO: DATABASE_URL nao definido. Confira .env na raiz do projeto." -ForegroundColor Red
+        exit 1
+    }
+    pnpm --filter @workspace/db push 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "      ERRO no db push. Verifique PostgreSQL e DATABASE_URL no .env." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      Schema sincronizado" -ForegroundColor Green
+} else {
+    Write-Host "      Pulado (sem atualizacoes)" -ForegroundColor Gray
+}
+
+# 7. Rebuild se necessario
+if ($hasUpdates -or $ForceRebuild) {
+    Write-Host "[7/7] Rebuild do sistema..." -ForegroundColor Yellow
     
     # Parar processos antigos
     Write-Host "      Parando processos antigos..." -ForegroundColor Gray
@@ -131,7 +152,7 @@ if ($hasUpdates -or $ForceRebuild) {
     }
     Write-Host "      Build OK" -ForegroundColor Green
 } else {
-    Write-Host "[6/6] Build nao necessario (sem atualizacoes)" -ForegroundColor Gray
+    Write-Host "[7/7] Build nao necessario (sem atualizacoes)" -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -139,5 +160,5 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "  Atualizacao concluida!" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Inicie o sistema com: .\iniciar.ps1" -ForegroundColor Cyan
+Write-Host "Inicie o sistema com: .\deployment\iniciar.ps1 (a partir da raiz do projeto)" -ForegroundColor Cyan
 Write-Host ""

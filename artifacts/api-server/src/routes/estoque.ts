@@ -15,7 +15,8 @@ router.post("/movimento", async (req, res) => {
     .where(eq(produtosTable.id, data.produto_id));
 
   if (!produto) {
-    return res.status(404).json({ ok: false, message: "Produto não encontrado" });
+    res.status(404).json({ ok: false, message: "Produto não encontrado" });
+    return;
   }
 
   let novoEstoque = produto.estoque;

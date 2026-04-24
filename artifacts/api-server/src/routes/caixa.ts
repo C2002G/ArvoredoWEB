@@ -36,7 +36,8 @@ router.post("/abrir", async (req, res) => {
     .limit(1);
 
   if (existente) {
-    return res.status(400).json({ ok: false, message: "Já existe um caixa aberto" });
+    res.status(400).json({ ok: false, message: "Já existe um caixa aberto" });
+    return;
   }
 
   const data = AbrirCaixaBody.parse(req.body);
@@ -56,7 +57,8 @@ router.post("/fechar", async (_req, res) => {
     .limit(1);
 
   if (!sessao) {
-    return res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    return;
   }
 
   const [fechada] = await db
@@ -76,7 +78,8 @@ router.post("/sangria", async (req, res) => {
     .limit(1);
 
   if (!sessao) {
-    return res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    return;
   }
 
   const data = RegistrarSangriaBody.parse(req.body);

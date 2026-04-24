@@ -21,7 +21,12 @@ export function useCaixaHistorico() {
 }
 
 export function useCaixaSangrias(params?: ListarSangriasParams) {
-  return useListarSangrias(params, { query: { enabled: !!params?.sessao_id } });
+  return useListarSangrias(params, {
+    query: {
+      queryKey: getListarSangriasQueryKey(params),
+      enabled: !!params?.sessao_id,
+    },
+  });
 }
 
 export function useAbrirCaixaWrapper() {

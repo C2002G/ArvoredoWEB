@@ -3,6 +3,7 @@ import {
   useListarVendas,
   useResumoHoje,
   useItensDaVenda,
+  getItensDaVendaQueryKey,
   useRegistrarVenda,
   getListarVendasQueryKey,
   getResumoHojeQueryKey,
@@ -20,7 +21,12 @@ export function useVendasResumoHoje() {
 }
 
 export function useVendaItens(vendaId: number | null) {
-  return useItensDaVenda(vendaId as number, { query: { enabled: !!vendaId } });
+  return useItensDaVenda(vendaId as number, {
+    query: {
+      queryKey: getItensDaVendaQueryKey(vendaId as number),
+      enabled: !!vendaId,
+    },
+  });
 }
 
 export function useRegistrarVendaWrapper() {
