@@ -26,25 +26,35 @@ async function execPowershell(command: string) {
   return stdout.trim();
 }
 
+/**
+ * Não use Out-Printer -Width: em várias impressoras térmicas isso restringe a área
+ * e o cupom fica com texto “pela metade” da largura. O controle fica no texto (48 cols).
+ * Opcional: PRINTER_LINE_WIDTH (número) para forçar -Width quando necessário.
+ */
 async function execPowershellPrint(tempFilePath: string, printerName: string) {
   const safeFilePath = tempFilePath.replace(/'/g, "''");
   const safePrinter = printerName.replace(/'/g, "''");
+  const w = process.env.PRINTER_LINE_WIDTH?.trim();
+  const widthArg =
+    w && /^\d+$/.test(w) && Number(w) > 0 ? ` -Width ${Number(w)}` : "";
 
-  try {
-    await execPowershell(
-      `Get-Content -Raw '${safeFilePath}' | Out-Printer -Name '${safePrinter}' -Width 48`
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.toLowerCase().includes("namedparameternotfound")) {
-      throw error;
+  if (widthArg) {
+    try {
+      await execPowershell(
+        `Get-Content -Raw -Encoding utf8 '${safeFilePath}' | Out-Printer -Name '${safePrinter}'${widthArg}`,
+      );
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.toLowerCase().includes("namedparameternotfound")) {
+        throw error;
+      }
     }
-
-    // Fallback para PowerShell sem suporte ao parâmetro -Width.
-    await execPowershell(
-      `Get-Content -Raw '${safeFilePath}' | Out-Printer -Name '${safePrinter}'`
-    );
   }
+
+  await execPowershell(
+    `Get-Content -Raw -Encoding utf8 '${safeFilePath}' | Out-Printer -Name '${safePrinter}'`,
+  );
 }
 
 export async function listWindowsPrinters(): Promise<WindowsPrinterInfo[]> {

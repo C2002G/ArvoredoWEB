@@ -1,4 +1,9 @@
-type CupomItem = {
+/**
+ * Cupom ~48 colunas (bobina 80mm), alinhado ao visual em modelo-nota/.
+ */
+export type CupomItem = {
+  /** Opcional: vem de itens_venda no banco */
+  produto_id?: number;
   nome_snap: string;
   quantidade: number;
   preco_unit: number;
@@ -41,6 +46,7 @@ export const PRINTER_LAYOUT = {
 };
 
 const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
+const formatMoneyTight = (value: number) => value.toFixed(2).replace(".", ",");
 const drawLine = (width = PRINTER_LAYOUT.colunas) => "-".repeat(width);
 
 function normalizeText(text: string) {
@@ -57,66 +63,131 @@ function padRight(value: string, size: number) {
   return `${value}${" ".repeat(size - value.length)}`;
 }
 
-function qtdLabelFeiraUnKg(item: CupomItem) {
-  const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
-  if (u > 0) {
-    return padRight(`${u}un`, 8);
+function padLeft(value: string, size: number) {
+  const v = value.slice(0, size);
+  if (v.length >= size) return v;
+  return `${" ".repeat(size - v.length)}${v}`;
+}
+
+function centerText(value: string, width = PRINTER_LAYOUT.colunas) {
+  const clean = value.replace(/\r?\n/g, " ").trim().slice(0, width);
+  const left = Math.max(0, Math.floor((width - clean.length) / 2));
+  return padRight(`${" ".repeat(left)}${clean}`, width);
+}
+
+function wrapText(text: string, w: number): string[] {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (t.length <= w) return [t];
+  const out: string[] = [];
+  let rest = t;
+  while (rest.length > 0) {
+    if (rest.length <= w) {
+      out.push(rest);
+      break;
+    }
+    let cut = rest.lastIndexOf(" ", w);
+    if (cut <= 0) cut = w;
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  return out;
+}
+
+function codigo6(item: CupomItem) {
+  if (item.produto_id != null) {
+    return String(item.produto_id).padStart(6, "0").slice(-6);
+  }
+  const n = String(item.nome_snap).replace(/\D/g, "");
+  return (n + "000000").slice(0, 6);
+}
+
+/** Qtd. + Und. — referência: modelo-nota/ */
+function qtdUndItem(item: CupomItem) {
+  const u = item.unidades != null && item.unidades > 0;
+  if (u) {
+    return { qNum: item.unidades, und: "UN" as const };
   }
   const isInteiro = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
   if (isInteiro) {
-    return padRight(`${item.quantidade.toFixed(0)}un`, 8);
+    return { qNum: item.quantidade, und: "UN" as const };
   }
-  return padRight(`${item.quantidade.toFixed(3).replace(".", ",")}kg`, 8);
+  return { qNum: item.quantidade, und: "KG" as const };
+}
+
+/** 6+20+5+2+6+4+5 = 48 (fonte monoespaçada na impressora) */
+function linhaItem48(item: CupomItem) {
+  const cod = codigo6(item);
+  const desc = String(item.nome_snap).replace(/\s+/g, " ").trim();
+  const { qNum, und } = qtdUndItem(item);
+  const q5 = padLeft(formatMoneyTight(Number(qNum)), 5);
+  const vu = formatMoneyTight(item.preco_unit);
+  const vt = formatMoneyTight(item.subtotal);
+  return (
+    padRight(cod, 6) +
+    padRight(desc, 20) +
+    q5 +
+    und +
+    padLeft(vu, 6) +
+    padLeft("0,00", 4) +
+    padLeft(vt, 5)
+  );
 }
 
 export function buildCupomText(venda: CupomVenda, itens: CupomItem[], clienteNome?: string) {
+  const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
-  rows.push(PRINTER_LAYOUT.empresa.nome.padStart(34));
-  rows.push(`CNPJ: ${PRINTER_LAYOUT.empresa.cnpj} - IE: ${PRINTER_LAYOUT.empresa.ie}`);
-  rows.push(PRINTER_LAYOUT.empresa.endereco);
-  rows.push(`Telefone: ${PRINTER_LAYOUT.empresa.telefone}`);
-  rows.push("Documento Auxiliar da Nota Fiscal de Consumidor Eletronica");
-  rows.push(drawLine());
-  rows.push("Codigo Descricao                 Qtd. Und. Vlr.Unit. Vlr.Total");
-  rows.push(drawLine());
+
+  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
+  rows.push(
+    `CNPJ: ${PRINTER_LAYOUT.empresa.cnpj}  IE: ${PRINTER_LAYOUT.empresa.ie}`.slice(0, W),
+  );
+  for (const ln of wrapText(PRINTER_LAYOUT.empresa.endereco, W)) {
+    rows.push(ln);
+  }
+  rows.push(`Fone: ${PRINTER_LAYOUT.empresa.telefone}`.slice(0, W));
+  rows.push(centerText("Documento Auxiliar da Nota Fiscal de", W));
+  rows.push(centerText("Consumidor Eletronica", W));
+  rows.push(drawLine(W));
+
+  rows.push("Cod.  Descricao          Qtd Und VlrU Dc VlTot ".slice(0, W));
+  rows.push(drawLine(W));
 
   for (const item of itens) {
-    const codigo = String(item.nome_snap).slice(0, 5).padStart(5, "0");
-    const descricao = padRight(String(item.nome_snap).replace(/\s+/g, " "), 25);
-    const qtd = qtdLabelFeiraUnKg(item);
-    rows.push(
-      `${codigo} ${descricao} ${qtd} ${padRight(formatMoney(item.preco_unit), 10)} ${formatMoney(item.subtotal)}`,
-    );
+    rows.push(linhaItem48(item).slice(0, W));
     const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
     const isInteiroQtd = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
     if (u > 0) {
       rows.push(
-        `   Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg x ${formatMoney(item.preco_unit)} /kg`,
+        `  * Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg  x  ${formatMoney(item.preco_unit)}/kg`.slice(0, W),
       );
     } else if (!isInteiroQtd) {
       rows.push(
-        `   ${item.quantidade.toFixed(3).replace(".", ",")} kg x ${formatMoney(item.preco_unit)} /kg`,
+        `  * Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg  x  ${formatMoney(item.preco_unit)}/kg`.slice(0, W),
       );
     }
   }
 
-  rows.push(drawLine());
-  rows.push(`Qtd. Total de Itens ${itens.length}`);
-  rows.push(`Valor Total R$ ${venda.total.toFixed(2).replace(".", ",")}`);
+  rows.push(drawLine(W));
+  rows.push(`Qtd. total de itens: ${itens.length}`.slice(0, W));
+  rows.push(`Valor total R$ ${venda.total.toFixed(2).replace(".", ",")}`.slice(0, W));
   if (venda.desconto && venda.desconto > 0) {
-    rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`);
+    rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`.slice(0, W));
   }
-  rows.push(drawLine());
+  rows.push(drawLine(W));
   if (clienteNome) {
-    rows.push(`Consumidor: ${clienteNome}`);
+    rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
   }
   if (venda.observacao) {
-    rows.push(`Obs: ${venda.observacao}`);
+    for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) {
+      rows.push(ln);
+    }
   }
-  rows.push(`Venda #${venda.id} - ${new Date(venda.criado_em).toLocaleString("pt-BR")}`);
-  rows.push(drawLine());
-  rows.push("Obrigado pela preferencia!");
-  rows.push("\n\n\n");
+  rows.push(
+    `NFC-e ref. venda #${venda.id}  ${new Date(venda.criado_em).toLocaleString("pt-BR")}`.slice(0, W),
+  );
+  rows.push(drawLine(W));
+  rows.push(centerText("Obrigado pela preferencia!", W));
+  rows.push("");
 
   return normalizeText(rows.join("\n"));
 }
@@ -126,15 +197,16 @@ export function buildSangriaText(
   vendas: SangriaVenda[],
   sangrias: SangriaItem[],
 ) {
+  const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
-  rows.push(PRINTER_LAYOUT.empresa.nome.padStart(34));
-  rows.push("RELATORIO DE SANGRIA".padStart(30));
-  rows.push(drawLine());
-  rows.push(`PERIODO: ${payload.data_inicio} ate ${payload.data_fim}`);
+  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
+  rows.push(centerText("RELATORIO DE SANGRIA", W));
+  rows.push(drawLine(W));
+  rows.push(`PERIODO: ${payload.data_inicio} ate ${payload.data_fim}`.slice(0, W));
   if (payload.sessao_id) {
-    rows.push(`SESSAO: ${payload.sessao_id}`);
+    rows.push(`SESSAO: ${payload.sessao_id}`.slice(0, W));
   }
-  rows.push(drawLine());
+  rows.push(drawLine(W));
 
   const totalVendas = vendas.reduce((sum, item) => sum + item.total, 0);
   const totalDinheiro = vendas
@@ -151,18 +223,18 @@ export function buildSangriaText(
     .reduce((sum, item) => sum + item.total, 0);
   const totalSangrias = sangrias.reduce((sum, item) => sum + item.valor, 0);
 
-  rows.push(`Vendas: ${vendas.length}`);
-  rows.push(`Total vendas: ${formatMoney(totalVendas)}`);
-  rows.push(`Dinheiro: ${formatMoney(totalDinheiro)}`);
-  rows.push(`PIX: ${formatMoney(totalPix)}`);
-  rows.push(`Cartao: ${formatMoney(totalCartao)}`);
-  rows.push(`Fiado: ${formatMoney(totalFiado)}`);
-  rows.push(drawLine());
-  rows.push(`Sangrias: ${sangrias.length}`);
-  rows.push(`Total sangria: ${formatMoney(totalSangrias)}`);
-  rows.push(drawLine());
+  rows.push(`Vendas: ${vendas.length}`.slice(0, W));
+  rows.push(`Total vendas: ${formatMoney(totalVendas)}`.slice(0, W));
+  rows.push(`Dinheiro: ${formatMoney(totalDinheiro)}`.slice(0, W));
+  rows.push(`PIX: ${formatMoney(totalPix)}`.slice(0, W));
+  rows.push(`Cartao: ${formatMoney(totalCartao)}`.slice(0, W));
+  rows.push(`Fiado: ${formatMoney(totalFiado)}`.slice(0, W));
+  rows.push(drawLine(W));
+  rows.push(`Sangrias: ${sangrias.length}`.slice(0, W));
+  rows.push(`Total sangria: ${formatMoney(totalSangrias)}`.slice(0, W));
+  rows.push(drawLine(W));
   rows.push("Fim do relatorio");
-  rows.push("\n\n\n");
+  rows.push("");
 
   return normalizeText(rows.join("\n"));
 }
