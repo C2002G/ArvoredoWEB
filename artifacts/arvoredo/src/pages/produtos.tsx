@@ -224,14 +224,20 @@ export default function Produtos() {
         onSuccess: () => {
           toast({ title: "Produto atualizado", className: "bg-green-600 text-white" });
           setModalOpen(false);
-        }
+        },
+        onError: (err) => {
+          toast({ title: "Erro ao atualizar", description: err.message, variant: "destructive" });
+        },
       });
     } else {
       criar.mutate({ data: payload }, {
         onSuccess: () => {
           toast({ title: "Produto criado", className: "bg-green-600 text-white" });
           setModalOpen(false);
-        }
+        },
+        onError: (err) => {
+          toast({ title: "Erro ao criar", description: err.message, variant: "destructive" });
+        },
       });
     }
   };
@@ -457,7 +463,7 @@ export default function Produtos() {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Estoque Inicial</label>
-              <Input type="number" step="0.01" value={formData.estoque} onChange={e => setFormData({...formData, estoque: e.target.value})} disabled={!!editingId} />
+              <Input type="number" step="0.01" value={formData.estoque} onChange={e => setFormData({...formData, estoque: e.target.value})} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Estoque Min.</label>
