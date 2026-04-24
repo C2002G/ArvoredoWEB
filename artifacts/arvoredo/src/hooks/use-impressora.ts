@@ -8,7 +8,26 @@ async function post(path: string, body: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Erro na requisição");
+
+  if (!res.ok) {
+    let message = `Erro na requisição (${res.status})`;
+    const contentType = res.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      try {
+        const data = await res.json();
+        message = data?.erro ?? data?.message ?? JSON.stringify(data) ?? message;
+      } catch {
+        // ignore parse error
+      }
+    } else {
+      const text = await res.text();
+      if (text) message = text;
+    }
+
+    throw new Error(message);
+  }
+
   return res.json();
 }
 

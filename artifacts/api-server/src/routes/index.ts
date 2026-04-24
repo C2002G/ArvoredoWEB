@@ -6,6 +6,7 @@ import estoqueRouter from "./estoque";
 import fiadoRouter from "./fiado";
 import caixaRouter from "./caixa";
 import maquininhaRouter from "./maquininha";
+import impressoraRouter from "./impressora";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use("/estoque", estoqueRouter);
 router.use("/fiado", fiadoRouter);
 router.use("/caixa", caixaRouter);
 router.use("/maquininha", maquininhaRouter);
+router.use("/impressora", impressoraRouter);
 
 export default router;

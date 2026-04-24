@@ -55,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
 
 ### Opcao B: dois terminais
 Terminal 1 (API):
-```powershell
+```powershell   
 $env:DATABASE_URL="postgresql://postgres:SUA_SENHA@localhost:5432/arvoredo"
 $env:PORT="8080"
 pnpm --filter @workspace/api-server run dev

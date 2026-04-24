@@ -69,9 +69,9 @@ export default function Dispositivos() {
           setErroImpressora(res?.erro || "Impressora não respondeu");
         }
       },
-      onError: () => {
+      onError: (err: unknown) => {
         setStatusImpressora("erro");
-        setErroImpressora("Erro de comunicação com o servidor");
+        setErroImpressora(err instanceof Error ? err.message : "Erro de comunicação com o servidor");
       }
     });
   };
@@ -133,16 +133,16 @@ export default function Dispositivos() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold">Impressora Térmica</h2>
-                  <p className="text-muted-foreground text-sm mt-0.5">Elgin I9 — USB (VID: 0483 / PID: 5743)</p>
+                  <p className="text-muted-foreground text-sm mt-0.5">Elgin i7plus — USB (VID: 0483 / PID: 5743)</p>
                 </div>
                 <StatusBadge status={statusImpressora} erro={erroImpressora} />
               </div>
 
               <div className="mt-4 bg-muted/50 rounded-xl p-4 text-sm space-y-1.5 text-muted-foreground font-mono">
-                <p>Modelo: <span className="text-foreground font-semibold">Elgin I9</span></p>
+                <p>Modelo: <span className="text-foreground font-semibold">Elgin i7plus</span></p>
                 <p>Interface: <span className="text-foreground font-semibold">USB (ESC/POS)</span></p>
                 <p>CNPJ impresso: <span className="text-foreground font-semibold">60.242.783/0001-41</span></p>
-                <p>Papel: <span className="text-foreground font-semibold">80mm — 32 colunas</span></p>
+                <p>Papel: <span className="text-foreground font-semibold">80mm — 48 colunas</span></p>
               </div>
 
               {statusImpressora === "erro" && (
