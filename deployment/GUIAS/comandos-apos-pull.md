@@ -24,7 +24,7 @@ Se alterou o schema do Drizzle (raro) ou tabelas manuais, rode o SQL em `deploym
 ```bash
 # variáveis: copiar .env.example -> .env e apontar DATABASE_URL
 
-# API (em um terminal)
+# API (em um terminal)' 
 cd artifacts/api-server
 pnpm dev
 # (ou: node / tsx conforme o script no package.json do api-server)
