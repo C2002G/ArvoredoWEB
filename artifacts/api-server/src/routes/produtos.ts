@@ -68,10 +68,16 @@ router.get("/alertas", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   const data = CriarProdutoBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
   try {
     const [produto] = await db
       .insert(produtosTable)
-      .values({ ...data, codigo: normalizeCodigo(data.codigo) })
+      .values({
+        ...data,
+        codigo: normalizeCodigo(data.codigo),
+        cfop: typeof rawBody.cfop === "string" ? rawBody.cfop : undefined,
+        cest: typeof rawBody.cest === "string" ? rawBody.cest : undefined,
+      })
       .returning();
     res.status(201).json(formatProduto(produto));
   } catch (err) {
@@ -89,6 +95,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   const data = EditarProdutoBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
   let produto;
   try {
     [produto] = await db
@@ -96,6 +103,8 @@ router.put("/:id", async (req, res) => {
       .set({
         ...data,
         ...(data.codigo !== undefined ? { codigo: normalizeCodigo(data.codigo) } : {}),
+        ...(typeof rawBody.cfop === "string" ? { cfop: rawBody.cfop } : {}),
+        ...(typeof rawBody.cest === "string" ? { cest: rawBody.cest } : {}),
       })
       .where(eq(produtosTable.id, id))
       .returning();

@@ -6,13 +6,16 @@
     "preinstall": "node -e \"const fs=require('fs');if(fs.existsSync('package-lock.json'))fs.unlinkSync('package-lock.json');if(fs.existsSync('yarn.lock'))fs.unlinkSync('yarn.lock');\"",
     "build": "pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --if-present run typecheck",
+    "db:seed": "tsx lib/db/seed.ts"
   },
+  
   "private": true,
   "devDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.60.1",
     "lightningcss": "^1.32.0",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
-  }
+  },
+  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
 }

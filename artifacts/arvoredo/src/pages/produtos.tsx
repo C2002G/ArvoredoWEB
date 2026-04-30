@@ -215,7 +215,7 @@ export default function Produtos() {
   
   const defaultForm = {
     nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria,
-    ncm: "", cst: "", preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
+    ncm: "", cfop: "5102", cest: "", cst: "", preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
   };
   const [formData, setFormData] = useState(defaultForm);
 
@@ -291,6 +291,8 @@ export default function Produtos() {
       codigo: p.codigo || "",
       categoria: p.categoria,
       ncm: p.ncm || "",
+      cfop: (p as any).cfop || "5102",
+      cest: (p as any).cest || "",
       cst: p.cst || "",
       preco: p.preco.toString(),
       custo: p.custo.toString(),
@@ -310,6 +312,8 @@ export default function Produtos() {
       codigo: formData.codigo || null,
       categoria: formData.categoria,
       ncm: formData.ncm || null,
+      cfop: (formData as any).cfop || null,
+      cest: (formData as any).cest || null,
       cst: formData.cst || null,
       preco: Number(formData.preco),
       custo: Number(formData.custo) || 0,
@@ -374,6 +378,8 @@ export default function Produtos() {
     codigo?: string | null;
     categoria: CriarProdutoInputCategoria;
     ncm?: string | null;
+    cfop?: string | null;
+    cest?: string | null;
     cst?: string | null;
     preco: number;
     custo: number;
@@ -400,6 +406,8 @@ export default function Produtos() {
       codigo?: string | null;
       categoria?: CriarProdutoInputCategoria;
       ncm?: string | null;
+      cfop?: string | null;
+      cest?: string | null;
       cst?: string | null;
       preco?: number;
       custo?: number;
@@ -703,6 +711,17 @@ export default function Produtos() {
             <div>
               <label className="block text-sm font-medium mb-1">CST / CSOSN</label>
               <Input value={formData.cst} onChange={e => setFormData({...formData, cst: e.target.value})} placeholder="Ex: 060 ou 102" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">CFOP</label>
+              <Input value={(formData as any).cfop} onChange={e => setFormData({...formData, cfop: e.target.value} as any)} placeholder="Ex: 5102" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">CEST</label>
+              <Input value={(formData as any).cest} onChange={e => setFormData({...formData, cest: e.target.value} as any)} placeholder="Ex: 1234567" />
             </div>
           </div>
 

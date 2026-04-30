@@ -3,7 +3,6 @@ packages:
   - lib/*
 
 autoInstallPeers: false
-strictPeerDependencies: false
 
 catalog:
   '@tailwindcss/vite': ^4.1.14
@@ -29,7 +28,10 @@ onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
   - msw
+  - node-expat
   - unrs-resolver
+  - usb
 
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
+strictPeerDependencies: false

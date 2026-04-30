@@ -16,7 +16,11 @@
     "cors": "^2",
     "dotenv": "^16.3.1",
     "drizzle-orm": "catalog:",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-usb": "3.0.0-alpha.4",
     "express": "^5",
+    "fast-xml-parser": "^5.3.0",
+    "node-dfe": "0.0.25",
     "pino": "^9",
     "pino-http": "^10"
   },

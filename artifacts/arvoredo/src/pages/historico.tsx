@@ -1,8 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
 import { formatMoney, formatDate } from "@/lib/utils";
 import { Input, Select, Modal } from "@/components/ui-elements";
 import { TrendingUp, Calendar, Utensils, ShoppingBasket, Filter, Receipt, Leaf } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+type NfceStatus = "autorizada" | "rejeitada" | "processando" | "erro" | "sem_emissao";
+type StatusMap = Record<number, NfceStatus>;
 
 export default function Historico() {
   const [dataFilter, setDataFilter] = useState(new Date().toISOString().split('T')[0]);
@@ -12,7 +16,68 @@ export default function Historico() {
   const { data: vendas = [], isLoading } = useVendasList({ data: dataFilter, categoria: catFilter || undefined });
   
   const [selectedVendaId, setSelectedVendaId] = useState<number | null>(null);
+  const [menuVendaId, setMenuVendaId] = useState<number | null>(null);
+  const [statusMap, setStatusMap] = useState<StatusMap>({});
+  const { toast } = useToast();
   const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
+
+  useEffect(() => {
+    let active = true;
+    if (!vendas.length) {
+      setStatusMap({});
+      return;
+    }
+    (async () => {
+      const statuses = await Promise.all(
+        vendas.map(async (v) => {
+          try {
+            const resp = await fetch(`/api/nfce/status/${v.id}`);
+            if (!resp.ok) return [v.id, "erro"] as const;
+            const data = await resp.json();
+            return [v.id, (data?.status || "sem_emissao") as NfceStatus] as const;
+          } catch {
+            return [v.id, "erro"] as const;
+          }
+        }),
+      );
+      if (!active) return;
+      setStatusMap(Object.fromEntries(statuses));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [vendas]);
+
+  const statusLabel = useMemo(
+    () =>
+      ({
+        autorizada: "✅ Autorizada",
+        rejeitada: "❌ Rejeitada",
+        processando: "🕒 Processando",
+        erro: "❌ Erro",
+        sem_emissao: "🕒 Sem emissao",
+      }) as Record<NfceStatus, string>,
+    [],
+  );
+
+  const runNfceAction = async (vendaId: number, action: "reimprimir" | "cancelar") => {
+    const endpoint = action === "reimprimir" ? `/api/nfce/${vendaId}/reimprimir` : `/api/nfce/${vendaId}/cancelar`;
+    try {
+      const resp = await fetch(endpoint, { method: "POST" });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(body?.message || "Falha na operacao");
+      toast({ title: "Operacao concluida", description: body?.message || "Sucesso", className: "bg-green-600 text-white" });
+      const statusResp = await fetch(`/api/nfce/status/${vendaId}`);
+      if (statusResp.ok) {
+        const statusBody = await statusResp.json();
+        setStatusMap((prev) => ({ ...prev, [vendaId]: statusBody?.status || "sem_emissao" }));
+      }
+    } catch (error: any) {
+      toast({ title: "Erro", description: error?.message || "Falha ao executar acao NFC-e", variant: "destructive" });
+    } finally {
+      setMenuVendaId(null);
+    }
+  };
 
   return (
     <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
@@ -106,7 +171,8 @@ export default function Historico() {
                   <th className="px-6 py-4 font-medium">Pagamento</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
                   <th className="px-6 py-4 font-medium text-right">Total</th>
-                  <th className="px-6 py-4 font-medium text-center">Ações</th>
+                  <th className="px-6 py-4 font-medium text-center">Status NFC-e</th>
+                  <th className="px-6 py-4 font-medium text-center">Opções</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -127,13 +193,28 @@ export default function Historico() {
                     <td className="px-6 py-4 capitalize font-medium">{v.pagamento}</td>
                     <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
                     <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
+                    <td className="px-6 py-4 text-center text-sm font-medium">{statusLabel[statusMap[v.id] || "processando"]}</td>
                     <td className="px-6 py-4 text-center">
-                      <button onClick={() => setSelectedVendaId(v.id)} className="text-primary hover:underline text-sm font-medium">Ver Itens</button>
+                      <div className="relative inline-block text-left">
+                        <button
+                          onClick={() => setMenuVendaId((prev) => (prev === v.id ? null : v.id))}
+                          className="text-primary hover:underline text-sm font-medium"
+                        >
+                          Opções
+                        </button>
+                        {menuVendaId === v.id && (
+                          <div className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-background shadow-lg p-1">
+                            <button onClick={() => { setSelectedVendaId(v.id); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Ver Itens</button>
+                            <button onClick={() => runNfceAction(v.id, "reimprimir")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Reimprimir DANFE</button>
+                            <button onClick={() => runNfceAction(v.id, "cancelar")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Cancelar NFC-e</button>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {vendas.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
                 )}
               </tbody>
             </table>

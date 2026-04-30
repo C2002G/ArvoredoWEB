@@ -12,7 +12,9 @@ export const produtosTable = pgTable(
     nome: text("nome").notNull(),
     marca: text("marca"),
     categoria: categoriaEnum("categoria").notNull().default("mercado"),
-    ncm: text("ncm"),
+    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
+    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
+    cest: text("cest"), // Código Especificador da Substituição Tributária
     cst: text("cst"),
     preco: real("preco").notNull(),
     custo: real("custo").notNull().default(0),

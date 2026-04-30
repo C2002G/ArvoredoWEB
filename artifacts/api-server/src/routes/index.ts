@@ -7,6 +7,7 @@ import fiadoRouter from "./fiado";
 import caixaRouter from "./caixa";
 import maquininhaRouter from "./maquininha";
 import impressoraRouter from "./impressora";
+import nfceRouter from "./nfce";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/fiado", fiadoRouter);
 router.use("/caixa", caixaRouter);
 router.use("/maquininha", maquininhaRouter);
 router.use("/impressora", impressoraRouter);
+router.use("/nfce", nfceRouter);
 
 export default router;
