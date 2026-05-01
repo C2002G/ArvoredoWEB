@@ -1,23 +1,53 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
 import { formatMoney, formatDate } from "@/lib/utils";
-import { Input, Select, Modal } from "@/components/ui-elements";
+import { Input, Select, Modal, Button } from "@/components/ui-elements";
 import { TrendingUp, Calendar, Utensils, ShoppingBasket, Filter, Receipt, Leaf } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type NfceStatus = "autorizada" | "rejeitada" | "processando" | "erro" | "sem_emissao";
 type StatusMap = Record<number, NfceStatus>;
+type NfceDetail = {
+  status: NfceStatus;
+  mensagem?: string;
+  chaveAcesso?: string;
+  protocolo?: string;
+  criadoEm?: string;
+};
+type NfceDetailMap = Record<number, NfceDetail>;
 
 export default function Historico() {
-  const [dataFilter, setDataFilter] = useState(new Date().toISOString().split('T')[0]);
+  const [dataFilter, setDataFilter] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
   const [catFilter, setCatFilter] = useState("");
+  const [q, setQ] = useState("");
   
   const { data: resumo } = useVendasResumoHoje();
-  const { data: vendas = [], isLoading } = useVendasList({ data: dataFilter, categoria: catFilter || undefined });
+  const { data: vendas = [], isLoading } = useVendasList({
+    data: dataFilter || undefined,
+    data_inicio: dataInicio || undefined,
+    data_fim: dataFim || undefined,
+    categoria: catFilter || undefined,
+    limit: 1000,
+  });
   
   const [selectedVendaId, setSelectedVendaId] = useState<number | null>(null);
   const [menuVendaId, setMenuVendaId] = useState<number | null>(null);
+  const [editVenda, setEditVenda] = useState<{ id: number; observacao: string; pagamento: string } | null>(null);
+  const vendasFiltradas = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return vendas;
+    return vendas.filter((v) =>
+      String(v.id).includes(term) ||
+      (v.cliente_nome || "").toLowerCase().includes(term) ||
+      (v.observacao || "").toLowerCase().includes(term),
+    );
+  }, [q, vendas]);
+
   const [statusMap, setStatusMap] = useState<StatusMap>({});
+  const [nfceDetailMap, setNfceDetailMap] = useState<NfceDetailMap>({});
+  const [errorVendaId, setErrorVendaId] = useState<number | null>(null);
   const { toast } = useToast();
   const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
 
@@ -25,23 +55,43 @@ export default function Historico() {
     let active = true;
     if (!vendas.length) {
       setStatusMap({});
+      setNfceDetailMap({});
       return;
     }
     (async () => {
-      const statuses = await Promise.all(
+      const details = await Promise.all(
         vendas.map(async (v) => {
           try {
             const resp = await fetch(`/api/nfce/status/${v.id}`);
-            if (!resp.ok) return [v.id, "erro"] as const;
+            if (!resp.ok) {
+              return [v.id, {
+                status: "erro",
+                mensagem: `Falha ao consultar status NFC-e (HTTP ${resp.status})`,
+              } satisfies NfceDetail] as const;
+            }
             const data = await resp.json();
-            return [v.id, (data?.status || "sem_emissao") as NfceStatus] as const;
+            const status = (data?.status || "sem_emissao") as NfceStatus;
+            const log = data?.log || {};
+            return [v.id, {
+              status,
+              mensagem: log?.mensagem_status_sefaz || undefined,
+              chaveAcesso: log?.chave_acesso || undefined,
+              protocolo: log?.protocolo || undefined,
+              criadoEm: log?.criado_em || undefined,
+            } satisfies NfceDetail] as const;
           } catch {
-            return [v.id, "erro"] as const;
+            return [v.id, { status: "erro", mensagem: "Falha de rede ao consultar status NFC-e." } satisfies NfceDetail] as const;
           }
         }),
       );
       if (!active) return;
-      setStatusMap(Object.fromEntries(statuses));
+      const detailMap = Object.fromEntries(details);
+      setNfceDetailMap(detailMap);
+      setStatusMap(
+        Object.fromEntries(
+          Object.entries(detailMap as NfceDetailMap).map(([vendaId, detail]) => [Number(vendaId), detail.status]),
+        ),
+      );
     })();
     return () => {
       active = false;
@@ -143,10 +193,13 @@ export default function Historico() {
         <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h3 className="font-bold text-xl">Lista de Vendas</h3>
           <div className="flex gap-4 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-48">
+            <div className="relative flex-1 sm:w-56">
               <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
               <Input type="date" className="pl-9" value={dataFilter} onChange={e => setDataFilter(e.target.value)} />
             </div>
+            <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+            <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} />
+            <Input placeholder="Buscar por ID, cliente, observacao" value={q} onChange={e => setQ(e.target.value)} />
             <div className="relative flex-1 sm:w-48">
               <Filter className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground z-10" />
               <Select className="pl-9" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
@@ -176,7 +229,7 @@ export default function Historico() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {vendas.map(v => (
+                {vendasFiltradas.map(v => (
                   <tr key={v.id} className="hover:bg-muted/30">
                     <td className="px-6 py-4">{formatDate(v.criado_em)}</td>
                     <td className="px-6 py-4 capitalize">
@@ -193,7 +246,18 @@ export default function Historico() {
                     <td className="px-6 py-4 capitalize font-medium">{v.pagamento}</td>
                     <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
                     <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
-                    <td className="px-6 py-4 text-center text-sm font-medium">{statusLabel[statusMap[v.id] || "processando"]}</td>
+                    <td className="px-6 py-4 text-center text-sm font-medium">
+                      <button
+                        className="hover:underline"
+                        onClick={() => {
+                          const s = statusMap[v.id] || "processando";
+                          if (s === "erro" || s === "rejeitada") setErrorVendaId(v.id);
+                        }}
+                        title="Clique para ver detalhes"
+                      >
+                        {statusLabel[statusMap[v.id] || "processando"]}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-center">
                       <div className="relative inline-block text-left">
                         <button
@@ -205,6 +269,7 @@ export default function Historico() {
                         {menuVendaId === v.id && (
                           <div className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-background shadow-lg p-1">
                             <button onClick={() => { setSelectedVendaId(v.id); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Ver Itens</button>
+                            <button onClick={() => { setEditVenda({ id: v.id, observacao: v.observacao || "", pagamento: v.pagamento }); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Editar venda</button>
                             <button onClick={() => runNfceAction(v.id, "reimprimir")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Reimprimir DANFE</button>
                             <button onClick={() => runNfceAction(v.id, "cancelar")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Cancelar NFC-e</button>
                           </div>
@@ -213,7 +278,7 @@ export default function Historico() {
                     </td>
                   </tr>
                 ))}
-                {vendas.length === 0 && (
+                {vendasFiltradas.length === 0 && (
                   <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
                 )}
               </tbody>
@@ -242,6 +307,59 @@ export default function Historico() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </Modal>
+      <Modal isOpen={!!editVenda} onClose={() => setEditVenda(null)} title={editVenda ? `Editar Venda #${editVenda.id}` : "Editar Venda"}>
+        {editVenda && (
+          <div className="space-y-3">
+            <Select value={editVenda.pagamento} onChange={(e) => setEditVenda({ ...editVenda, pagamento: e.target.value })}>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">PIX</option>
+              <option value="cartao">Cartão</option>
+              <option value="fiado">Comanda</option>
+            </Select>
+            <Input value={editVenda.observacao} onChange={(e) => setEditVenda({ ...editVenda, observacao: e.target.value })} placeholder="Observação" />
+            <Button
+              onClick={async () => {
+                if (!editVenda) return;
+                const resp = await fetch(`/api/vendas/${editVenda.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ pagamento: editVenda.pagamento, observacao: editVenda.observacao || null }),
+                });
+                if (resp.ok) {
+                  toast({ title: "Venda atualizada", className: "bg-green-600 text-white" });
+                  setEditVenda(null);
+                  window.location.reload();
+                } else {
+                  toast({ title: "Erro ao atualizar venda", variant: "destructive" });
+                }
+              }}
+            >
+              Salvar
+            </Button>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        isOpen={!!errorVendaId}
+        onClose={() => setErrorVendaId(null)}
+        title={errorVendaId ? `Detalhes NFC-e da venda #${errorVendaId}` : "Detalhes NFC-e"}
+      >
+        {errorVendaId && (
+          <div className="space-y-3 text-sm">
+            <p><span className="font-semibold">Status:</span> {statusLabel[nfceDetailMap[errorVendaId]?.status || "erro"]}</p>
+            <p><span className="font-semibold">Mensagem:</span> {nfceDetailMap[errorVendaId]?.mensagem || "Sem detalhe registrado."}</p>
+            {nfceDetailMap[errorVendaId]?.chaveAcesso && (
+              <p><span className="font-semibold">Chave:</span> {nfceDetailMap[errorVendaId]?.chaveAcesso}</p>
+            )}
+            {nfceDetailMap[errorVendaId]?.protocolo && (
+              <p><span className="font-semibold">Protocolo:</span> {nfceDetailMap[errorVendaId]?.protocolo}</p>
+            )}
+            {nfceDetailMap[errorVendaId]?.criadoEm && (
+              <p><span className="font-semibold">Data log:</span> {formatDate(nfceDetailMap[errorVendaId]!.criadoEm!)}</p>
+            )}
           </div>
         )}
       </Modal>

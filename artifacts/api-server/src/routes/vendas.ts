@@ -1,4 +1,3 @@
-// in: artifacts/api-server/src/routes/vendas.ts
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import {
@@ -8,6 +7,7 @@ import {
   sessoesCaixaTable,
   fiadosTable,
   clientesTable,
+  nfceLogsTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
 import { RegistrarVendaBody } from "@workspace/api-zod";
@@ -16,20 +16,95 @@ import { imprimirDanfeSimplificado } from "../services/danfe.service";
 
 const router: IRouter = Router();
 
-// ... (as rotas GET não mudam e estão corretas)
 router.get("/", async (req, res) => {
-    // ...
+  const { data, data_inicio, data_fim, categoria, limit } = req.query as {
+    data?: string;
+    data_inicio?: string;
+    data_fim?: string;
+    categoria?: string;
+    limit?: string;
+  };
+
+  const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
+  const conditions = [];
+  if (data) {
+    const start = new Date(data);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(data);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(gte(vendasTable.criado_em, start));
+    conditions.push(lte(vendasTable.criado_em, end));
+  }
+  if (data_inicio) {
+    const start = new Date(data_inicio);
+    start.setHours(0, 0, 0, 0);
+    conditions.push(gte(vendasTable.criado_em, start));
+  }
+  if (data_fim) {
+    const end = new Date(data_fim);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(vendasTable.criado_em, end));
+  }
+  if (categoria) conditions.push(eq(vendasTable.categoria, categoria));
+
+  const vendas = await db
+    .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
+    .from(vendasTable)
+    .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(vendasTable.criado_em))
+    .limit(lim);
+
+  res.json(
+    vendas.map(({ venda, cliente_nome }) => ({
+      ...venda,
+      cliente_nome,
+      criado_em: venda.criado_em.toISOString(),
+    })),
+  );
 });
 router.get("/resumo/hoje", async (req, res) => {
-    // ...
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const amanha = new Date(hoje);
+  amanha.setDate(amanha.getDate() + 1);
+  const vendas = await db
+    .select()
+    .from(vendasTable)
+    .where(and(gte(vendasTable.criado_em, hoje), lte(vendasTable.criado_em, amanha)));
+  const resumo = {
+    total: 0,
+    total_dinheiro: 0,
+    total_pix: 0,
+    total_cartao: 0,
+    total_fiado: 0,
+    num_vendas: vendas.length,
+    mercado: 0,
+    cozinha: 0,
+    feira: 0,
+  };
+  for (const v of vendas) {
+    resumo.total += v.total;
+    if (v.pagamento === "dinheiro") resumo.total_dinheiro += v.total;
+    if (v.pagamento === "pix") resumo.total_pix += v.total;
+    if (v.pagamento === "cartao") resumo.total_cartao += v.total;
+    if (v.pagamento === "fiado") resumo.total_fiado += v.total;
+    if (v.categoria === "mercado") resumo.mercado += v.total;
+    if (v.categoria === "cozinha") resumo.cozinha += v.total;
+    if (v.categoria === "feira") resumo.feira += v.total;
+  }
+  res.json(resumo);
 });
 router.get("/:id/itens", async (req, res) => {
-    // ...
+  const id = parseInt(req.params.id);
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, id));
+  res.json(itens);
 });
 
 
 router.post("/", async (req, res) => {
   const data = RegistrarVendaBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
 
   const sessao = await db.query.sessoesCaixaTable.findFirst({
     where: eq(sessoesCaixaTable.status, "aberto"),
@@ -38,16 +113,13 @@ router.post("/", async (req, res) => {
   const subtotal = data.itens.reduce((acc, item) => acc + item.quantidade * item.preco_unit, 0);
   const total = Math.max(0, subtotal - (data.desconto ?? 0));
 
-  // CORREÇÃO: Mapear 'debito' e 'credito' para 'cartao' antes de salvar no banco
-  const pagamentoParaSalvar = (data.pagamento === "debito" || data.pagamento === "credito") ? "cartao" : data.pagamento;
-
   const [venda] = await db.insert(vendasTable)
     .values({
       sessao_id: sessao?.id ?? null,
       categoria: data.categoria,
       total,
       desconto: data.desconto ?? 0,
-      pagamento: pagamentoParaSalvar, // Usar a variável corrigida
+      pagamento: data.pagamento,
       cliente_id: data.cliente_id ?? null,
       observacao: data.observacao ?? null,
     })
@@ -65,13 +137,13 @@ router.post("/", async (req, res) => {
       produto_id: item.produto_id,
       nome_snap,
       quantidade: item.quantidade,
-      unidades: item.unidades,
+      unidades: null,
       preco_unit: item.preco_unit,
       subtotal: item.quantidade * item.preco_unit,
     }).returning();
     insertedItensVenda.push(insertedItem);
 
-    const qtdBaixaEstoque = (produto.categoria === "feira" && item.unidades != null && item.unidades > 0) ? item.unidades : item.quantidade;
+    const qtdBaixaEstoque = item.quantidade;
     const novoEstoque = produto.estoque - qtdBaixaEstoque;
     await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
   }
@@ -86,12 +158,11 @@ router.post("/", async (req, res) => {
   }
 
   if (sessao) {
-    // CORREÇÃO: Atualizar o total_cartao para débito e crédito
-    const updates: Partial<typeof sessoesCaixaTable.$inferInsert> = {};
-    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}`;
-    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}`;
-    if (data.pagamento === "debito" || data.pagamento === "credito") updates.total_cartao = sql`total_cartao + ${total}`;
-    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}`;
+    const updates: Record<string, number> = {};
+    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}` as unknown as number;
+    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}` as unknown as number;
+    if (data.pagamento === "cartao") updates.total_cartao = sql`total_cartao + ${total}` as unknown as number;
+    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}` as unknown as number;
 
     if (Object.keys(updates).length > 0) {
       await db.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
@@ -103,20 +174,68 @@ router.post("/", async (req, res) => {
     const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
     const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
 
-    // A venda original (com debito/credito) é passada para a SEFAZ
-    const vendaParaSefaz = { ...venda, pagamento: data.pagamento };
+    const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
+    const vendaParaSefaz = {
+      ...venda,
+      observacao:
+        cpfNota.length === 11
+          ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
+          : venda.observacao,
+    };
 
     const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
 
     if (emissao.success && emissao.xmlAutorizado) {
       await imprimirDanfeSimplificado(emissao.qrCodeUrl || "", emissao.chaveAcesso || "", emissao.xmlAutorizado);
     }
-    res.status(201).json({ ...venda, criado_em: venda.criado_em.toISOString(), nfce_status: 'autorizada' });
+    res.status(201).json({
+      ...venda,
+      criado_em: venda.criado_em.toISOString(),
+      nfce_status: emissao.success ? "autorizada" : emissao.status,
+      nfce_mensagem: emissao.mensagem ?? null,
+    });
   } catch (error: any) {
     req.log.error({ err: error, vendaId: venda.id }, "Falha ao emitir NFC-e ou imprimir.");
-    await db.update(vendasTable).set({ observacao: `FALHA FISCAL: ${error.message}` }).where(eq(vendasTable.id, venda.id));
-    res.status(201).json({ ...venda, criado_em: venda.criado_em.toISOString(), nfce_status: 'erro', nfce_mensagem: error.message });
+    const [ultimoLog] = await db
+      .select()
+      .from(nfceLogsTable)
+      .where(eq(nfceLogsTable.venda_id, venda.id))
+      .orderBy(desc(nfceLogsTable.criado_em))
+      .limit(1);
+    res.status(201).json({
+      ...venda,
+      criado_em: venda.criado_em.toISOString(),
+      nfce_status: ultimoLog?.status || "erro",
+      nfce_mensagem: error.message,
+    });
   }
+});
+
+router.put("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ ok: false, message: "id invalido" });
+    return;
+  }
+  const payload = req.body as Partial<{
+    pagamento: "dinheiro" | "pix" | "cartao" | "fiado";
+    cliente_id: number | null;
+    observacao: string | null;
+  }>;
+  const [updated] = await db
+    .update(vendasTable)
+    .set({
+      pagamento: payload.pagamento,
+      cliente_id: payload.cliente_id,
+      observacao: payload.observacao,
+    })
+    .where(eq(vendasTable.id, id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+  res.json({ ...updated, criado_em: updated.criado_em.toISOString() });
 });
 
 export default router;

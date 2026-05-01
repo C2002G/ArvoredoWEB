@@ -74,6 +74,7 @@ router.post("/", async (req, res) => {
       .insert(produtosTable)
       .values({
         ...data,
+        unidade: data.categoria === "feira" ? "kg" : data.unidade,
         codigo: normalizeCodigo(data.codigo),
         cfop: typeof rawBody.cfop === "string" ? rawBody.cfop : undefined,
         cest: typeof rawBody.cest === "string" ? rawBody.cest : undefined,
@@ -102,6 +103,7 @@ router.put("/:id", async (req, res) => {
       .update(produtosTable)
       .set({
         ...data,
+        ...(data.categoria === "feira" ? { unidade: "kg" } : {}),
         ...(data.codigo !== undefined ? { codigo: normalizeCodigo(data.codigo) } : {}),
         ...(typeof rawBody.cfop === "string" ? { cfop: rawBody.cfop } : {}),
         ...(typeof rawBody.cest === "string" ? { cest: rawBody.cest } : {}),

@@ -11,7 +11,7 @@ export interface CartItem {
   is_cozinha: boolean;
   is_feira: boolean;
   unidade: string;
-  /** Feira: número de unidades (peças) vendidas. Demais: espelha a quantidade inteira. */
+  /** Legado: mantido para compatibilidade de tipos, sem uso na feira. */
   unidades: number;
 }
 
@@ -19,10 +19,10 @@ interface CartStore {
   items: CartItem[];
   desconto: number;
   addItem: (produto: Produto) => void;
-  addWeightedItem: (produto: Produto, pesoKg: number, unidadesPecas?: number) => void;
+  addWeightedItem: (produto: Produto, pesoKg: number) => void;
   removeItem: (produtoId: number) => void;
   updateQuantity: (produtoId: number, delta: number) => void;
-  setFeiraPesoUnidades: (produtoId: number, next: { peso_kg: number; unidades: number }) => void;
+  setFeiraPesoUnidades: (produtoId: number, next: { peso_kg: number }) => void;
   setDesconto: (val: number) => void;
   clearCart: () => void;
   getTotal: () => number;
@@ -75,10 +75,9 @@ export const useCart = create<CartStore>((set, get) => ({
     });
   },
 
-  addWeightedItem: (produto, pesoKg, unidadesPecas) => {
+  addWeightedItem: (produto, pesoKg) => {
     const peso = Number(pesoKg.toFixed(3));
     if (peso <= 0) return;
-    const u = unidadesPecas != null && unidadesPecas > 0 ? Math.max(1, Math.floor(unidadesPecas)) : 1;
 
     set((state) => {
       const existing = state.items.find((i) => i.produto_id === produto.id);
@@ -91,7 +90,7 @@ export const useCart = create<CartStore>((set, get) => ({
               ? {
                   ...i,
                   quantidade: novaQtd,
-                  unidades: i.unidades + u,
+                  unidades: i.unidades,
                   subtotal: Number((novaQtd * i.preco_unit).toFixed(2)),
                 }
               : i,
@@ -111,7 +110,7 @@ export const useCart = create<CartStore>((set, get) => ({
             is_cozinha: false,
             is_feira: true,
             unidade: produto.unidade,
-            unidades: u,
+            unidades: 0,
           },
         ],
       };
@@ -149,7 +148,6 @@ export const useCart = create<CartStore>((set, get) => ({
 
   setFeiraPesoUnidades: (produtoId, next) => {
     const peso = Number(next.peso_kg.toFixed(3));
-    const un = Math.max(1, Math.floor(next.unidades));
     if (peso <= 0) return;
     set((state) => ({
       items: state.items.map((i) =>
@@ -157,7 +155,7 @@ export const useCart = create<CartStore>((set, get) => ({
           ? {
               ...i,
               quantidade: peso,
-              unidades: un,
+              unidades: i.unidades,
               subtotal: Number((peso * i.preco_unit).toFixed(2)),
             }
           : i,
@@ -187,7 +185,6 @@ export const useCart = create<CartStore>((set, get) => ({
         quantidade: i.quantidade,
         preco_unit: i.preco_unit,
       };
-      if (i.is_feira) o.unidades = i.unidades;
       return o;
     });
   },

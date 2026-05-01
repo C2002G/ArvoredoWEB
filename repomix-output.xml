@@ -179,6 +179,7 @@ deployment/SQL/2026-04-24-itens-venda-unidades.sql
 deployment/SQL/criar-banco.sql
 doge.png
 estabelecimento2.0.md
+guia.md
 kiara/favicon.ico
 kiara/kiara.png
 lib/api-client-react/package.json
@@ -249,6 +250,7 @@ lib/db/src/schema/vendas.ts
 lib/db/tsconfig.json
 modelo-nota/Captura de tela 2026-04-24 154017.png
 modelo-nota/fabio.pdf
+ngc
 package.json
 pnpm-workspace.yaml
 README.md
@@ -260,515 +262,228 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="artifacts/api-server/src/routes/nfce.ts">
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { nfceLogsTable } from "@workspace/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { reimprimirDanfeSimplificado } from "../services/danfe.service";
+<file path="guia.md">
+# Guia de Atualizacao e Operacao Fiscal (UniNFe)
 
-const router: IRouter = Router();
+Este guia cobre:
+- como atualizar via `git pull` em **desenvolvimento**, **PC de teste** e **estabelecimento (producao)**;
+- o que configurar para emissao NFC-e via **UniNFe**;
+- onde alterar **homologacao x producao**;
+- checklist de validacao;
+- melhorias futuras (docker, escalabilidade e robustez).
 
-router.get("/status/:vendaId", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
+## 1) O que mudou no sistema
 
-  const [log] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
+- A emissao fiscal passou a usar o padrao de pastas do UniNFe:
+  - grava XML em `.../<CNPJ>/Envio`
+  - aguarda resposta em `.../<CNPJ>/Retorno`
+- O servico fiscal agora gera a chave de acesso, monta XML e processa retorno do UniNFe.
+- Dependencia `node-dfe` foi removida do `api-server`.
 
-  if (!log) {
-    res.json({ ok: true, status: "sem_emissao", log: null });
-    return;
-  }
-  res.json({ ok: true, status: log.status, log });
-});
+## 2) Procedimento padrao apos `git pull` (qualquer ambiente)
 
-router.post("/:vendaId/reimprimir", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
+No diretorio raiz do projeto:
 
-  const [log] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
+1. Atualizar codigo:
+   - `git pull`
+2. Atualizar dependencias:
+   - `pnpm install`
+3. Validar compilacao:
+   - `pnpm --filter @workspace/api-server run typecheck`
+   - `pnpm --filter @workspace/api-server run build`
+4. Reiniciar servicos do sistema (backend/frontend e UniNFe se aplicavel).
 
-  if (!log?.xml_autorizado) {
-    res.status(404).json({ ok: false, message: "XML autorizado nao encontrado para reimpressao" });
-    return;
-  }
+Se houver mudanca de schema/migration no futuro, incluir tambem o comando de migration antes de subir.
 
-  await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
-  res.json({ ok: true, message: "Reimpressao enviada para impressora" });
-});
+## 3) Pre-requisitos por maquina
 
-router.post("/:vendaId/cancelar", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
+## 3.1 Desenvolvimento (seu PC)
 
-  const [lastLog] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
+- Node e pnpm instalados (versoes compativeis com o projeto).
+- Banco Postgres acessivel pela `DATABASE_URL`.
+- UniNFe instalado e funcionando.
+- Certificado A1 valido.
+- Impressora termica instalada (se for testar impressao local).
 
-  await db.insert(nfceLogsTable).values({
-    venda_id: vendaId,
-    ambiente: lastLog?.ambiente || "homologacao",
-    status: "erro",
-    chave_acesso: lastLog?.chave_acesso || null,
-    mensagem_status_sefaz:
-      "Cancelamento NFC-e solicitado. Rota em modo esboco aguardando integracao node-dfe.",
-  });
+## 3.2 PC de teste
 
-  res.status(202).json({
-    ok: true,
-    message: "Solicitacao de cancelamento registrada (esboco).",
-  });
-});
+- Mesmo checklist do desenvolvimento.
+- Preferencia: certificado e dados dedicados de homologacao.
+- Confirmar que o caminho do UniNFe existe e permite escrita.
 
-export default router;
+## 3.3 Estabelecimento (producao)
+
+- UniNFe instalado como servico/processo estavel.
+- Certificado A1 oficial da empresa.
+- CSC de producao correto.
+- Backup de banco e plano de rollback antes de atualizar.
+
+## 4) Configuracoes obrigatorias
+
+## 4.1 Variaveis de ambiente (`.env`)
+
+Minimo necessario:
+
+- `DATABASE_URL`
+- `PORT`
+- `UNINFE_DIR` (recomendado definir explicitamente)
+  - Exemplo: `UNINFE_DIR=C:\\UniNFe`
+- Impressao (opcional/necessario conforme ambiente):
+  - `PRINTER_NAME` ou `PRINTER_VID`/`PRINTER_PID`
+
+Observacao:
+- O codigo usa por padrao `C:\\UniNFe` caso `UNINFE_DIR` nao esteja definido.
+- Evite versionar senha/caminho de certificado no `.env` do repositorio.
+
+## 4.2 Configuracao fiscal no banco (`config_fiscal`)
+
+A emissao depende dos campos em `config_fiscal`, principalmente:
+
+- dados do emitente (`razao_social`, `cnpj`, `ie`, endereco);
+- `crt`, `cod_municipio`;
+- `csc_id` e `csc_token`;
+- `caminho_certificado` e `senha_certificado`;
+- `ambiente` (`homologacao` ou `producao`).
+
+## 4.3 UniNFe
+
+No UniNFe, garantir:
+
+- empresa/CNPJ configurado corretamente;
+- certificado A1 associado;
+- ambiente correspondente ao desejado;
+- monitoramento das pastas `Envio` e `Retorno` para o CNPJ;
+- permissao de leitura/escrita nas pastas.
+
+## 5) Onde trocar Homologacao x Producao
+
+Trocar em **todos** os pontos abaixo:
+
+1. **Sistema (banco / config fiscal)**  
+   Campo `config_fiscal.ambiente`:
+   - `homologacao` => SEFAZ ambiente 2
+   - `producao` => SEFAZ ambiente 1
+
+2. **UniNFe**  
+   Ambiente da empresa no UniNFe deve coincidir com o ambiente acima.
+
+3. **Credenciais fiscais**
+   - CSC ID/TOKEN corretos para o ambiente.
+   - Certificado valido para o CNPJ emissor.
+
+4. **Dados operacionais**
+   - Em homologacao, usar fluxo de testes.
+   - Em producao, validar numeracao, serie, regras fiscais e contingencia.
+
+Importante:
+- Nao basta trocar so `.env`.
+- O ponto principal do ambiente no codigo atual e `config_fiscal.ambiente` + configuracao equivalente no UniNFe.
+
+## 6) Checklist rapido por ambiente
+
+## 6.1 Desenvolvimento
+
+- [ ] `git pull`
+- [ ] `pnpm install`
+- [ ] `pnpm --filter @workspace/api-server run typecheck`
+- [ ] `pnpm --filter @workspace/api-server run build`
+- [ ] confirmar `UNINFE_DIR`
+- [ ] confirmar CNPJ/pastas `Envio` e `Retorno`
+- [ ] emitir 1 venda de teste
+- [ ] verificar `nfce_logs` com status `autorizada` e XML salvo
+- [ ] validar impressao DANFE simplificado
+
+## 6.2 PC de teste
+
+- [ ] repetir checklist de desenvolvimento
+- [ ] validar ambiente `homologacao` em `config_fiscal`
+- [ ] validar ambiente de homologacao no UniNFe
+- [ ] testar erro controlado (ex: dado invalido) para confirmar retorno de rejeicao
+
+## 6.3 Estabelecimento (producao)
+
+- [ ] backup antes da atualizacao
+- [ ] `git pull`
+- [ ] `pnpm install`
+- [ ] build/typecheck
+- [ ] validar `config_fiscal.ambiente = producao`
+- [ ] validar UniNFe em producao
+- [ ] validar CSC/certificado de producao
+- [ ] emitir venda real de baixo risco
+- [ ] conferir autorizacao e impressao no caixa
+
+## 7) Sobre a impressao (ponto que falta fechar)
+
+O fluxo atual ja retorna:
+- XML autorizado;
+- chave de acesso;
+- URL do QR Code extraida do XML de retorno.
+
+Para estabilizar impressao no RS:
+
+- garantir que a impressora USB esteja correta (`PRINTER_VID`/`PRINTER_PID`);
+- validar layout de DANFE simplificado em bobina real;
+- incluir fallback de reimpressao a partir do `xml_autorizado` salvo;
+- registrar falhas de impressao separadas das falhas de autorizacao.
+
+## 8) Melhorias futuras recomendadas
+
+## 8.1 Infraestrutura e deploy
+
+- **Dockerizar** backend + frontend + banco (ou banco gerenciado) para padronizar ambientes.
+- Criar `docker-compose` para ambiente de teste local.
+- Padronizar script de deploy (pull, install, build, restart, health-check).
+
+## 8.2 Confiabilidade fiscal
+
+- Worker/fila para emissao fiscal (evita bloquear fluxo de venda).
+- Retentativas com backoff no polling de retorno do UniNFe.
+- Job de reconciliacao para notas "processando" pendentes.
+- Alertas para notas com erro/rejeicao.
+
+## 8.3 Observabilidade
+
+- Dashboard de `nfce_logs` (status por periodo, taxa de erro, tempo medio).
+- Correlation ID por venda/emissao.
+- Logs estruturados com motivo de rejeicao e contexto.
+
+## 8.4 Seguranca
+
+- Remover segredos de `.env` versionado.
+- Usar cofre de segredos/variaveis protegidas por ambiente.
+- Rotacionar senha/certificado quando necessario.
+
+## 8.5 Escalabilidade
+
+- Separar servico fiscal em modulo/processo dedicado.
+- Cache de configuracao fiscal com invalidacao controlada.
+- Preparar multiponto de venda (mais de um caixa simultaneo) com controle de concorrencia.
+
+## 9) Plano de validacao final (recomendado)
+
+1. Validar ponta a ponta em desenvolvimento (homologacao).
+2. Repetir no PC de teste com checklist completo.
+3. Executar virada assistida para producao no estabelecimento.
+4. Monitorar primeiras emissões e impressões com log aberto.
+
+Se quiser, o proximo passo pode ser criar um script unico de atualizacao (ex: `update-and-validate.bat`) para reduzir erro operacional nos 3 ambientes.
 </file>
 
-<file path="artifacts/api-server/src/services/danfe.service.ts">
-import escpos from "escpos";
-import USB from "escpos-usb";
-import { XMLParser } from "fast-xml-parser";
-
-type DanfeData = {
-  emitente: string;
-  destinatario: string;
-  numero: string;
-  serie: string;
-  dataEmissao: string;
-  itens: Array<{ descricao: string; qtd: number; unidade: string; valorUnit: number; total: number }>;
-  total: number;
-  desconto: number;
-  valorPago: number;
-  troco: number;
-  pagamentos: Array<{ meio: string; valor: number }>;
-  qrCodeUrl: string;
-  chaveAcesso: string;
-};
-
-function toNumber(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function asArray<T>(value: T | T[] | undefined): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function meioPagamento(cod: string): string {
-  const map: Record<string, string> = {
-    "01": "Dinheiro",
-    "03": "Cartao credito",
-    "04": "Cartao debito",
-    "17": "PIX",
-    "99": "Outros",
-  };
-  return map[cod] || cod;
-}
-
-function money(v: number): string {
-  return `R$ ${v.toFixed(2).replace(".", ",")}`;
-}
-
-function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
-  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
-  const parsed = parser.parse(xmlAutorizado);
-  const nfeProc = parsed?.nfeProc || parsed?.NFe || parsed;
-  const infNFe = nfeProc?.NFe?.infNFe || nfeProc?.infNFe;
-  const ide = infNFe?.ide || {};
-  const emit = infNFe?.emit || {};
-  const dest = infNFe?.dest || {};
-  const total = infNFe?.total?.ICMSTot || {};
-  const pag = infNFe?.pag || {};
-  const infNFeSupl = nfeProc?.NFe?.infNFeSupl || infNFe?.infNFeSupl || {};
-  const prot = nfeProc?.protNFe?.infProt || {};
-  const det = asArray(infNFe?.det);
-  const detPag = asArray(pag?.detPag);
-  const qrcode = qrCodeUrl || infNFeSupl?.qrCode || "";
-  const chave =
-    chaveAcesso ||
-    prot?.chNFe ||
-    String(infNFe?.Id || "").replace(/^NFe/, "");
-
-  return {
-    emitente: emit?.xFant || emit?.xNome || "Emitente",
-    destinatario: dest?.xNome || "Consumidor final",
-    numero: String(ide?.nNF || ""),
-    serie: String(ide?.serie || ""),
-    dataEmissao: String(ide?.dhEmi || ""),
-    itens: det.map((item: any) => ({
-      descricao: item?.prod?.xProd || "Item",
-      qtd: toNumber(item?.prod?.qCom),
-      unidade: item?.prod?.uCom || "UN",
-      valorUnit: toNumber(item?.prod?.vUnCom),
-      total: toNumber(item?.prod?.vProd),
-    })),
-    total: toNumber(total?.vNF),
-    desconto: toNumber(total?.vDesc),
-    valorPago: toNumber(pag?.vTroco ? toNumber(total?.vNF) + toNumber(pag?.vTroco) : total?.vNF),
-    troco: toNumber(pag?.vTroco),
-    pagamentos: detPag.map((item: any) => ({
-      meio: meioPagamento(String(item?.tPag || "")),
-      valor: toNumber(item?.vPag),
-    })),
-    qrCodeUrl: qrcode,
-    chaveAcesso: chave,
-  };
-}
-
-function renderDanfeSimplificado(data: DanfeData): string[] {
-  const lines: string[] = [];
-  lines.push("DANFE NFC-e");
-  lines.push("Documento Auxiliar da Nota Fiscal");
-  lines.push("de Consumidor Eletronica");
-  lines.push("----------------------------------------");
-  lines.push(data.emitente);
-  lines.push(`NF: ${data.numero}  Serie: ${data.serie}`);
-  lines.push(`Emissao: ${data.dataEmissao}`);
-  lines.push(`Dest: ${data.destinatario}`);
-  lines.push("----------------------------------------");
-  lines.push("Itens");
-  for (const item of data.itens) {
-    lines.push(item.descricao.slice(0, 38));
-    lines.push(`${item.qtd} ${item.unidade} x ${money(item.valorUnit)} = ${money(item.total)}`);
-  }
-  lines.push("----------------------------------------");
-  lines.push(`Total: ${money(data.total)}`);
-  if (data.desconto > 0) lines.push(`Desconto: ${money(data.desconto)}`);
-  if (data.pagamentos.length) {
-    lines.push("Pagamentos:");
-    for (const p of data.pagamentos) lines.push(`${p.meio}: ${money(p.valor)}`);
-  }
-  if (data.troco > 0) lines.push(`Troco: ${money(data.troco)}`);
-  lines.push("----------------------------------------");
-  lines.push("Consulte pela chave:");
-  lines.push("https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx");
-  lines.push(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim());
-  lines.push("");
-  lines.push("QR CODE NFC-e:");
-  return lines;
-}
-
-function getUsbDevice() {
-  const vid = Number(process.env.PRINTER_VID || "0x0483");
-  const pid = Number(process.env.PRINTER_PID || "0x5743");
-  return new USB(vid, pid);
-}
-
-export async function imprimirDanfeSimplificado(
-  qrCodeUrl: string,
-  chaveAcesso: string,
-  xmlAutorizado: string,
-) {
-  const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  const lines = renderDanfeSimplificado(data);
-
-  await new Promise<void>((resolve, reject) => {
-    const device = getUsbDevice();
-    const printer = new escpos.Printer(device);
-    device.open((err: Error | null) => {
-      if (err) {
-        reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
-        return;
-      }
-      try {
-        printer.align("ct").style("b");
-        for (const line of lines) printer.text(line);
-        if (data.qrCodeUrl) printer.qrcode(data.qrCodeUrl, 2, 6, "l");
-        printer.text("").cut().close();
-        resolve();
-      } catch (printErr) {
-        reject(printErr);
-      }
-    });
-  });
-}
-
-export async function reimprimirDanfeSimplificado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string) {
-  const parsed = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado);
-}
-</file>
-
-<file path="artifacts/api-server/src/services/sefaz.service.ts">
-// in: artifacts/api-server/src/services/sefaz.service.ts
-import * as nodeDfe from "node-dfe";
-import { db } from "@workspace/db";
-import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
-
-// Compatibilidade com a biblioteca CommonJS
-const dfeLib = nodeDfe as any;
-const Certificado = dfeLib.Certificado;
-const Dfe = dfeLib.Dfe;
-const NFe = dfeLib.NFe;
-const Nfce = dfeLib.Nfce;
-
-// Carrega a configuração fiscal do banco de dados (pode ser otimizado com cache)
-async function getFiscalConfig() {
-  const [config] = await db.select().from(configFiscalTable).limit(1);
-  if (!config) {
-    throw new Error("Configuração fiscal não encontrada no banco de dados.");
-  }
-  return config;
-}
-
-// Mapeia o pagamento do seu sistema para os códigos da SEFAZ
-function getPagamentoSefaz(venda: Venda) {
-  const observacao = venda.observacao?.toLowerCase() || "";
-
-  switch (venda.pagamento) {
-    case "dinheiro": return { tPag: "01", vPag: venda.total }; // Dinheiro
-    case "pix": return { tPag: "17", vPag: venda.total }; // PIX
-    case "cartao":
-      if (observacao.includes("debito")) {
-        return { tPag: "04", vPag: venda.total, card: { tpIntegra: "2", tBand: "99" } }; // Débito
-      }
-      return { tPag: "03", vPag: venda.total, card: { tpIntegra: "2", tBand: "99" } }; // Crédito
-    case "fiado": return { tPag: "99", vPag: venda.total }; // Outros (crediário)
-    default: return { tPag: "99", vPag: venda.total }; // Outros
-  }
-}
-
-// Função principal de emissão
-export async function emitirNfce(venda: Venda, itens: ItemVenda[], produtos: Produto[], cliente?: Cliente | null) {
-  const config = await getFiscalConfig();
-
-  // 1. Inserir log inicial
-  const [log] = await db.insert(nfceLogsTable).values({
-    venda_id: venda.id,
-    ambiente: config.ambiente,
-    status: 'processando',
-  }).returning();
-
-  try {
-    const certificado = Certificado.fromPfx(
-      config.caminho_certificado,
-      config.senha_certificado
-    );
-
-    const dfe = new Dfe(certificado, {
-      uf: "RS",
-      ambiente: config.ambiente === "homologacao" ? "2" : "1",
-      modelo: "65", // NFC-e
-    });
-
-    const nfce = new Nfce();
-    nfce.setEmitente({
-      razaoSocial: config.razao_social,
-      nomeFantasia: config.nome_fantasia,
-      cnpj: config.cnpj,
-      ie: config.ie,
-      crt: config.crt,
-      endereco: {
-        logradouro: config.endereco,
-        numero: config.numero,
-        bairro: config.bairro,
-        municipio: config.cidade,
-        uf: config.uf,
-        cep: config.cep,
-        codigoMunicipio: config.cod_municipio,
-      },
-    });
-
-    if (cliente?.cpf) {
-        nfce.setDestinatario({
-            cpf: cliente.cpf,
-            nome: cliente.nome,
-            indicadorContribuinte: "9" // 9 = Não contribuinte
-        })
-    }
-    
-    itens.forEach((item, index) => {
-        const produto = produtos.find(p => p.id === item.produto_id);
-        if (!produto) return; // Segurança
-        nfce.adicionarItem({
-            numero: index + 1,
-            codigo: String(item.produto_id),
-            descricao: item.nome_snap,
-            quantidade: item.quantidade,
-            unidade: produto.unidade || "UN",
-            valor: item.preco_unit,
-            cfop: produto.cfop || "5102",
-            ncm: produto.ncm || "00000000",
-        });
-    });
-
-    nfce.adicionarPagamento(getPagamentoSefaz(venda));
-
-    nfce.setInformacoes({
-      versao: "4.00",
-      operacao: "1", // 1=Saída
-      finalidade: "1", // 1=Normal
-      consumidorFinal: "1",
-      presenca: "1", // 1=Presencial
-    });
-
-    const xmlEnviado = await dfe.gerarNfce(nfce, {
-        idCSC: config.csc_id,
-        CSC: config.csc_token,
-    });
-    
-    await db.update(nfceLogsTable).set({ xml_enviado: xmlEnviado.xml }).where(eq(nfceLogsTable.id, log.id));
-
-    const retorno: any = await dfe.enviarNfce(xmlEnviado);
-
-    if (retorno.isAutorizada()) {
-        const xmlAutorizado = NFe.gerarXmlProcesso(xmlEnviado, retorno.retorno);
-        await db.update(nfceLogsTable).set({
-            status: 'autorizada',
-            chave_acesso: retorno.getChave(),
-            protocolo: retorno.getProtocolo(),
-            codigo_status_sefaz: retorno.getProtocoloStatus(),
-            mensagem_status_sefaz: retorno.getProtocoloMotivo(),
-            xml_autorizado: xmlAutorizado,
-            json_retorno_sefaz: retorno.retorno,
-        }).where(eq(nfceLogsTable.id, log.id));
-        
-        return { success: true, retorno, xmlAutorizado, qrCodeUrl: xmlEnviado.getQrCode(), chaveAcesso: retorno.getChave() };
-    } else {
-        await db.update(nfceLogsTable).set({
-            status: 'rejeitada',
-            chave_acesso: retorno.getChave(),
-            codigo_status_sefaz: retorno.getRejeicaoStatus(),
-            mensagem_status_sefaz: retorno.getRejeicaoMotivo(),
-            json_retorno_sefaz: retorno.retorno,
-        }).where(eq(nfceLogsTable.id, log.id));
-
-        throw new Error(`[${retorno.getRejeicaoStatus()}] ${retorno.getRejeicaoMotivo()}`);
-    }
-
-  } catch (error: any) {
-    await db.update(nfceLogsTable).set({
-      status: 'erro',
-      mensagem_status_sefaz: error.message || "Erro desconhecido ao emitir NFC-e",
-    }).where(eq(nfceLogsTable.id, log.id));
-    
-    console.error("Erro ao emitir NFC-e:", error);
-    throw error;
-  }
-}
-</file>
-
-<file path="artifacts/api-server/src/types/escpos.d.ts">
-declare module "escpos";
-declare module "escpos-usb";
-</file>
-
-<file path="lib/db/seed.ts">
-import "dotenv/config";
-import { db, pool } from "./src";
-import { configFiscalTable } from "./src/schema";
-
-async function seedFiscalConfig() {
-  const [existing] = await db.select().from(configFiscalTable).limit(1);
-  if (existing) {
-    console.log("config_fiscal ja possui registro. Seed ignorado.");
-    return;
-  }
-
-  await db.insert(configFiscalTable).values({
-    razao_social: "PREENCHER_RAZAO_SOCIAL",
-    nome_fantasia: "PREENCHER_NOME_FANTASIA",
-    cnpj: "00000000000000",
-    ie: "PREENCHER_INSCRICAO_ESTADUAL",
-    crt: "1",
-    endereco: "PREENCHER_ENDERECO",
-    numero: "S/N",
-    bairro: "PREENCHER_BAIRRO",
-    cidade: "PREENCHER_CIDADE",
-    uf: "RS",
-    cep: "00000000",
-    cod_municipio: "0000000",
-    telefone: null,
-    csc_id: "1",
-    csc_token: "540EB3EB-1918-488D-8C7D-5FB4ABAF814C",
-    caminho_certificado:
-      process.env.CAMINHO_CERTIFICADO_A1 || "C:/caminho/para/seu_certificado.pfx",
-    senha_certificado: process.env.SENHA_CERTIFICADO_A1 || "sua_senha_segura",
-    ambiente: "homologacao",
-  });
-
-  console.log("Seed fiscal concluido com sucesso.");
-}
-
-seedFiscalConfig()
-  .catch((err) => {
-    console.error("Falha no seed fiscal:", err);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await pool.end();
-  });
-</file>
-
-<file path="lib/db/src/schema/fiscal.ts">
-import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
-import { vendasTable } from "./vendas";
-
-export const ambienteSefazEnum = pgEnum("ambiente_sefaz", ["producao", "homologacao"]);
-export const statusNfceEnum = pgEnum("status_nfce", ["processando", "autorizada", "rejeitada", "erro"]);
-
-// Tabela para guardar a configuração fiscal da empresa
-export const configFiscalTable = pgTable("config_fiscal", {
-  id: serial("id").primaryKey(),
-  razao_social: text("razao_social").notNull(),
-  nome_fantasia: text("nome_fantasia").notNull(),
-  cnpj: text("cnpj").notNull(),
-  ie: text("ie").notNull(),
-  crt: text("crt").notNull(), // Código de Regime Tributário (ex: "1" para Simples Nacional)
-  endereco: text("endereco").notNull(),
-  numero: text("numero").notNull(),
-  bairro: text("bairro").notNull(),
-  cidade: text("cidade").notNull(),
-  uf: text("uf").notNull(),
-  cep: text("cep").notNull(),
-  cod_municipio: text("cod_municipio").notNull(),
-  telefone: text("telefone"),
-  csc_id: text("csc_id").notNull(),
-  csc_token: text("csc_token").notNull(),
-  caminho_certificado: text("caminho_certificado").notNull(),
-  senha_certificado: text("senha_certificado").notNull(),
-  ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
-
-// Tabela para logar todas as tentativas de emissão de NFC-e
-export const nfceLogsTable = pgTable("nfce_logs", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  status: statusNfceEnum("status").notNull().default("processando"),
-  ambiente: ambienteSefazEnum("ambiente").notNull(),
-  chave_acesso: text("chave_acesso"),
-  protocolo: text("protocolo"),
-  codigo_status_sefaz: integer("codigo_status_sefaz"),
-  mensagem_status_sefaz: text("mensagem_status_sefaz"),
-  xml_enviado: text("xml_enviado"),
-  xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
-  json_retorno_sefaz: jsonb("json_retorno_sefaz"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
+<file path="ngc">
+arrumar[m
+  balanca[m
+  fact/pesquisar-barras[m
+  feat/cartao[m
+  feat/dsa[m
+  feat/kiara[m
+  feat/melhorar[m
+  finalizar[m
+  finalzinho[m
+  impressora[m
+* [32mmain[m
+  nfc[m
+  nota[m
+  replit-agent[m
 </file>
 
 <file path=".npmrc">
@@ -1278,6 +993,578 @@ router.post("/testar", async (_req, res) => {
 });
 
 export default router;
+</file>
+
+<file path="artifacts/api-server/src/routes/nfce.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { nfceLogsTable } from "@workspace/db/schema";
+import { desc, eq } from "drizzle-orm";
+import { reimprimirDanfeSimplificado } from "../services/danfe.service";
+
+const router: IRouter = Router();
+
+router.get("/status/:vendaId", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
+
+  const [log] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  if (!log) {
+    res.json({ ok: true, status: "sem_emissao", log: null });
+    return;
+  }
+  res.json({ ok: true, status: log.status, log });
+});
+
+router.post("/:vendaId/reimprimir", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
+
+  const [log] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  if (!log?.xml_autorizado) {
+    res.status(404).json({ ok: false, message: "XML autorizado nao encontrado para reimpressao" });
+    return;
+  }
+
+  await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
+  res.json({ ok: true, message: "Reimpressao enviada para impressora" });
+});
+
+router.post("/:vendaId/cancelar", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
+
+  const [lastLog] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  await db.insert(nfceLogsTable).values({
+    venda_id: vendaId,
+    ambiente: lastLog?.ambiente || "homologacao",
+    status: "erro",
+    chave_acesso: lastLog?.chave_acesso || null,
+    mensagem_status_sefaz:
+      "Cancelamento NFC-e solicitado. Rota em modo esboco aguardando integracao node-dfe.",
+  });
+
+  res.status(202).json({
+    ok: true,
+    message: "Solicitacao de cancelamento registrada (esboco).",
+  });
+});
+
+export default router;
+</file>
+
+<file path="artifacts/api-server/src/services/danfe.service.ts">
+import escpos from "escpos";
+import USB from "escpos-usb";
+import { XMLParser } from "fast-xml-parser";
+
+type DanfeData = {
+  emitente: string;
+  destinatario: string;
+  numero: string;
+  serie: string;
+  dataEmissao: string;
+  itens: Array<{ descricao: string; qtd: number; unidade: string; valorUnit: number; total: number }>;
+  total: number;
+  desconto: number;
+  valorPago: number;
+  troco: number;
+  pagamentos: Array<{ meio: string; valor: number }>;
+  qrCodeUrl: string;
+  chaveAcesso: string;
+};
+
+function toNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function asArray<T>(value: T | T[] | undefined): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function meioPagamento(cod: string): string {
+  const map: Record<string, string> = {
+    "01": "Dinheiro",
+    "03": "Cartao credito",
+    "04": "Cartao debito",
+    "17": "PIX",
+    "99": "Outros",
+  };
+  return map[cod] || cod;
+}
+
+function money(v: number): string {
+  return `R$ ${v.toFixed(2).replace(".", ",")}`;
+}
+
+function formatDateTimeLocal(isoLike: string): string {
+  const d = new Date(isoLike);
+  if (!Number.isFinite(d.getTime())) return isoLike;
+  return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+  const parsed = parser.parse(xmlAutorizado);
+  const nfeProc = parsed?.nfeProc || parsed?.NFe || parsed;
+  const infNFe = nfeProc?.NFe?.infNFe || nfeProc?.infNFe;
+  const ide = infNFe?.ide || {};
+  const emit = infNFe?.emit || {};
+  const dest = infNFe?.dest || {};
+  const total = infNFe?.total?.ICMSTot || {};
+  const pag = infNFe?.pag || {};
+  const infNFeSupl = nfeProc?.NFe?.infNFeSupl || infNFe?.infNFeSupl || {};
+  const prot = nfeProc?.protNFe?.infProt || {};
+  const det = asArray(infNFe?.det);
+  const detPag = asArray(pag?.detPag);
+  const qrcode = qrCodeUrl || infNFeSupl?.qrCode || "";
+  const chave =
+    chaveAcesso ||
+    prot?.chNFe ||
+    String(infNFe?.Id || "").replace(/^NFe/, "");
+
+  return {
+    emitente: emit?.xFant || emit?.xNome || "Emitente",
+    destinatario: dest?.xNome || "Consumidor final",
+    numero: String(ide?.nNF || ""),
+    serie: String(ide?.serie || ""),
+    dataEmissao: formatDateTimeLocal(String(ide?.dhEmi || "")),
+    itens: det.map((item: any) => ({
+      descricao: item?.prod?.xProd || "Item",
+      qtd: toNumber(item?.prod?.qCom),
+      unidade: item?.prod?.uCom || "UN",
+      valorUnit: toNumber(item?.prod?.vUnCom),
+      total: toNumber(item?.prod?.vProd),
+    })),
+    total: toNumber(total?.vNF),
+    desconto: toNumber(total?.vDesc),
+    valorPago: toNumber(pag?.vTroco ? toNumber(total?.vNF) + toNumber(pag?.vTroco) : total?.vNF),
+    troco: toNumber(pag?.vTroco),
+    pagamentos: detPag.map((item: any) => ({
+      meio: meioPagamento(String(item?.tPag || "")),
+      valor: toNumber(item?.vPag),
+    })),
+    qrCodeUrl: qrcode,
+    chaveAcesso: chave,
+  };
+}
+
+function renderDanfeSimplificado(data: DanfeData): string[] {
+  const lines: string[] = [];
+  lines.push("DANFE NFC-e");
+  lines.push("Documento Auxiliar da Nota Fiscal");
+  lines.push("de Consumidor Eletronica");
+  lines.push("----------------------------------------");
+  lines.push(data.emitente);
+  lines.push(`NF: ${data.numero}  Serie: ${data.serie}`);
+  lines.push(`Emissao: ${data.dataEmissao}`);
+  lines.push(`Dest: ${data.destinatario}`);
+  lines.push("----------------------------------------");
+  lines.push("Itens");
+  for (const item of data.itens) {
+    lines.push(item.descricao.slice(0, 38));
+    lines.push(`${item.qtd} ${item.unidade} x ${money(item.valorUnit)} = ${money(item.total)}`);
+  }
+  lines.push("----------------------------------------");
+  lines.push(`Total: ${money(data.total)}`);
+  if (data.desconto > 0) lines.push(`Desconto: ${money(data.desconto)}`);
+  if (data.pagamentos.length) {
+    lines.push("Pagamentos:");
+    for (const p of data.pagamentos) lines.push(`${p.meio}: ${money(p.valor)}`);
+  }
+  if (data.troco > 0) lines.push(`Troco: ${money(data.troco)}`);
+  lines.push("----------------------------------------");
+  lines.push("Consulte pela chave:");
+  lines.push("https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx");
+  lines.push(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim());
+  lines.push("");
+  lines.push("QR CODE NFC-e:");
+  return lines;
+}
+
+function getUsbDevice() {
+  const vid = Number(process.env.PRINTER_VID || "0x0483");
+  const pid = Number(process.env.PRINTER_PID || "0x5743");
+  return new USB(vid, pid);
+}
+
+export async function imprimirDanfeSimplificado(
+  qrCodeUrl: string,
+  chaveAcesso: string,
+  xmlAutorizado: string,
+) {
+  const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
+  const lines = renderDanfeSimplificado(data);
+
+  await new Promise<void>((resolve, reject) => {
+    const device = getUsbDevice();
+    const printer = new escpos.Printer(device);
+    device.open((err: Error | null) => {
+      if (err) {
+        reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
+        return;
+      }
+      try {
+        printer.align("ct").style("b").size(1, 1).text(" ");
+        for (const line of lines) printer.style("b").text(line);
+        if (data.qrCodeUrl) printer.qrcode(data.qrCodeUrl, 2, 6, "l");
+        printer.text(" ").cut().close();
+        resolve();
+      } catch (printErr) {
+        reject(printErr);
+      }
+    });
+  });
+}
+
+export async function reimprimirDanfeSimplificado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string) {
+  const parsed = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
+  await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado);
+}
+</file>
+
+<file path="artifacts/api-server/src/services/sefaz.service.ts">
+// in: artifacts/api-server/src/services/sefaz.service.ts
+import { db } from "@workspace/db";
+import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+import { existsSync, promises as fs } from "node:fs";
+import path from "node:path";
+import { XMLBuilder } from "fast-xml-parser";
+
+async function getFiscalConfig() {
+  const [config] = await db.select().from(configFiscalTable).limit(1);
+  if (!config) throw new Error("Configuração fiscal não encontrada no banco de dados.");
+  return config;
+}
+
+function gerarCodigoNumerico(venda: Venda, dataEmi: Date) {
+  const nNF9 = String(venda.id).padStart(9, "0");
+  const nNF8 = nNF9.slice(-8);
+  const seed = Number(`${venda.id}${dataEmi.getTime()}`.slice(-12));
+  let cNF = String(seed % 100_000_000).padStart(8, "0");
+  if (cNF === nNF8) {
+    cNF = String((Number(cNF) + 1) % 100_000_000).padStart(8, "0");
+  }
+  return cNF;
+}
+
+// Gera o DV Modulo 11 e a Chave de 44 digitos
+function gerarChaveAcesso(config: any, venda: Venda, dataEmi: Date) {
+  const cUF = "43"; // 43 = RS
+  const AAMM = dataEmi.toISOString().substring(2, 7).replace("-", "");
+  const CNPJ = config.cnpj.replace(/\D/g, "").padStart(14, "0");
+  const mod = "65"; // NFC-e
+  const serie = "001";
+  const nNF = String(venda.id).padStart(9, "0");
+  const tpEmis = "1"; // Normal
+  const cNF = gerarCodigoNumerico(venda, dataEmi);
+  const chaveSemDV = `${cUF}${AAMM}${CNPJ}${mod}${serie}${nNF}${tpEmis}${cNF}`;
+
+  let soma = 0;
+  let peso = 2;
+  for (let i = 42; i >= 0; i--) {
+    soma += parseInt(chaveSemDV[i]) * peso;
+    peso = peso === 9 ? 2 : peso + 1;
+  }
+  const resto = soma % 11;
+  const dv = resto === 0 || resto === 1 ? 0 : 11 - resto;
+  return `${chaveSemDV}${dv}`;
+}
+
+function resolveUniNFeBaseDir(cnpjNumerico: string) {
+  const configuredDir = process.env.UNINFE_DIR;
+  const candidates = [
+    configuredDir,
+    "C:\\Unimake\\UniNFe",
+    "C:\\UniNFe",
+  ].filter((v): v is string => Boolean(v && v.trim()));
+
+  for (const baseDir of candidates) {
+    const pastaEnvio = path.join(baseDir, cnpjNumerico, "Envio");
+    if (existsSync(pastaEnvio)) {
+      return baseDir;
+    }
+  }
+
+  return configuredDir || "C:\\UniNFe";
+}
+
+function formatarDhEmi(data: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ano = data.getFullYear();
+  const mes = pad(data.getMonth() + 1);
+  const dia = pad(data.getDate());
+  const hora = pad(data.getHours());
+  const min = pad(data.getMinutes());
+  const seg = pad(data.getSeconds());
+  const offsetMin = -data.getTimezoneOffset();
+  const sinal = offsetMin >= 0 ? "+" : "-";
+  const offsetAbs = Math.abs(offsetMin);
+  const offsetHora = pad(Math.floor(offsetAbs / 60));
+  const offsetMinutos = pad(offsetAbs % 60);
+  return `${ano}-${mes}-${dia}T${hora}:${min}:${seg}${sinal}${offsetHora}:${offsetMinutos}`;
+}
+
+async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string) {
+  try {
+    const arquivos = await fs.readdir(pastaRetorno);
+    const candidatos = arquivos.filter((nome) => nome.endsWith("-pro-rec.xml"));
+    for (const nome of candidatos) {
+      const conteudo = await fs.readFile(path.join(pastaRetorno, nome), "utf8");
+      if (!conteudo.includes(chaveAcesso)) continue;
+      const stats = [...conteudo.matchAll(/<cStat>(\d+)<\/cStat>/g)].map((m) => m[1]);
+      const motivos = [...conteudo.matchAll(/<xMotivo>([^<]+)<\/xMotivo>/g)].map((m) => m[1]);
+      const stat = stats.at(-1);
+      const motivo = motivos.at(-1);
+      if (stat === "100") {
+        return { autorizada: true, xml: conteudo };
+      }
+      if (stat) {
+        return { rejeitada: true, mensagem: `[${stat}] ${motivo || "Rejeicao sem motivo detalhado"}` };
+      }
+      return { rejeitada: false };
+    }
+  } catch {
+    // Ignora erro de leitura temporario de arquivos em processamento.
+  }
+  return null;
+}
+
+export async function emitirNfce(
+  venda: Venda,
+  itens: ItemVenda[],
+  produtos: Produto[],
+  cliente?: Cliente | null,
+) {
+  const config = await getFiscalConfig();
+  const [log] = await db.insert(nfceLogsTable).values({
+    venda_id: venda.id,
+    ambiente: config.ambiente,
+    status: "processando",
+  }).returning();
+
+  try {
+    const cnpjNumerico = config.cnpj.replace(/\D/g, "");
+    if (cnpjNumerico.length !== 14 || /^0+$/.test(cnpjNumerico)) {
+      throw new Error(
+        `CNPJ fiscal invalido em config_fiscal (${config.cnpj}). Corrija o cadastro fiscal antes de emitir NFC-e.`,
+      );
+    }
+    const uninfeDir = resolveUniNFeBaseDir(cnpjNumerico);
+    const pastaEnvio = path.join(uninfeDir, cnpjNumerico, "Envio");
+    const pastaRetorno = path.join(uninfeDir, cnpjNumerico, "Retorno");
+
+    if (!existsSync(pastaEnvio)) {
+      throw new Error(`Pasta de envio do UniNFe não encontrada em ${pastaEnvio}. Venda salva localmente.`);
+    }
+
+    const dataEmi = new Date();
+    const chaveAcesso = gerarChaveAcesso(config, venda, dataEmi);
+    const cpfMatch = (venda.observacao || "").match(/CPF_NA_NOTA:(\d{11})/);
+    const cpfDestinatario = cpfMatch?.[1] || cliente?.cpf;
+
+    const nfeObj = {
+      NFe: {
+        "@_xmlns": "http://www.portalfiscal.inf.br/nfe",
+        infNFe: {
+          "@_versao": "4.00",
+          "@_Id": `NFe${chaveAcesso}`,
+          ide: {
+            cUF: "43",
+            cNF: chaveAcesso.substring(35, 43),
+            natOp: "VENDA PRESENCIAL",
+            mod: "65",
+            serie: "1",
+            nNF: String(venda.id),
+            dhEmi: formatarDhEmi(dataEmi),
+            tpNF: "1",
+            idDest: "1",
+            cMunFG: config.cod_municipio,
+            tpImp: "4",
+            tpEmis: "1",
+            cDV: chaveAcesso.substring(43, 44),
+            tpAmb: config.ambiente === "homologacao" ? "2" : "1",
+            finNFe: "1",
+            indFinal: "1",
+            indPres: "1",
+            procEmi: "0",
+            verProc: "ArvoredoPDV 1.0",
+          },
+          emit: {
+            CNPJ: config.cnpj.replace(/\D/g, ""),
+            xNome: config.razao_social,
+            xFant: config.nome_fantasia,
+            enderEmit: {
+              xLgr: config.endereco,
+              nro: config.numero,
+              xBairro: config.bairro,
+              cMun: config.cod_municipio,
+              xMun: config.cidade,
+              UF: config.uf,
+              CEP: config.cep.replace(/\D/g, ""),
+              cPais: "1058",
+              xPais: "Brasil",
+            },
+            IE: config.ie.replace(/\D/g, ""),
+            CRT: config.crt,
+          },
+          ...(cpfDestinatario ? {
+            dest: {
+              CPF: cpfDestinatario.replace(/\D/g, ""),
+              xNome: cliente?.nome || "CONSUMIDOR",
+              indIEDest: "9",
+            },
+          } : {}),
+          det: itens.map((item, index) => {
+            const p = produtos.find((x) => x.id === item.produto_id);
+            return {
+              "@_nItem": String(index + 1),
+              prod: {
+                cProd: String(item.produto_id),
+                cEAN: p?.codigo || "SEM GTIN",
+                xProd:
+                  config.ambiente === "homologacao" && index === 0
+                    ? "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
+                    : item.nome_snap,
+                NCM: p?.ncm || "00000000",
+                CFOP: p?.cfop || "5102",
+                uCom: p?.unidade || "UN",
+                qCom: item.quantidade.toFixed(4),
+                vUnCom: item.preco_unit.toFixed(4),
+                vProd: item.subtotal.toFixed(2),
+                cEANTrib: p?.codigo || "SEM GTIN",
+                uTrib: p?.unidade || "UN",
+                qTrib: item.quantidade.toFixed(4),
+                vUnTrib: item.preco_unit.toFixed(4),
+                indTot: "1",
+              },
+              imposto: {
+                ICMS: { ICMSSN102: { orig: "0", CSOSN: p?.cst || "102" } },
+                PIS: { PISOutr: { CST: "99", vBC: "0.00", pPIS: "0.00", vPIS: "0.00" } },
+                COFINS: { COFINSOutr: { CST: "99", vBC: "0.00", pCOFINS: "0.00", vCOFINS: "0.00" } },
+              },
+            };
+          }),
+          total: {
+            ICMSTot: {
+              vBC: "0.00", vICMS: "0.00", vICMSDeson: "0.00", vFCP: "0.00",
+              vBCST: "0.00", vST: "0.00", vFCPST: "0.00", vFCPSTRet: "0.00",
+              vProd: venda.total.toFixed(2), vFrete: "0.00", vSeg: "0.00",
+              vDesc: venda.desconto.toFixed(2), vII: "0.00", vIPI: "0.00",
+              vIPIDevol: "0.00", vPIS: "0.00", vCOFINS: "0.00", vOutro: "0.00",
+              vNF: (venda.total - venda.desconto).toFixed(2),
+            },
+          },
+          transp: {
+            modFrete: "9",
+          },
+          pag: {
+            detPag: [{
+              tPag: venda.pagamento === "dinheiro" ? "01" : venda.pagamento === "pix" ? "17" : (venda.pagamento === "cartao" ? "03" : "99"),
+              vPag: (venda.total - venda.desconto).toFixed(2),
+              ...(venda.pagamento === "cartao" ? { card: { tpIntegra: "2" } } : {}),
+            }],
+          },
+        },
+      },
+    };
+
+    const builder = new XMLBuilder({ ignoreAttributes: false, format: true, attributeNamePrefix: "@_" });
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(nfeObj)}`;
+
+    const nomeArquivo = `${chaveAcesso}-nfe.xml`;
+    await fs.writeFile(path.join(pastaEnvio, nomeArquivo), xmlContent, "utf8");
+
+    // Polling de 500ms até 15 segundos
+    const arquivoAutorizado = path.join(pastaRetorno, `${chaveAcesso}-procNFe.xml`);
+    const arquivoErro = path.join(pastaRetorno, `${chaveAcesso}-nfe.err`);
+
+    let retries = 30;
+    let autorizadoXML = "";
+    let erroTXT = "";
+
+    while (retries > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        if (existsSync(arquivoAutorizado)) {
+          autorizadoXML = await fs.readFile(arquivoAutorizado, "utf8");
+          break;
+        }
+        if (existsSync(arquivoErro)) {
+          erroTXT = await fs.readFile(arquivoErro, "utf8");
+          break;
+        }
+        const resultadoProRec = await buscarResultadoEmProRec(pastaRetorno, chaveAcesso);
+        if (resultadoProRec?.autorizada && resultadoProRec.xml) {
+          autorizadoXML = resultadoProRec.xml;
+          break;
+        }
+        if (resultadoProRec?.rejeitada) {
+          erroTXT = resultadoProRec.mensagem || "Rejeicao retornada em arquivo pro-rec.xml";
+          break;
+        }
+      } catch (e) { }
+      retries--;
+    }
+
+    if (erroTXT) throw new Error(`Rejeição da Sefaz: ${erroTXT}`);
+    if (!autorizadoXML) throw new Error("UniNFe não respondeu a tempo.");
+
+    await db.update(nfceLogsTable).set({
+      status: "autorizada",
+      chave_acesso: chaveAcesso,
+      xml_autorizado: autorizadoXML,
+    }).where(eq(nfceLogsTable.id, log.id));
+
+    // Para impressão, extraímos o QR Code retornado pelo XML processado
+    const matchQr = autorizadoXML.match(/<qrCode><!\[CDATA\[(.*?)\]\]><\/qrCode>/) || autorizadoXML.match(/<qrCode>(.*?)<\/qrCode>/);
+    const qrCodeUrl = matchQr ? matchQr[1] : "";
+
+    return { success: true, status: "autorizada", xmlAutorizado: autorizadoXML, chaveAcesso, qrCodeUrl };
+  } catch (error: any) {
+    await db.update(nfceLogsTable).set({
+      status: "erro",
+      mensagem_status_sefaz: error.message,
+    }).where(eq(nfceLogsTable.id, log.id));
+
+    return { success: false, status: "erro", mensagem: error.message };
+  }
+}
+</file>
+
+<file path="artifacts/api-server/src/types/escpos.d.ts">
+declare module "escpos";
+declare module "escpos-usb";
 </file>
 
 <file path="artifacts/api-server/tsconfig.json">
@@ -8868,6 +9155,53 @@ export * from "./generated/types";
 }
 </file>
 
+<file path="lib/db/seed.ts">
+import "dotenv/config";
+import { db, pool } from "./src";
+import { configFiscalTable } from "./src/schema";
+
+async function seedFiscalConfig() {
+  const [existing] = await db.select().from(configFiscalTable).limit(1);
+  if (existing) {
+    console.log("config_fiscal ja possui registro. Seed ignorado.");
+    return;
+  }
+
+  await db.insert(configFiscalTable).values({
+    razao_social: "PREENCHER_RAZAO_SOCIAL",
+    nome_fantasia: "PREENCHER_NOME_FANTASIA",
+    cnpj: "00000000000000",
+    ie: "PREENCHER_INSCRICAO_ESTADUAL",
+    crt: "1",
+    endereco: "PREENCHER_ENDERECO",
+    numero: "S/N",
+    bairro: "PREENCHER_BAIRRO",
+    cidade: "PREENCHER_CIDADE",
+    uf: "RS",
+    cep: "00000000",
+    cod_municipio: "0000000",
+    telefone: null,
+    csc_id: "1",
+    csc_token: "540EB3EB-1918-488D-8C7D-5FB4ABAF814C",
+    caminho_certificado:
+      process.env.CAMINHO_CERTIFICADO_A1 || "C:/caminho/para/seu_certificado.pfx",
+    senha_certificado: process.env.SENHA_CERTIFICADO_A1 || "sua_senha_segura",
+    ambiente: "homologacao",
+  });
+
+  console.log("Seed fiscal concluido com sucesso.");
+}
+
+seedFiscalConfig()
+  .catch((err) => {
+    console.error("Falha no seed fiscal:", err);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await pool.end();
+  });
+</file>
+
 <file path="lib/db/src/index.ts">
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -8931,6 +9265,7 @@ import { z } from "zod/v4";
 export const clientesTable = pgTable("clientes", {
   id: serial("id").primaryKey(),
   nome: text("nome").notNull(),
+  cpf: text("cpf"),
   telefone: text("telefone"),
   observacao: text("observacao"),
   criado_em: timestamp("criado_em").notNull().defaultNow(),
@@ -8939,6 +9274,54 @@ export const clientesTable = pgTable("clientes", {
 export const insertClienteSchema = createInsertSchema(clientesTable).omit({ id: true, criado_em: true });
 export type InsertCliente = z.infer<typeof insertClienteSchema>;
 export type Cliente = typeof clientesTable.$inferSelect;
+</file>
+
+<file path="lib/db/src/schema/fiscal.ts">
+import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { vendasTable } from "./vendas";
+
+export const ambienteSefazEnum = pgEnum("ambiente_sefaz", ["producao", "homologacao"]);
+export const statusNfceEnum = pgEnum("status_nfce", ["processando", "autorizada", "rejeitada", "erro"]);
+
+// Tabela para guardar a configuração fiscal da empresa
+export const configFiscalTable = pgTable("config_fiscal", {
+  id: serial("id").primaryKey(),
+  razao_social: text("razao_social").notNull(),
+  nome_fantasia: text("nome_fantasia").notNull(),
+  cnpj: text("cnpj").notNull(),
+  ie: text("ie").notNull(),
+  crt: text("crt").notNull(), // Código de Regime Tributário (ex: "1" para Simples Nacional)
+  endereco: text("endereco").notNull(),
+  numero: text("numero").notNull(),
+  bairro: text("bairro").notNull(),
+  cidade: text("cidade").notNull(),
+  uf: text("uf").notNull(),
+  cep: text("cep").notNull(),
+  cod_municipio: text("cod_municipio").notNull(),
+  telefone: text("telefone"),
+  csc_id: text("csc_id").notNull(),
+  csc_token: text("csc_token").notNull(),
+  caminho_certificado: text("caminho_certificado").notNull(),
+  senha_certificado: text("senha_certificado").notNull(),
+  ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
+  criado_em: timestamp("criado_em").notNull().defaultNow(),
+});
+
+// Tabela para logar todas as tentativas de emissão de NFC-e
+export const nfceLogsTable = pgTable("nfce_logs", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  status: statusNfceEnum("status").notNull().default("processando"),
+  ambiente: ambienteSefazEnum("ambiente").notNull(),
+  chave_acesso: text("chave_acesso"),
+  protocolo: text("protocolo"),
+  codigo_status_sefaz: integer("codigo_status_sefaz"),
+  mensagem_status_sefaz: text("mensagem_status_sefaz"),
+  xml_enviado: text("xml_enviado"),
+  xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
+  json_retorno_sefaz: jsonb("json_retorno_sefaz"),
+  criado_em: timestamp("criado_em").notNull().defaultNow(),
+});
 </file>
 
 <file path="lib/db/tsconfig.json">
@@ -9578,131 +9961,6 @@ router.get("/resumo", async (_req, res) => {
       total_aberto,
     }))
   );
-});
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/routes/vendas.ts">
-// in: artifacts/api-server/src/routes/vendas.ts
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import {
-  vendasTable,
-  itensVendaTable,
-  produtosTable,
-  sessoesCaixaTable,
-  fiadosTable,
-  clientesTable,
-} from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
-import { RegistrarVendaBody } from "@workspace/api-zod";
-import { emitirNfce } from "../services/sefaz.service";
-import { imprimirDanfeSimplificado } from "../services/danfe.service";
-
-const router: IRouter = Router();
-
-// ... (as rotas GET não mudam e estão corretas)
-router.get("/", async (req, res) => {
-    // ...
-});
-router.get("/resumo/hoje", async (req, res) => {
-    // ...
-});
-router.get("/:id/itens", async (req, res) => {
-    // ...
-});
-
-
-router.post("/", async (req, res) => {
-  const data = RegistrarVendaBody.parse(req.body);
-
-  const sessao = await db.query.sessoesCaixaTable.findFirst({
-    where: eq(sessoesCaixaTable.status, "aberto"),
-  });
-
-  const subtotal = data.itens.reduce((acc, item) => acc + item.quantidade * item.preco_unit, 0);
-  const total = Math.max(0, subtotal - (data.desconto ?? 0));
-
-  // CORREÇÃO: Mapear 'debito' e 'credito' para 'cartao' antes de salvar no banco
-  const pagamentoParaSalvar = (data.pagamento === "debito" || data.pagamento === "credito") ? "cartao" : data.pagamento;
-
-  const [venda] = await db.insert(vendasTable)
-    .values({
-      sessao_id: sessao?.id ?? null,
-      categoria: data.categoria,
-      total,
-      desconto: data.desconto ?? 0,
-      pagamento: pagamentoParaSalvar, // Usar a variável corrigida
-      cliente_id: data.cliente_id ?? null,
-      observacao: data.observacao ?? null,
-    })
-    .returning();
-
-  const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
-  for (const item of data.itens) {
-    const produto = await db.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
-    if (!produto) continue;
-
-    const nome_snap = produto.marca ? `${produto.nome} - ${produto.marca}` : produto.nome;
-
-    const [insertedItem] = await db.insert(itensVendaTable).values({
-      venda_id: venda.id,
-      produto_id: item.produto_id,
-      nome_snap,
-      quantidade: item.quantidade,
-      unidades: item.unidades,
-      preco_unit: item.preco_unit,
-      subtotal: item.quantidade * item.preco_unit,
-    }).returning();
-    insertedItensVenda.push(insertedItem);
-
-    const qtdBaixaEstoque = (produto.categoria === "feira" && item.unidades != null && item.unidades > 0) ? item.unidades : item.quantidade;
-    const novoEstoque = produto.estoque - qtdBaixaEstoque;
-    await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
-  }
-
-  if (data.pagamento === "fiado" && data.cliente_id) {
-    await db.insert(fiadosTable).values({
-      cliente_id: data.cliente_id,
-      venda_id: venda.id,
-      valor: total,
-      pago: false,
-    });
-  }
-
-  if (sessao) {
-    // CORREÇÃO: Atualizar o total_cartao para débito e crédito
-    const updates: Partial<typeof sessoesCaixaTable.$inferInsert> = {};
-    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}`;
-    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}`;
-    if (data.pagamento === "debito" || data.pagamento === "credito") updates.total_cartao = sql`total_cartao + ${total}`;
-    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}`;
-
-    if (Object.keys(updates).length > 0) {
-      await db.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
-    }
-  }
-  
-  try {
-    const produtosIds = data.itens.map((i) => i.produto_id);
-    const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
-    const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
-
-    // A venda original (com debito/credito) é passada para a SEFAZ
-    const vendaParaSefaz = { ...venda, pagamento: data.pagamento };
-
-    const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
-
-    if (emissao.success && emissao.xmlAutorizado) {
-      await imprimirDanfeSimplificado(emissao.qrCodeUrl || "", emissao.chaveAcesso || "", emissao.xmlAutorizado);
-    }
-    res.status(201).json({ ...venda, criado_em: venda.criado_em.toISOString(), nfce_status: 'autorizada' });
-  } catch (error: any) {
-    req.log.error({ err: error, vendaId: venda.id }, "Falha ao emitir NFC-e ou imprimir.");
-    await db.update(vendasTable).set({ observacao: `FALHA FISCAL: ${error.message}` }).where(eq(vendasTable.id, venda.id));
-    res.status(201).json({ ...venda, criado_em: venda.criado_em.toISOString(), nfce_status: 'erro', nfce_mensagem: error.message });
-  }
 });
 
 export default router;
@@ -10563,7 +10821,7 @@ export interface CartItem {
   is_cozinha: boolean;
   is_feira: boolean;
   unidade: string;
-  /** Feira: número de unidades (peças) vendidas. Demais: espelha a quantidade inteira. */
+  /** Legado: mantido para compatibilidade de tipos, sem uso na feira. */
   unidades: number;
 }
 
@@ -10571,10 +10829,10 @@ interface CartStore {
   items: CartItem[];
   desconto: number;
   addItem: (produto: Produto) => void;
-  addWeightedItem: (produto: Produto, pesoKg: number, unidadesPecas?: number) => void;
+  addWeightedItem: (produto: Produto, pesoKg: number) => void;
   removeItem: (produtoId: number) => void;
   updateQuantity: (produtoId: number, delta: number) => void;
-  setFeiraPesoUnidades: (produtoId: number, next: { peso_kg: number; unidades: number }) => void;
+  setFeiraPesoUnidades: (produtoId: number, next: { peso_kg: number }) => void;
   setDesconto: (val: number) => void;
   clearCart: () => void;
   getTotal: () => number;
@@ -10627,10 +10885,9 @@ export const useCart = create<CartStore>((set, get) => ({
     });
   },
 
-  addWeightedItem: (produto, pesoKg, unidadesPecas) => {
+  addWeightedItem: (produto, pesoKg) => {
     const peso = Number(pesoKg.toFixed(3));
     if (peso <= 0) return;
-    const u = unidadesPecas != null && unidadesPecas > 0 ? Math.max(1, Math.floor(unidadesPecas)) : 1;
 
     set((state) => {
       const existing = state.items.find((i) => i.produto_id === produto.id);
@@ -10643,7 +10900,7 @@ export const useCart = create<CartStore>((set, get) => ({
               ? {
                   ...i,
                   quantidade: novaQtd,
-                  unidades: i.unidades + u,
+                  unidades: i.unidades,
                   subtotal: Number((novaQtd * i.preco_unit).toFixed(2)),
                 }
               : i,
@@ -10663,7 +10920,7 @@ export const useCart = create<CartStore>((set, get) => ({
             is_cozinha: false,
             is_feira: true,
             unidade: produto.unidade,
-            unidades: u,
+            unidades: 0,
           },
         ],
       };
@@ -10701,7 +10958,6 @@ export const useCart = create<CartStore>((set, get) => ({
 
   setFeiraPesoUnidades: (produtoId, next) => {
     const peso = Number(next.peso_kg.toFixed(3));
-    const un = Math.max(1, Math.floor(next.unidades));
     if (peso <= 0) return;
     set((state) => ({
       items: state.items.map((i) =>
@@ -10709,7 +10965,7 @@ export const useCart = create<CartStore>((set, get) => ({
           ? {
               ...i,
               quantidade: peso,
-              unidades: un,
+              unidades: i.unidades,
               subtotal: Number((peso * i.preco_unit).toFixed(2)),
             }
           : i,
@@ -10739,7 +10995,6 @@ export const useCart = create<CartStore>((set, get) => ({
         quantidade: i.quantidade,
         preco_unit: i.preco_unit,
       };
-      if (i.is_feira) o.unidades = i.unidades;
       return o;
     });
   },
@@ -11677,43 +11932,6 @@ module.exports = defineConfig({
 });
 </file>
 
-<file path="lib/db/package.json">
-{
-  "name": "@workspace/db",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
-  },
-  "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.cjs",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.cjs"
-  },
-  "dependencies": {
-    "dotenv": "^16.6.1",
-    "drizzle-orm": "catalog:",
-    "drizzle-zod": "^0.8.3",
-    "pg": "^8.20.0",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "@types/pg": "^8.18.0",
-    "drizzle-kit": "^0.31.9"
-  }
-}
-</file>
-
-<file path="lib/db/src/schema/index.ts">
-export * from "./produtos";
-export * from "./caixa";
-export * from "./clientes";
-export * from "./vendas";
-export * from "./fiscal";
-</file>
-
 <file path="lib/db/src/schema/vendas.ts">
 import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -12121,257 +12339,248 @@ export function buildSangriaText(
 }
 </file>
 
-<file path="artifacts/arvoredo/src/pages/historico.tsx">
-import React, { useEffect, useMemo, useState } from "react";
-import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
-import { formatMoney, formatDate } from "@/lib/utils";
-import { Input, Select, Modal } from "@/components/ui-elements";
-import { TrendingUp, Calendar, Utensils, ShoppingBasket, Filter, Receipt, Leaf } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+<file path="artifacts/api-server/src/routes/vendas.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import {
+  vendasTable,
+  itensVendaTable,
+  produtosTable,
+  sessoesCaixaTable,
+  fiadosTable,
+  clientesTable,
+  nfceLogsTable,
+} from "@workspace/db/schema";
+import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
+import { RegistrarVendaBody } from "@workspace/api-zod";
+import { emitirNfce } from "../services/sefaz.service";
+import { imprimirDanfeSimplificado } from "../services/danfe.service";
 
-type NfceStatus = "autorizada" | "rejeitada" | "processando" | "erro" | "sem_emissao";
-type StatusMap = Record<number, NfceStatus>;
+const router: IRouter = Router();
 
-export default function Historico() {
-  const [dataFilter, setDataFilter] = useState(new Date().toISOString().split('T')[0]);
-  const [catFilter, setCatFilter] = useState("");
-  
-  const { data: resumo } = useVendasResumoHoje();
-  const { data: vendas = [], isLoading } = useVendasList({ data: dataFilter, categoria: catFilter || undefined });
-  
-  const [selectedVendaId, setSelectedVendaId] = useState<number | null>(null);
-  const [menuVendaId, setMenuVendaId] = useState<number | null>(null);
-  const [statusMap, setStatusMap] = useState<StatusMap>({});
-  const { toast } = useToast();
-  const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
-
-  useEffect(() => {
-    let active = true;
-    if (!vendas.length) {
-      setStatusMap({});
-      return;
-    }
-    (async () => {
-      const statuses = await Promise.all(
-        vendas.map(async (v) => {
-          try {
-            const resp = await fetch(`/api/nfce/status/${v.id}`);
-            if (!resp.ok) return [v.id, "erro"] as const;
-            const data = await resp.json();
-            return [v.id, (data?.status || "sem_emissao") as NfceStatus] as const;
-          } catch {
-            return [v.id, "erro"] as const;
-          }
-        }),
-      );
-      if (!active) return;
-      setStatusMap(Object.fromEntries(statuses));
-    })();
-    return () => {
-      active = false;
-    };
-  }, [vendas]);
-
-  const statusLabel = useMemo(
-    () =>
-      ({
-        autorizada: "✅ Autorizada",
-        rejeitada: "❌ Rejeitada",
-        processando: "🕒 Processando",
-        erro: "❌ Erro",
-        sem_emissao: "🕒 Sem emissao",
-      }) as Record<NfceStatus, string>,
-    [],
-  );
-
-  const runNfceAction = async (vendaId: number, action: "reimprimir" | "cancelar") => {
-    const endpoint = action === "reimprimir" ? `/api/nfce/${vendaId}/reimprimir` : `/api/nfce/${vendaId}/cancelar`;
-    try {
-      const resp = await fetch(endpoint, { method: "POST" });
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(body?.message || "Falha na operacao");
-      toast({ title: "Operacao concluida", description: body?.message || "Sucesso", className: "bg-green-600 text-white" });
-      const statusResp = await fetch(`/api/nfce/status/${vendaId}`);
-      if (statusResp.ok) {
-        const statusBody = await statusResp.json();
-        setStatusMap((prev) => ({ ...prev, [vendaId]: statusBody?.status || "sem_emissao" }));
-      }
-    } catch (error: any) {
-      toast({ title: "Erro", description: error?.message || "Falha ao executar acao NFC-e", variant: "destructive" });
-    } finally {
-      setMenuVendaId(null);
-    }
+router.get("/", async (req, res) => {
+  const { data, data_inicio, data_fim, categoria, limit } = req.query as {
+    data?: string;
+    data_inicio?: string;
+    data_fim?: string;
+    categoria?: string;
+    limit?: string;
   };
 
-  return (
-    <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Histórico e Relatórios</h1>
-        <p className="text-muted-foreground mt-1">Acompanhe as vendas e o desempenho do seu negócio</p>
-      </div>
+  const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
+  const conditions = [];
+  if (data) {
+    const start = new Date(data);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(data);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(gte(vendasTable.criado_em, start));
+    conditions.push(lte(vendasTable.criado_em, end));
+  }
+  if (data_inicio) {
+    const start = new Date(data_inicio);
+    start.setHours(0, 0, 0, 0);
+    conditions.push(gte(vendasTable.criado_em, start));
+  }
+  if (data_fim) {
+    const end = new Date(data_fim);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(vendasTable.criado_em, end));
+  }
+  if (categoria) conditions.push(eq(vendasTable.categoria, categoria));
 
-      {resumo && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-          <div className="bg-primary text-primary-foreground p-6 rounded-2xl shadow-md relative overflow-hidden">
-            <TrendingUp className="absolute -right-4 -bottom-4 w-24 h-24 opacity-10" />
-            <p className="font-semibold text-primary-foreground/80 mb-2 uppercase text-sm tracking-wider">Receita Hoje</p>
-            <p className="text-4xl font-black font-mono">{formatMoney(resumo.total)}</p>
-            <p className="mt-2 text-sm opacity-90">{resumo.num_vendas} vendas realizadas</p>
-          </div>
-          
-          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-start mb-4">
-              <p className="font-semibold text-muted-foreground uppercase text-sm tracking-wider">Meios de Pagamento</p>
-              <Receipt className="text-muted-foreground" />
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Dinheiro</span><span className="font-mono font-bold text-green-600">{formatMoney(resumo.total_dinheiro)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">PIX</span><span className="font-mono font-bold">{formatMoney(resumo.total_pix)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Cartão</span><span className="font-mono font-bold">{formatMoney(resumo.total_cartao)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Comandas</span><span className="font-mono font-bold text-destructive">{formatMoney(resumo.total_fiado)}</span></div>
-            </div>
-          </div>
+  const vendas = await db
+    .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
+    .from(vendasTable)
+    .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(vendasTable.criado_em))
+    .limit(lim);
 
-          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
-            <div className="flex items-center gap-4">
-              <div className="bg-blue-100 p-4 rounded-xl text-blue-600"><ShoppingBasket className="w-8 h-8" /></div>
-              <div>
-                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Mercado</p>
-                <p className="text-2xl font-bold font-mono">{formatMoney(resumo.mercado)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
-            <div className="flex items-center gap-4">
-              <div className="bg-orange-100 p-4 rounded-xl text-orange-600"><Utensils className="w-8 h-8" /></div>
-              <div>
-                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Cozinha</p>
-                <p className="text-2xl font-bold font-mono text-orange-600">{formatMoney(resumo.cozinha)}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
-            <div className="flex items-center gap-4">
-              <div className="bg-emerald-100 p-4 rounded-xl text-emerald-700"><Leaf className="w-8 h-8" /></div>
-              <div>
-                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Feira</p>
-                <p className="text-2xl font-bold font-mono text-emerald-700">{formatMoney(resumo.feira || 0)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h3 className="font-bold text-xl">Lista de Vendas</h3>
-          <div className="flex gap-4 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-48">
-              <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
-              <Input type="date" className="pl-9" value={dataFilter} onChange={e => setDataFilter(e.target.value)} />
-            </div>
-            <div className="relative flex-1 sm:w-48">
-              <Filter className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground z-10" />
-              <Select className="pl-9" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-                <option value="">Todas Categorias</option>
-                <option value="mercado">Mercado</option>
-                <option value="cozinha">Cozinha</option>
-                <option value="feira">Feira</option>
-              </Select>
-            </div>
-          </div>
-        </div>
-        
-        <div className="overflow-x-auto">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Carregando vendas...</div>
-          ) : (
-            <table className="w-full text-left">
-              <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Data/Hora</th>
-                  <th className="px-6 py-4 font-medium">Categoria</th>
-                  <th className="px-6 py-4 font-medium">Pagamento</th>
-                  <th className="px-6 py-4 font-medium">Cliente</th>
-                  <th className="px-6 py-4 font-medium text-right">Total</th>
-                  <th className="px-6 py-4 font-medium text-center">Status NFC-e</th>
-                  <th className="px-6 py-4 font-medium text-center">Opções</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {vendas.map(v => (
-                  <tr key={v.id} className="hover:bg-muted/30">
-                    <td className="px-6 py-4">{formatDate(v.criado_em)}</td>
-                    <td className="px-6 py-4 capitalize">
-                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                        v.categoria === "cozinha"
-                          ? "bg-orange-100 text-orange-700"
-                          : v.categoria === "feira"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-blue-100 text-blue-700"
-                      }`}>
-                        {v.categoria}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 capitalize font-medium">{v.pagamento}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
-                    <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
-                    <td className="px-6 py-4 text-center text-sm font-medium">{statusLabel[statusMap[v.id] || "processando"]}</td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="relative inline-block text-left">
-                        <button
-                          onClick={() => setMenuVendaId((prev) => (prev === v.id ? null : v.id))}
-                          className="text-primary hover:underline text-sm font-medium"
-                        >
-                          Opções
-                        </button>
-                        {menuVendaId === v.id && (
-                          <div className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-background shadow-lg p-1">
-                            <button onClick={() => { setSelectedVendaId(v.id); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Ver Itens</button>
-                            <button onClick={() => runNfceAction(v.id, "reimprimir")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Reimprimir DANFE</button>
-                            <button onClick={() => runNfceAction(v.id, "cancelar")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Cancelar NFC-e</button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {vendas.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <Modal isOpen={!!selectedVendaId} onClose={() => setSelectedVendaId(null)} title={`Itens da Venda #${selectedVendaId}`}>
-        {loadingItens ? (
-          <div className="py-8 text-center">Carregando itens...</div>
-        ) : (
-          <div className="space-y-4">
-            {itens.map(item => (
-              <div key={item.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border">
-                <div>
-                  <p className="font-bold text-foreground">{item.nome_snap}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {item.unidades != null && item.unidades > 0
-                      ? `${item.unidades} un — ${item.quantidade.toFixed(3)} kg × ${formatMoney(item.preco_unit)} /kg`
-                      : `${item.quantidade} × ${formatMoney(item.preco_unit)}`}
-                  </p>
-                </div>
-                <div className="font-mono font-bold text-lg">
-                  {formatMoney(item.subtotal)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Modal>
-    </div>
+  res.json(
+    vendas.map(({ venda, cliente_nome }) => ({
+      ...venda,
+      cliente_nome,
+      criado_em: venda.criado_em.toISOString(),
+    })),
   );
-}
+});
+router.get("/resumo/hoje", async (req, res) => {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const amanha = new Date(hoje);
+  amanha.setDate(amanha.getDate() + 1);
+  const vendas = await db
+    .select()
+    .from(vendasTable)
+    .where(and(gte(vendasTable.criado_em, hoje), lte(vendasTable.criado_em, amanha)));
+  const resumo = {
+    total: 0,
+    total_dinheiro: 0,
+    total_pix: 0,
+    total_cartao: 0,
+    total_fiado: 0,
+    num_vendas: vendas.length,
+    mercado: 0,
+    cozinha: 0,
+    feira: 0,
+  };
+  for (const v of vendas) {
+    resumo.total += v.total;
+    if (v.pagamento === "dinheiro") resumo.total_dinheiro += v.total;
+    if (v.pagamento === "pix") resumo.total_pix += v.total;
+    if (v.pagamento === "cartao") resumo.total_cartao += v.total;
+    if (v.pagamento === "fiado") resumo.total_fiado += v.total;
+    if (v.categoria === "mercado") resumo.mercado += v.total;
+    if (v.categoria === "cozinha") resumo.cozinha += v.total;
+    if (v.categoria === "feira") resumo.feira += v.total;
+  }
+  res.json(resumo);
+});
+router.get("/:id/itens", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, id));
+  res.json(itens);
+});
+
+
+router.post("/", async (req, res) => {
+  const data = RegistrarVendaBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
+
+  const sessao = await db.query.sessoesCaixaTable.findFirst({
+    where: eq(sessoesCaixaTable.status, "aberto"),
+  });
+
+  const subtotal = data.itens.reduce((acc, item) => acc + item.quantidade * item.preco_unit, 0);
+  const total = Math.max(0, subtotal - (data.desconto ?? 0));
+
+  const [venda] = await db.insert(vendasTable)
+    .values({
+      sessao_id: sessao?.id ?? null,
+      categoria: data.categoria,
+      total,
+      desconto: data.desconto ?? 0,
+      pagamento: data.pagamento,
+      cliente_id: data.cliente_id ?? null,
+      observacao: data.observacao ?? null,
+    })
+    .returning();
+
+  const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
+  for (const item of data.itens) {
+    const produto = await db.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
+    if (!produto) continue;
+
+    const nome_snap = produto.marca ? `${produto.nome} - ${produto.marca}` : produto.nome;
+
+    const [insertedItem] = await db.insert(itensVendaTable).values({
+      venda_id: venda.id,
+      produto_id: item.produto_id,
+      nome_snap,
+      quantidade: item.quantidade,
+      unidades: null,
+      preco_unit: item.preco_unit,
+      subtotal: item.quantidade * item.preco_unit,
+    }).returning();
+    insertedItensVenda.push(insertedItem);
+
+    const qtdBaixaEstoque = item.quantidade;
+    const novoEstoque = produto.estoque - qtdBaixaEstoque;
+    await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
+  }
+
+  if (data.pagamento === "fiado" && data.cliente_id) {
+    await db.insert(fiadosTable).values({
+      cliente_id: data.cliente_id,
+      venda_id: venda.id,
+      valor: total,
+      pago: false,
+    });
+  }
+
+  if (sessao) {
+    const updates: Record<string, number> = {};
+    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}` as unknown as number;
+    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}` as unknown as number;
+    if (data.pagamento === "cartao") updates.total_cartao = sql`total_cartao + ${total}` as unknown as number;
+    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}` as unknown as number;
+
+    if (Object.keys(updates).length > 0) {
+      await db.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
+    }
+  }
+  
+  try {
+    const produtosIds = data.itens.map((i) => i.produto_id);
+    const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
+    const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
+
+    const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
+    const vendaParaSefaz = {
+      ...venda,
+      observacao:
+        cpfNota.length === 11
+          ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
+          : venda.observacao,
+    };
+
+    const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
+
+    if (emissao.success && emissao.xmlAutorizado) {
+      await imprimirDanfeSimplificado(emissao.qrCodeUrl || "", emissao.chaveAcesso || "", emissao.xmlAutorizado);
+    }
+    res.status(201).json({
+      ...venda,
+      criado_em: venda.criado_em.toISOString(),
+      nfce_status: emissao.success ? "autorizada" : emissao.status,
+      nfce_mensagem: emissao.mensagem ?? null,
+    });
+  } catch (error: any) {
+    req.log.error({ err: error, vendaId: venda.id }, "Falha ao emitir NFC-e ou imprimir.");
+    const [ultimoLog] = await db
+      .select()
+      .from(nfceLogsTable)
+      .where(eq(nfceLogsTable.venda_id, venda.id))
+      .orderBy(desc(nfceLogsTable.criado_em))
+      .limit(1);
+    res.status(201).json({
+      ...venda,
+      criado_em: venda.criado_em.toISOString(),
+      nfce_status: ultimoLog?.status || "erro",
+      nfce_mensagem: error.message,
+    });
+  }
+});
+
+router.put("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ ok: false, message: "id invalido" });
+    return;
+  }
+  const payload = req.body as Partial<{
+    pagamento: "dinheiro" | "pix" | "cartao" | "fiado";
+    cliente_id: number | null;
+    observacao: string | null;
+  }>;
+  const [updated] = await db
+    .update(vendasTable)
+    .set({
+      pagamento: payload.pagamento,
+      cliente_id: payload.cliente_id,
+      observacao: payload.observacao,
+    })
+    .where(eq(vendasTable.id, id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+  res.json({ ...updated, criado_em: updated.criado_em.toISOString() });
+});
+
+export default router;
 </file>
 
 <file path="deployment/iniciar.ps1">
@@ -15233,256 +15442,41 @@ export interface ResumoVendas {
 }
 </file>
 
-<file path="pnpm-workspace.yaml">
-packages:
-  - artifacts/*
-  - lib/*
-
-autoInstallPeers: false
-
-catalog:
-  '@tailwindcss/vite': ^4.1.14
-  '@tanstack/react-query': ^5.90.21
-  '@types/node': ^25.3.3
-  '@types/react': ^19.2.0
-  '@types/react-dom': ^19.2.0
-  '@vitejs/plugin-react': ^5.0.4
-  class-variance-authority: ^0.7.1
-  clsx: 2.1.1
-  drizzle-orm: ^0.45.1
-  framer-motion: ^12.23.24
-  lucide-react: 0.545.0
-  react: 19.1.0
-  react-dom: 19.1.0
-  tailwind-merge: 3.5.0
-  tailwindcss: ^4.1.14
-  tsx: ^4.21.0
-  vite: ^7.3.0
-  zod: ^3.25.76
-
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
-  - msw
-  - node-expat
-  - unrs-resolver
-  - usb
-
-overrides:
-  '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
-strictPeerDependencies: false
-</file>
-
-<file path="artifacts/api-server/package.json">
+<file path="lib/db/package.json">
 {
-  "name": "@workspace/api-server",
+  "name": "@workspace/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts"
+  },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "push": "drizzle-kit push --config ./drizzle.config.cjs",
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.cjs"
   },
   "dependencies": {
-    "@workspace/api-zod": "workspace:*",
-    "@workspace/db": "workspace:*",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.6.1",
     "drizzle-orm": "catalog:",
-    "escpos": "3.0.0-alpha.6",
-    "escpos-usb": "3.0.0-alpha.4",
-    "express": "^5",
-    "fast-xml-parser": "^5.3.0",
-    "node-dfe": "0.0.25",
-    "pino": "^9",
-    "pino-http": "^10"
+    "drizzle-zod": "^0.8.3",
+    "pg": "^8.20.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
     "@types/node": "catalog:",
-    "esbuild": "^0.27.3",
-    "esbuild-plugin-pino": "^2.3.3",
-    "pino-pretty": "^13",
-    "thread-stream": "3.1.0",
-    "tsx": "^4.21.0"
+    "@types/pg": "^8.18.0",
+    "drizzle-kit": "^0.31.9"
   }
 }
 </file>
 
-<file path="artifacts/api-server/src/routes/index.ts">
-import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import produtosRouter from "./produtos";
-import vendasRouter from "./vendas";
-import estoqueRouter from "./estoque";
-import fiadoRouter from "./fiado";
-import caixaRouter from "./caixa";
-import maquininhaRouter from "./maquininha";
-import impressoraRouter from "./impressora";
-import nfceRouter from "./nfce";
-
-const router: IRouter = Router();
-
-router.use(healthRouter);
-router.use("/produtos", produtosRouter);
-router.use("/vendas", vendasRouter);
-router.use("/estoque", estoqueRouter);
-router.use("/fiado", fiadoRouter);
-router.use("/caixa", caixaRouter);
-router.use("/maquininha", maquininhaRouter);
-router.use("/impressora", impressoraRouter);
-router.use("/nfce", nfceRouter);
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/routes/produtos.ts">
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { produtosTable } from "@workspace/db/schema";
-import { eq, ilike, lte, or, and } from "drizzle-orm";
-import {
-  CriarProdutoBody,
-  EditarProdutoBody,
-} from "@workspace/api-zod";
-
-const router: IRouter = Router();
-
-function normalizeCodigo(codigo: string | null | undefined) {
-  const trimmed = codigo?.trim();
-  return trimmed ? trimmed : null;
-}
-
-function isUniqueViolation(err: unknown) {
-  if (!err || typeof err !== "object") return false;
-  const code = (err as { code?: string }).code;
-  const detail = (err as { detail?: string }).detail ?? "";
-  return code === "23505" && detail.includes("(codigo)");
-}
-
-router.get("/", async (req, res) => {
-  const { q, categoria } = req.query as { q?: string; categoria?: string };
-  const conditions = [eq(produtosTable.ativo, true)];
-  if (categoria === "mercado" || categoria === "cozinha" || categoria === "feira") {
-    conditions.push(eq(produtosTable.categoria, categoria));
-  }
-  if (q) {
-    conditions.push(
-      or(
-        ilike(produtosTable.codigo, `%${q}%`),
-        ilike(produtosTable.nome, `%${q}%`),
-        ilike(produtosTable.marca, `%${q}%`)
-      )!
-    );
-  }
-  const produtos = await db.select().from(produtosTable).where(and(...conditions));
-  res.json(produtos.map(formatProduto));
-});
-
-router.get("/busca", async (req, res) => {
-  const { codigo, nome } = req.query as { codigo?: string; nome?: string };
-  const conditions = [eq(produtosTable.ativo, true)];
-  if (codigo) {
-    conditions.push(eq(produtosTable.codigo, codigo.trim()));
-  } else if (nome) {
-    conditions.push(
-      or(
-        ilike(produtosTable.codigo, `%${nome}%`),
-        ilike(produtosTable.nome, `%${nome}%`),
-        ilike(produtosTable.marca, `%${nome}%`)
-      )!
-    );
-  }
-  const produtos = await db.select().from(produtosTable).where(and(...conditions));
-  res.json(produtos.map(formatProduto));
-});
-
-router.get("/alertas", async (_req, res) => {
-  const produtos = await db
-    .select()
-    .from(produtosTable)
-    .where(and(eq(produtosTable.ativo, true), lte(produtosTable.estoque, produtosTable.estoque_min)));
-  res.json(produtos.map(formatProduto));
-});
-
-router.post("/", async (req, res) => {
-  const data = CriarProdutoBody.parse(req.body);
-  const rawBody = req.body as Record<string, unknown>;
-  try {
-    const [produto] = await db
-      .insert(produtosTable)
-      .values({
-        ...data,
-        codigo: normalizeCodigo(data.codigo),
-        cfop: typeof rawBody.cfop === "string" ? rawBody.cfop : undefined,
-        cest: typeof rawBody.cest === "string" ? rawBody.cest : undefined,
-      })
-      .returning();
-    res.status(201).json(formatProduto(produto));
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      res.status(409).json({
-        ok: false,
-        message: "Código de barras já cadastrado para outro produto",
-      });
-      return;
-    }
-    throw err;
-  }
-});
-
-router.put("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const data = EditarProdutoBody.parse(req.body);
-  const rawBody = req.body as Record<string, unknown>;
-  let produto;
-  try {
-    [produto] = await db
-      .update(produtosTable)
-      .set({
-        ...data,
-        ...(data.codigo !== undefined ? { codigo: normalizeCodigo(data.codigo) } : {}),
-        ...(typeof rawBody.cfop === "string" ? { cfop: rawBody.cfop } : {}),
-        ...(typeof rawBody.cest === "string" ? { cest: rawBody.cest } : {}),
-      })
-      .where(eq(produtosTable.id, id))
-      .returning();
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      res.status(409).json({
-        ok: false,
-        message: "Código de barras já cadastrado para outro produto",
-      });
-      return;
-    }
-    throw err;
-  }
-  if (!produto) {
-    res.status(404).json({ ok: false, message: "Produto não encontrado" });
-    return;
-  }
-  res.json(formatProduto(produto));
-});
-
-router.delete("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  await db.update(produtosTable).set({ ativo: false }).where(eq(produtosTable.id, id));
-  res.json({ ok: true, message: "Produto desativado" });
-});
-
-function formatProduto(p: typeof produtosTable.$inferSelect) {
-  return {
-    ...p,
-    criado_em: p.criado_em.toISOString(),
-  };
-}
-
-export default router;
+<file path="lib/db/src/schema/index.ts">
+export * from "./produtos";
+export * from "./caixa";
+export * from "./clientes";
+export * from "./vendas";
+export * from "./fiscal";
 </file>
 
 <file path="artifacts/arvoredo/src/components/layout.tsx">
@@ -16354,6 +16348,377 @@ function BarcodeTester() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+</file>
+
+<file path="artifacts/arvoredo/src/pages/historico.tsx">
+import React, { useEffect, useMemo, useState } from "react";
+import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
+import { formatMoney, formatDate } from "@/lib/utils";
+import { Input, Select, Modal, Button } from "@/components/ui-elements";
+import { TrendingUp, Calendar, Utensils, ShoppingBasket, Filter, Receipt, Leaf } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+type NfceStatus = "autorizada" | "rejeitada" | "processando" | "erro" | "sem_emissao";
+type StatusMap = Record<number, NfceStatus>;
+type NfceDetail = {
+  status: NfceStatus;
+  mensagem?: string;
+  chaveAcesso?: string;
+  protocolo?: string;
+  criadoEm?: string;
+};
+type NfceDetailMap = Record<number, NfceDetail>;
+
+export default function Historico() {
+  const [dataFilter, setDataFilter] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [catFilter, setCatFilter] = useState("");
+  const [q, setQ] = useState("");
+  
+  const { data: resumo } = useVendasResumoHoje();
+  const { data: vendas = [], isLoading } = useVendasList({
+    data: dataFilter || undefined,
+    data_inicio: dataInicio || undefined,
+    data_fim: dataFim || undefined,
+    categoria: catFilter || undefined,
+    limit: 1000,
+  });
+  
+  const [selectedVendaId, setSelectedVendaId] = useState<number | null>(null);
+  const [menuVendaId, setMenuVendaId] = useState<number | null>(null);
+  const [editVenda, setEditVenda] = useState<{ id: number; observacao: string; pagamento: string } | null>(null);
+  const vendasFiltradas = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return vendas;
+    return vendas.filter((v) =>
+      String(v.id).includes(term) ||
+      (v.cliente_nome || "").toLowerCase().includes(term) ||
+      (v.observacao || "").toLowerCase().includes(term),
+    );
+  }, [q, vendas]);
+
+  const [statusMap, setStatusMap] = useState<StatusMap>({});
+  const [nfceDetailMap, setNfceDetailMap] = useState<NfceDetailMap>({});
+  const [errorVendaId, setErrorVendaId] = useState<number | null>(null);
+  const { toast } = useToast();
+  const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
+
+  useEffect(() => {
+    let active = true;
+    if (!vendas.length) {
+      setStatusMap({});
+      setNfceDetailMap({});
+      return;
+    }
+    (async () => {
+      const details = await Promise.all(
+        vendas.map(async (v) => {
+          try {
+            const resp = await fetch(`/api/nfce/status/${v.id}`);
+            if (!resp.ok) {
+              return [v.id, {
+                status: "erro",
+                mensagem: `Falha ao consultar status NFC-e (HTTP ${resp.status})`,
+              } satisfies NfceDetail] as const;
+            }
+            const data = await resp.json();
+            const status = (data?.status || "sem_emissao") as NfceStatus;
+            const log = data?.log || {};
+            return [v.id, {
+              status,
+              mensagem: log?.mensagem_status_sefaz || undefined,
+              chaveAcesso: log?.chave_acesso || undefined,
+              protocolo: log?.protocolo || undefined,
+              criadoEm: log?.criado_em || undefined,
+            } satisfies NfceDetail] as const;
+          } catch {
+            return [v.id, { status: "erro", mensagem: "Falha de rede ao consultar status NFC-e." } satisfies NfceDetail] as const;
+          }
+        }),
+      );
+      if (!active) return;
+      const detailMap = Object.fromEntries(details);
+      setNfceDetailMap(detailMap);
+      setStatusMap(
+        Object.fromEntries(
+          Object.entries(detailMap as NfceDetailMap).map(([vendaId, detail]) => [Number(vendaId), detail.status]),
+        ),
+      );
+    })();
+    return () => {
+      active = false;
+    };
+  }, [vendas]);
+
+  const statusLabel = useMemo(
+    () =>
+      ({
+        autorizada: "✅ Autorizada",
+        rejeitada: "❌ Rejeitada",
+        processando: "🕒 Processando",
+        erro: "❌ Erro",
+        sem_emissao: "🕒 Sem emissao",
+      }) as Record<NfceStatus, string>,
+    [],
+  );
+
+  const runNfceAction = async (vendaId: number, action: "reimprimir" | "cancelar") => {
+    const endpoint = action === "reimprimir" ? `/api/nfce/${vendaId}/reimprimir` : `/api/nfce/${vendaId}/cancelar`;
+    try {
+      const resp = await fetch(endpoint, { method: "POST" });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(body?.message || "Falha na operacao");
+      toast({ title: "Operacao concluida", description: body?.message || "Sucesso", className: "bg-green-600 text-white" });
+      const statusResp = await fetch(`/api/nfce/status/${vendaId}`);
+      if (statusResp.ok) {
+        const statusBody = await statusResp.json();
+        setStatusMap((prev) => ({ ...prev, [vendaId]: statusBody?.status || "sem_emissao" }));
+      }
+    } catch (error: any) {
+      toast({ title: "Erro", description: error?.message || "Falha ao executar acao NFC-e", variant: "destructive" });
+    } finally {
+      setMenuVendaId(null);
+    }
+  };
+
+  return (
+    <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-foreground">Histórico e Relatórios</h1>
+        <p className="text-muted-foreground mt-1">Acompanhe as vendas e o desempenho do seu negócio</p>
+      </div>
+
+      {resumo && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <div className="bg-primary text-primary-foreground p-6 rounded-2xl shadow-md relative overflow-hidden">
+            <TrendingUp className="absolute -right-4 -bottom-4 w-24 h-24 opacity-10" />
+            <p className="font-semibold text-primary-foreground/80 mb-2 uppercase text-sm tracking-wider">Receita Hoje</p>
+            <p className="text-4xl font-black font-mono">{formatMoney(resumo.total)}</p>
+            <p className="mt-2 text-sm opacity-90">{resumo.num_vendas} vendas realizadas</p>
+          </div>
+          
+          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
+            <div className="flex justify-between items-start mb-4">
+              <p className="font-semibold text-muted-foreground uppercase text-sm tracking-wider">Meios de Pagamento</p>
+              <Receipt className="text-muted-foreground" />
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">Dinheiro</span><span className="font-mono font-bold text-green-600">{formatMoney(resumo.total_dinheiro)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">PIX</span><span className="font-mono font-bold">{formatMoney(resumo.total_pix)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Cartão</span><span className="font-mono font-bold">{formatMoney(resumo.total_cartao)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Comandas</span><span className="font-mono font-bold text-destructive">{formatMoney(resumo.total_fiado)}</span></div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
+            <div className="flex items-center gap-4">
+              <div className="bg-blue-100 p-4 rounded-xl text-blue-600"><ShoppingBasket className="w-8 h-8" /></div>
+              <div>
+                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Mercado</p>
+                <p className="text-2xl font-bold font-mono">{formatMoney(resumo.mercado)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
+            <div className="flex items-center gap-4">
+              <div className="bg-orange-100 p-4 rounded-xl text-orange-600"><Utensils className="w-8 h-8" /></div>
+              <div>
+                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Cozinha</p>
+                <p className="text-2xl font-bold font-mono text-orange-600">{formatMoney(resumo.cozinha)}</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col justify-center">
+            <div className="flex items-center gap-4">
+              <div className="bg-emerald-100 p-4 rounded-xl text-emerald-700"><Leaf className="w-8 h-8" /></div>
+              <div>
+                <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wider mb-1">Feira</p>
+                <p className="text-2xl font-bold font-mono text-emerald-700">{formatMoney(resumo.feira || 0)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h3 className="font-bold text-xl">Lista de Vendas</h3>
+          <div className="flex gap-4 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-56">
+              <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+              <Input type="date" className="pl-9" value={dataFilter} onChange={e => setDataFilter(e.target.value)} />
+            </div>
+            <Input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+            <Input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} />
+            <Input placeholder="Buscar por ID, cliente, observacao" value={q} onChange={e => setQ(e.target.value)} />
+            <div className="relative flex-1 sm:w-48">
+              <Filter className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground z-10" />
+              <Select className="pl-9" value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                <option value="">Todas Categorias</option>
+                <option value="mercado">Mercado</option>
+                <option value="cozinha">Cozinha</option>
+                <option value="feira">Feira</option>
+              </Select>
+            </div>
+          </div>
+        </div>
+        
+        <div className="overflow-x-auto">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Carregando vendas...</div>
+          ) : (
+            <table className="w-full text-left">
+              <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Data/Hora</th>
+                  <th className="px-6 py-4 font-medium">Categoria</th>
+                  <th className="px-6 py-4 font-medium">Pagamento</th>
+                  <th className="px-6 py-4 font-medium">Cliente</th>
+                  <th className="px-6 py-4 font-medium text-right">Total</th>
+                  <th className="px-6 py-4 font-medium text-center">Status NFC-e</th>
+                  <th className="px-6 py-4 font-medium text-center">Opções</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {vendasFiltradas.map(v => (
+                  <tr key={v.id} className="hover:bg-muted/30">
+                    <td className="px-6 py-4">{formatDate(v.criado_em)}</td>
+                    <td className="px-6 py-4 capitalize">
+                      <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                        v.categoria === "cozinha"
+                          ? "bg-orange-100 text-orange-700"
+                          : v.categoria === "feira"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {v.categoria}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 capitalize font-medium">{v.pagamento}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
+                    <td className="px-6 py-4 text-center text-sm font-medium">
+                      <button
+                        className="hover:underline"
+                        onClick={() => {
+                          const s = statusMap[v.id] || "processando";
+                          if (s === "erro" || s === "rejeitada") setErrorVendaId(v.id);
+                        }}
+                        title="Clique para ver detalhes"
+                      >
+                        {statusLabel[statusMap[v.id] || "processando"]}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="relative inline-block text-left">
+                        <button
+                          onClick={() => setMenuVendaId((prev) => (prev === v.id ? null : v.id))}
+                          className="text-primary hover:underline text-sm font-medium"
+                        >
+                          Opções
+                        </button>
+                        {menuVendaId === v.id && (
+                          <div className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-background shadow-lg p-1">
+                            <button onClick={() => { setSelectedVendaId(v.id); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Ver Itens</button>
+                            <button onClick={() => { setEditVenda({ id: v.id, observacao: v.observacao || "", pagamento: v.pagamento }); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Editar venda</button>
+                            <button onClick={() => runNfceAction(v.id, "reimprimir")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Reimprimir DANFE</button>
+                            <button onClick={() => runNfceAction(v.id, "cancelar")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Cancelar NFC-e</button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {vendasFiltradas.length === 0 && (
+                  <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <Modal isOpen={!!selectedVendaId} onClose={() => setSelectedVendaId(null)} title={`Itens da Venda #${selectedVendaId}`}>
+        {loadingItens ? (
+          <div className="py-8 text-center">Carregando itens...</div>
+        ) : (
+          <div className="space-y-4">
+            {itens.map(item => (
+              <div key={item.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border">
+                <div>
+                  <p className="font-bold text-foreground">{item.nome_snap}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.unidades != null && item.unidades > 0
+                      ? `${item.unidades} un — ${item.quantidade.toFixed(3)} kg × ${formatMoney(item.preco_unit)} /kg`
+                      : `${item.quantidade} × ${formatMoney(item.preco_unit)}`}
+                  </p>
+                </div>
+                <div className="font-mono font-bold text-lg">
+                  {formatMoney(item.subtotal)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+      <Modal isOpen={!!editVenda} onClose={() => setEditVenda(null)} title={editVenda ? `Editar Venda #${editVenda.id}` : "Editar Venda"}>
+        {editVenda && (
+          <div className="space-y-3">
+            <Select value={editVenda.pagamento} onChange={(e) => setEditVenda({ ...editVenda, pagamento: e.target.value })}>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">PIX</option>
+              <option value="cartao">Cartão</option>
+              <option value="fiado">Comanda</option>
+            </Select>
+            <Input value={editVenda.observacao} onChange={(e) => setEditVenda({ ...editVenda, observacao: e.target.value })} placeholder="Observação" />
+            <Button
+              onClick={async () => {
+                if (!editVenda) return;
+                const resp = await fetch(`/api/vendas/${editVenda.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ pagamento: editVenda.pagamento, observacao: editVenda.observacao || null }),
+                });
+                if (resp.ok) {
+                  toast({ title: "Venda atualizada", className: "bg-green-600 text-white" });
+                  setEditVenda(null);
+                  window.location.reload();
+                } else {
+                  toast({ title: "Erro ao atualizar venda", variant: "destructive" });
+                }
+              }}
+            >
+              Salvar
+            </Button>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        isOpen={!!errorVendaId}
+        onClose={() => setErrorVendaId(null)}
+        title={errorVendaId ? `Detalhes NFC-e da venda #${errorVendaId}` : "Detalhes NFC-e"}
+      >
+        {errorVendaId && (
+          <div className="space-y-3 text-sm">
+            <p><span className="font-semibold">Status:</span> {statusLabel[nfceDetailMap[errorVendaId]?.status || "erro"]}</p>
+            <p><span className="font-semibold">Mensagem:</span> {nfceDetailMap[errorVendaId]?.mensagem || "Sem detalhe registrado."}</p>
+            {nfceDetailMap[errorVendaId]?.chaveAcesso && (
+              <p><span className="font-semibold">Chave:</span> {nfceDetailMap[errorVendaId]?.chaveAcesso}</p>
+            )}
+            {nfceDetailMap[errorVendaId]?.protocolo && (
+              <p><span className="font-semibold">Protocolo:</span> {nfceDetailMap[errorVendaId]?.protocolo}</p>
+            )}
+            {nfceDetailMap[errorVendaId]?.criadoEm && (
+              <p><span className="font-semibold">Data log:</span> {formatDate(nfceDetailMap[errorVendaId]!.criadoEm!)}</p>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -17760,28 +18125,257 @@ components:
         - ok
 </file>
 
-<file path="package.json">
+<file path="pnpm-workspace.yaml">
+packages:
+  - artifacts/*
+  - lib/*
+
+autoInstallPeers: false
+
+catalog:
+  '@tailwindcss/vite': ^4.1.14
+  '@tanstack/react-query': ^5.90.21
+  '@types/node': ^25.3.3
+  '@types/react': ^19.2.0
+  '@types/react-dom': ^19.2.0
+  '@vitejs/plugin-react': ^5.0.4
+  class-variance-authority: ^0.7.1
+  clsx: 2.1.1
+  drizzle-orm: ^0.45.1
+  framer-motion: ^12.23.24
+  lucide-react: 0.545.0
+  react: 19.1.0
+  react-dom: 19.1.0
+  tailwind-merge: 3.5.0
+  tailwindcss: ^4.1.14
+  tsx: ^4.21.0
+  vite: ^7.3.0
+  zod: ^3.25.76
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - msw
+  - node-expat
+  - unrs-resolver
+  - usb
+
+overrides:
+  '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
+strictPeerDependencies: false
+</file>
+
+<file path="artifacts/api-server/package.json">
 {
-  "name": "workspace",
+  "name": "@workspace/api-server",
   "version": "0.0.0",
-  "license": "MIT",
-  "scripts": {
-    "preinstall": "node -e \"const fs=require('fs');if(fs.existsSync('package-lock.json'))fs.unlinkSync('package-lock.json');if(fs.existsSync('yarn.lock'))fs.unlinkSync('yarn.lock');\"",
-    "build": "pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --if-present run typecheck",
-    "db:seed": "tsx lib/db/seed.ts"
-  },
-  
   "private": true,
-  "devDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.60.1",
-    "lightningcss": "^1.32.0",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "node ./build.mjs",
+    "start": "node --enable-source-maps ./dist/index.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
+  "dependencies": {
+    "@workspace/api-zod": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "catalog:",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-usb": "3.0.0-alpha.4",
+    "express": "^5",
+    "fast-xml-parser": "^5.3.0",
+    "pino": "^9",
+    "pino-http": "^10"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "esbuild": "^0.27.3",
+    "esbuild-plugin-pino": "^2.3.3",
+    "pino-pretty": "^13",
+    "thread-stream": "3.1.0",
+    "tsx": "^4.21.0"
+  }
 }
+</file>
+
+<file path="artifacts/api-server/src/routes/index.ts">
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import produtosRouter from "./produtos";
+import vendasRouter from "./vendas";
+import estoqueRouter from "./estoque";
+import fiadoRouter from "./fiado";
+import caixaRouter from "./caixa";
+import maquininhaRouter from "./maquininha";
+import impressoraRouter from "./impressora";
+import nfceRouter from "./nfce";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use("/produtos", produtosRouter);
+router.use("/vendas", vendasRouter);
+router.use("/estoque", estoqueRouter);
+router.use("/fiado", fiadoRouter);
+router.use("/caixa", caixaRouter);
+router.use("/maquininha", maquininhaRouter);
+router.use("/impressora", impressoraRouter);
+router.use("/nfce", nfceRouter);
+
+export default router;
+</file>
+
+<file path="artifacts/api-server/src/routes/produtos.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { produtosTable } from "@workspace/db/schema";
+import { eq, ilike, lte, or, and } from "drizzle-orm";
+import {
+  CriarProdutoBody,
+  EditarProdutoBody,
+} from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+function normalizeCodigo(codigo: string | null | undefined) {
+  const trimmed = codigo?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function isUniqueViolation(err: unknown) {
+  if (!err || typeof err !== "object") return false;
+  const code = (err as { code?: string }).code;
+  const detail = (err as { detail?: string }).detail ?? "";
+  return code === "23505" && detail.includes("(codigo)");
+}
+
+router.get("/", async (req, res) => {
+  const { q, categoria } = req.query as { q?: string; categoria?: string };
+  const conditions = [eq(produtosTable.ativo, true)];
+  if (categoria === "mercado" || categoria === "cozinha" || categoria === "feira") {
+    conditions.push(eq(produtosTable.categoria, categoria));
+  }
+  if (q) {
+    conditions.push(
+      or(
+        ilike(produtosTable.codigo, `%${q}%`),
+        ilike(produtosTable.nome, `%${q}%`),
+        ilike(produtosTable.marca, `%${q}%`)
+      )!
+    );
+  }
+  const produtos = await db.select().from(produtosTable).where(and(...conditions));
+  res.json(produtos.map(formatProduto));
+});
+
+router.get("/busca", async (req, res) => {
+  const { codigo, nome } = req.query as { codigo?: string; nome?: string };
+  const conditions = [eq(produtosTable.ativo, true)];
+  if (codigo) {
+    conditions.push(eq(produtosTable.codigo, codigo.trim()));
+  } else if (nome) {
+    conditions.push(
+      or(
+        ilike(produtosTable.codigo, `%${nome}%`),
+        ilike(produtosTable.nome, `%${nome}%`),
+        ilike(produtosTable.marca, `%${nome}%`)
+      )!
+    );
+  }
+  const produtos = await db.select().from(produtosTable).where(and(...conditions));
+  res.json(produtos.map(formatProduto));
+});
+
+router.get("/alertas", async (_req, res) => {
+  const produtos = await db
+    .select()
+    .from(produtosTable)
+    .where(and(eq(produtosTable.ativo, true), lte(produtosTable.estoque, produtosTable.estoque_min)));
+  res.json(produtos.map(formatProduto));
+});
+
+router.post("/", async (req, res) => {
+  const data = CriarProdutoBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
+  try {
+    const [produto] = await db
+      .insert(produtosTable)
+      .values({
+        ...data,
+        unidade: data.categoria === "feira" ? "kg" : data.unidade,
+        codigo: normalizeCodigo(data.codigo),
+        cfop: typeof rawBody.cfop === "string" ? rawBody.cfop : undefined,
+        cest: typeof rawBody.cest === "string" ? rawBody.cest : undefined,
+      })
+      .returning();
+    res.status(201).json(formatProduto(produto));
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({
+        ok: false,
+        message: "Código de barras já cadastrado para outro produto",
+      });
+      return;
+    }
+    throw err;
+  }
+});
+
+router.put("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const data = EditarProdutoBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
+  let produto;
+  try {
+    [produto] = await db
+      .update(produtosTable)
+      .set({
+        ...data,
+        ...(data.categoria === "feira" ? { unidade: "kg" } : {}),
+        ...(data.codigo !== undefined ? { codigo: normalizeCodigo(data.codigo) } : {}),
+        ...(typeof rawBody.cfop === "string" ? { cfop: rawBody.cfop } : {}),
+        ...(typeof rawBody.cest === "string" ? { cest: rawBody.cest } : {}),
+      })
+      .where(eq(produtosTable.id, id))
+      .returning();
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({
+        ok: false,
+        message: "Código de barras já cadastrado para outro produto",
+      });
+      return;
+    }
+    throw err;
+  }
+  if (!produto) {
+    res.status(404).json({ ok: false, message: "Produto não encontrado" });
+    return;
+  }
+  res.json(formatProduto(produto));
+});
+
+router.delete("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  await db.update(produtosTable).set({ ativo: false }).where(eq(produtosTable.id, id));
+  res.json({ ok: true, message: "Produto desativado" });
+});
+
+function formatProduto(p: typeof produtosTable.$inferSelect) {
+  return {
+    ...p,
+    criado_em: p.criado_em.toISOString(),
+  };
+}
+
+export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/pages/fiado.tsx">
@@ -19595,6 +20189,30 @@ export const TestImpressoraResponse = zod.object({
 });
 </file>
 
+<file path="package.json">
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "preinstall": "node -e \"const fs=require('fs');if(fs.existsSync('package-lock.json'))fs.unlinkSync('package-lock.json');if(fs.existsSync('yarn.lock'))fs.unlinkSync('yarn.lock');\"",
+    "build": "pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --if-present run typecheck",
+    "db:seed": "tsx lib/db/seed.ts"
+  },
+  
+  "private": true,
+  "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.1",
+    "lightningcss": "^1.32.0",
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  },
+  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
+}
+</file>
+
 <file path="lib/db/src/schema/produtos.ts">
 import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -19748,27 +20366,23 @@ function FeiraLineEditor({
   onNudgePeso,
 }: {
   item: CartItem;
-  onFeiraChange: (id: number, p: { peso_kg: number; unidades: number }) => void;
+  onFeiraChange: (id: number, p: { peso_kg: number }) => void;
   onRemove: () => void;
   onNudgePeso: (delta: number) => void;
 }) {
   const [gStr, setGStr] = useState(() => String(Math.round(item.quantidade * 1000)));
-  const [uStr, setUStr] = useState(() => String(item.unidades));
 
   useEffect(() => {
     setGStr(String(Math.round(item.quantidade * 1000)));
-    setUStr(String(item.unidades));
-  }, [item.produto_id, item.quantidade, item.unidades]);
+  }, [item.produto_id, item.quantidade]);
 
   const apply = () => {
     const g = Number(String(gStr).replace(",", "."));
-    const u = Math.max(1, Math.floor(Number(String(uStr).replace(",", ".")) || 1));
     if (!Number.isFinite(g) || g <= 0) {
       setGStr(String(Math.round(item.quantidade * 1000)));
-      setUStr(String(item.unidades));
       return;
     }
-    onFeiraChange(item.produto_id, { peso_kg: g / 1000, unidades: u });
+    onFeiraChange(item.produto_id, { peso_kg: g / 1000 });
   };
 
   return (
@@ -19779,7 +20393,7 @@ function FeiraLineEditor({
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-2">
+      <div className="mb-2">
         <div>
           <label className="text-xs text-muted-foreground">Peso (g)</label>
           <Input
@@ -19788,18 +20402,6 @@ function FeiraLineEditor({
             inputMode="decimal"
             value={gStr}
             onChange={(e) => setGStr(e.target.value)}
-            onBlur={apply}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Unid. (peças)</label>
-          <Input
-            className="font-mono h-9"
-            type="text"
-            inputMode="numeric"
-            value={uStr}
-            onChange={(e) => setUStr(e.target.value)}
             onBlur={apply}
             onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
           />
@@ -19851,7 +20453,14 @@ export default function Pdv() {
   const [pagamentosParciais, setPagamentosParciais] = useState<PaymentAllocation[]>([]);
   const [feiraModal, setFeiraModal] = useState<{ isOpen: boolean; produto: Produto | null }>({ isOpen: false, produto: null });
   const [pesoGramasStr, setPesoGramasStr] = useState("");
-  const [unidadesFeiraStr, setUnidadesFeiraStr] = useState("1");
+  const [cpfModalOpen, setCpfModalOpen] = useState(false);
+  const [cpfInput, setCpfInput] = useState("");
+  const [pendingVenda, setPendingVenda] = useState<{
+    method: PaymentMethod;
+    clienteId?: number;
+    observacaoDinheiro?: string | null;
+    pagamentosOverride?: PaymentAllocation[];
+  } | null>(null);
 
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
     isOpen: false, texto: null,
@@ -19868,7 +20477,6 @@ export default function Pdv() {
   const handleAddToCart = (p: Produto) => {
     if (p.categoria === "feira") {
       setPesoGramasStr("");
-      setUnidadesFeiraStr("1");
       setFeiraModal({ isOpen: true, produto: p });
       return;
     }
@@ -19914,6 +20522,7 @@ export default function Pdv() {
     clienteId?: number,
     observacaoDinheiro?: string | null,
     pagamentosOverride?: PaymentAllocation[],
+    cpfNota?: string | null,
   ) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
     const hasFeira = cart.items.some((i) => i.is_feira);
@@ -19973,6 +20582,11 @@ export default function Pdv() {
       observacaoForma == null
         ? pagamentosTexto ? `MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}` : null
         : observacaoForma;
+    const cpfDigits = (cpfNota || "").replace(/\D/g, "");
+    const observacaoComCpf =
+      cpfDigits.length === 11
+        ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CPF_NA_NOTA:${cpfDigits}`
+        : observacaoFinal;
 
     registrarVenda.mutate({
       data: {
@@ -19980,7 +20594,7 @@ export default function Pdv() {
         pagamento: pagamentoVenda,
         desconto: cart.desconto,
         cliente_id: clienteId,
-        observacao: observacaoFinal,
+        observacao: observacaoComCpf,
         itens: cart.getPayloadItens(),
       }
     }, {
@@ -19992,6 +20606,9 @@ export default function Pdv() {
         setPaymentModal({ isOpen: false, method: null });
         setValorPagamentoStr("");
         setPagamentosParciais([]);
+        setCpfInput("");
+        setCpfModalOpen(false);
+        setPendingVenda(null);
         if (venda?.id) imprimirAposVenda(venda.id);
       },
       onError: (err) => {
@@ -20031,7 +20648,13 @@ export default function Pdv() {
         paymentModal.method === "dinheiro"
           ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ 0,00`
           : undefined;
-      processVenda(ultimoMetodo, clienteNota?.id, obsDinheiro, novosPagamentos);
+      setPendingVenda({
+        method: ultimoMetodo,
+        clienteId: clienteNota?.id,
+        observacaoDinheiro: obsDinheiro,
+        pagamentosOverride: novosPagamentos,
+      });
+      setCpfModalOpen(true);
       return;
     }
 
@@ -20045,16 +20668,14 @@ export default function Pdv() {
   const confirmarPesoFeira = () => {
     const produto = feiraModal.produto;
     const gramas = Number(String(pesoGramasStr).replace(",", "."));
-    const unidades = Math.max(1, Math.floor(Number(String(unidadesFeiraStr).replace(",", ".")) || 1));
     if (!produto || !Number.isFinite(gramas) || gramas <= 0) {
       toast({ title: "Peso inválido", description: "Informe o peso em gramas.", variant: "destructive" });
       return;
     }
     const kg = gramas / 1000;
-    cart.addWeightedItem(produto, kg, unidades);
+    cart.addWeightedItem(produto, kg);
     setFeiraModal({ isOpen: false, produto: null });
     setPesoGramasStr("");
-    setUnidadesFeiraStr("1");
   };
 
   return (
@@ -20372,29 +20993,16 @@ export default function Pdv() {
               Preco por kg: {formatMoney(feiraModal.produto?.preco ?? 0)}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={pesoGramasStr}
-                onChange={(e) => setPesoGramasStr(e.target.value)}
-                placeholder="Ex: 500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Unidades (peças)</label>
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={unidadesFeiraStr}
-                onChange={(e) => setUnidadesFeiraStr(e.target.value)}
-                placeholder="1"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              value={pesoGramasStr}
+              onChange={(e) => setPesoGramasStr(e.target.value)}
+              placeholder="Ex: 500"
+            />
           </div>
           <div className="bg-muted/50 border border-border rounded-xl p-3">
             <p className="text-sm text-muted-foreground">Subtotal estimado</p>
@@ -20433,10 +21041,57 @@ export default function Pdv() {
             className="w-full mt-4" 
             size="lg" 
             disabled={!selectedCliente || registrarVenda.isPending}
-            onClick={() => processVenda('fiado', Number(selectedCliente))}
+            onClick={() => {
+              setPendingVenda({ method: "fiado", clienteId: Number(selectedCliente) });
+              setCpfModalOpen(true);
+            }}
           >
             {registrarVenda.isPending ? "Registrando..." : "Confirmar na Comanda"}
           </Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF na nota (opcional)">
+        <div className="space-y-4">
+          <Input
+            value={cpfInput}
+            onChange={(e) => setCpfInput(e.target.value)}
+            placeholder="Digite o CPF e clique em Sim, ou clique em Nao"
+            className="font-mono"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                if (!pendingVenda) return;
+                processVenda(
+                  pendingVenda.method,
+                  pendingVenda.clienteId,
+                  pendingVenda.observacaoDinheiro,
+                  pendingVenda.pagamentosOverride,
+                  null,
+                );
+              }}
+            >
+              Nao
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                if (!pendingVenda) return;
+                processVenda(
+                  pendingVenda.method,
+                  pendingVenda.clienteId,
+                  pendingVenda.observacaoDinheiro,
+                  pendingVenda.pagamentosOverride,
+                  cpfInput,
+                );
+              }}
+            >
+              Sim
+            </Button>
+          </div>
         </div>
       </Modal>
 
@@ -20780,7 +21435,7 @@ export default function Produtos() {
       custo: Number(formData.custo) || 0,
       estoque: Number(formData.estoque) || 0,
       estoque_min: Number(formData.estoque_min) || 0,
-      unidade: formData.unidade || 'un',
+      unidade: formData.categoria === "feira" ? "kg" : (formData.unidade || "un"),
       validade: formData.validade || null,
     };
 
@@ -21162,6 +21817,9 @@ export default function Produtos() {
               <option value="cozinha">Cozinha / Lanchonete</option>
               <option value="feira">Feira (peso)</option>
             </Select>
+            {formData.categoria === "feira" && (
+              <p className="text-xs text-muted-foreground mt-1">Produtos da feira usam unidade fixa em kg.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -21207,7 +21865,12 @@ export default function Produtos() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Unidade</label>
-              <Input value={formData.unidade} onChange={e => setFormData({...formData, unidade: e.target.value})} placeholder="un, kg, L" />
+              <Input
+                value={formData.categoria === "feira" ? "kg" : formData.unidade}
+                onChange={e => setFormData({...formData, unidade: e.target.value})}
+                placeholder="un, kg, L"
+                disabled={formData.categoria === "feira"}
+              />
             </div>
           </div>
           <div>

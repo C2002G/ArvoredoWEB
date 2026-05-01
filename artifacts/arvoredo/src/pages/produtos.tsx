@@ -319,7 +319,7 @@ export default function Produtos() {
       custo: Number(formData.custo) || 0,
       estoque: Number(formData.estoque) || 0,
       estoque_min: Number(formData.estoque_min) || 0,
-      unidade: formData.unidade || 'un',
+      unidade: formData.categoria === "feira" ? "kg" : (formData.unidade || "un"),
       validade: formData.validade || null,
     };
 
@@ -701,6 +701,9 @@ export default function Produtos() {
               <option value="cozinha">Cozinha / Lanchonete</option>
               <option value="feira">Feira (peso)</option>
             </Select>
+            {formData.categoria === "feira" && (
+              <p className="text-xs text-muted-foreground mt-1">Produtos da feira usam unidade fixa em kg.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -746,7 +749,12 @@ export default function Produtos() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Unidade</label>
-              <Input value={formData.unidade} onChange={e => setFormData({...formData, unidade: e.target.value})} placeholder="un, kg, L" />
+              <Input
+                value={formData.categoria === "feira" ? "kg" : formData.unidade}
+                onChange={e => setFormData({...formData, unidade: e.target.value})}
+                placeholder="un, kg, L"
+                disabled={formData.categoria === "feira"}
+              />
             </div>
           </div>
           <div>

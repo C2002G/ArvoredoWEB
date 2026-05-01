@@ -112,27 +112,23 @@ function FeiraLineEditor({
   onNudgePeso,
 }: {
   item: CartItem;
-  onFeiraChange: (id: number, p: { peso_kg: number; unidades: number }) => void;
+  onFeiraChange: (id: number, p: { peso_kg: number }) => void;
   onRemove: () => void;
   onNudgePeso: (delta: number) => void;
 }) {
   const [gStr, setGStr] = useState(() => String(Math.round(item.quantidade * 1000)));
-  const [uStr, setUStr] = useState(() => String(item.unidades));
 
   useEffect(() => {
     setGStr(String(Math.round(item.quantidade * 1000)));
-    setUStr(String(item.unidades));
-  }, [item.produto_id, item.quantidade, item.unidades]);
+  }, [item.produto_id, item.quantidade]);
 
   const apply = () => {
     const g = Number(String(gStr).replace(",", "."));
-    const u = Math.max(1, Math.floor(Number(String(uStr).replace(",", ".")) || 1));
     if (!Number.isFinite(g) || g <= 0) {
       setGStr(String(Math.round(item.quantidade * 1000)));
-      setUStr(String(item.unidades));
       return;
     }
-    onFeiraChange(item.produto_id, { peso_kg: g / 1000, unidades: u });
+    onFeiraChange(item.produto_id, { peso_kg: g / 1000 });
   };
 
   return (
@@ -143,7 +139,7 @@ function FeiraLineEditor({
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-2">
+      <div className="mb-2">
         <div>
           <label className="text-xs text-muted-foreground">Peso (g)</label>
           <Input
@@ -152,18 +148,6 @@ function FeiraLineEditor({
             inputMode="decimal"
             value={gStr}
             onChange={(e) => setGStr(e.target.value)}
-            onBlur={apply}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Unid. (peças)</label>
-          <Input
-            className="font-mono h-9"
-            type="text"
-            inputMode="numeric"
-            value={uStr}
-            onChange={(e) => setUStr(e.target.value)}
             onBlur={apply}
             onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
           />
@@ -215,7 +199,14 @@ export default function Pdv() {
   const [pagamentosParciais, setPagamentosParciais] = useState<PaymentAllocation[]>([]);
   const [feiraModal, setFeiraModal] = useState<{ isOpen: boolean; produto: Produto | null }>({ isOpen: false, produto: null });
   const [pesoGramasStr, setPesoGramasStr] = useState("");
-  const [unidadesFeiraStr, setUnidadesFeiraStr] = useState("1");
+  const [cpfModalOpen, setCpfModalOpen] = useState(false);
+  const [cpfInput, setCpfInput] = useState("");
+  const [pendingVenda, setPendingVenda] = useState<{
+    method: PaymentMethod;
+    clienteId?: number;
+    observacaoDinheiro?: string | null;
+    pagamentosOverride?: PaymentAllocation[];
+  } | null>(null);
 
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
     isOpen: false, texto: null,
@@ -232,7 +223,6 @@ export default function Pdv() {
   const handleAddToCart = (p: Produto) => {
     if (p.categoria === "feira") {
       setPesoGramasStr("");
-      setUnidadesFeiraStr("1");
       setFeiraModal({ isOpen: true, produto: p });
       return;
     }
@@ -278,6 +268,7 @@ export default function Pdv() {
     clienteId?: number,
     observacaoDinheiro?: string | null,
     pagamentosOverride?: PaymentAllocation[],
+    cpfNota?: string | null,
   ) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
     const hasFeira = cart.items.some((i) => i.is_feira);
@@ -337,6 +328,11 @@ export default function Pdv() {
       observacaoForma == null
         ? pagamentosTexto ? `MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}` : null
         : observacaoForma;
+    const cpfDigits = (cpfNota || "").replace(/\D/g, "");
+    const observacaoComCpf =
+      cpfDigits.length === 11
+        ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CPF_NA_NOTA:${cpfDigits}`
+        : observacaoFinal;
 
     registrarVenda.mutate({
       data: {
@@ -344,7 +340,7 @@ export default function Pdv() {
         pagamento: pagamentoVenda,
         desconto: cart.desconto,
         cliente_id: clienteId,
-        observacao: observacaoFinal,
+        observacao: observacaoComCpf,
         itens: cart.getPayloadItens(),
       }
     }, {
@@ -356,6 +352,9 @@ export default function Pdv() {
         setPaymentModal({ isOpen: false, method: null });
         setValorPagamentoStr("");
         setPagamentosParciais([]);
+        setCpfInput("");
+        setCpfModalOpen(false);
+        setPendingVenda(null);
         if (venda?.id) imprimirAposVenda(venda.id);
       },
       onError: (err) => {
@@ -395,7 +394,13 @@ export default function Pdv() {
         paymentModal.method === "dinheiro"
           ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ 0,00`
           : undefined;
-      processVenda(ultimoMetodo, clienteNota?.id, obsDinheiro, novosPagamentos);
+      setPendingVenda({
+        method: ultimoMetodo,
+        clienteId: clienteNota?.id,
+        observacaoDinheiro: obsDinheiro,
+        pagamentosOverride: novosPagamentos,
+      });
+      setCpfModalOpen(true);
       return;
     }
 
@@ -409,16 +414,14 @@ export default function Pdv() {
   const confirmarPesoFeira = () => {
     const produto = feiraModal.produto;
     const gramas = Number(String(pesoGramasStr).replace(",", "."));
-    const unidades = Math.max(1, Math.floor(Number(String(unidadesFeiraStr).replace(",", ".")) || 1));
     if (!produto || !Number.isFinite(gramas) || gramas <= 0) {
       toast({ title: "Peso inválido", description: "Informe o peso em gramas.", variant: "destructive" });
       return;
     }
     const kg = gramas / 1000;
-    cart.addWeightedItem(produto, kg, unidades);
+    cart.addWeightedItem(produto, kg);
     setFeiraModal({ isOpen: false, produto: null });
     setPesoGramasStr("");
-    setUnidadesFeiraStr("1");
   };
 
   return (
@@ -736,29 +739,16 @@ export default function Pdv() {
               Preco por kg: {formatMoney(feiraModal.produto?.preco ?? 0)}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={pesoGramasStr}
-                onChange={(e) => setPesoGramasStr(e.target.value)}
-                placeholder="Ex: 500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Unidades (peças)</label>
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={unidadesFeiraStr}
-                onChange={(e) => setUnidadesFeiraStr(e.target.value)}
-                placeholder="1"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              value={pesoGramasStr}
+              onChange={(e) => setPesoGramasStr(e.target.value)}
+              placeholder="Ex: 500"
+            />
           </div>
           <div className="bg-muted/50 border border-border rounded-xl p-3">
             <p className="text-sm text-muted-foreground">Subtotal estimado</p>
@@ -797,10 +787,57 @@ export default function Pdv() {
             className="w-full mt-4" 
             size="lg" 
             disabled={!selectedCliente || registrarVenda.isPending}
-            onClick={() => processVenda('fiado', Number(selectedCliente))}
+            onClick={() => {
+              setPendingVenda({ method: "fiado", clienteId: Number(selectedCliente) });
+              setCpfModalOpen(true);
+            }}
           >
             {registrarVenda.isPending ? "Registrando..." : "Confirmar na Comanda"}
           </Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF na nota (opcional)">
+        <div className="space-y-4">
+          <Input
+            value={cpfInput}
+            onChange={(e) => setCpfInput(e.target.value)}
+            placeholder="Digite o CPF e clique em Sim, ou clique em Nao"
+            className="font-mono"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                if (!pendingVenda) return;
+                processVenda(
+                  pendingVenda.method,
+                  pendingVenda.clienteId,
+                  pendingVenda.observacaoDinheiro,
+                  pendingVenda.pagamentosOverride,
+                  null,
+                );
+              }}
+            >
+              Nao
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                if (!pendingVenda) return;
+                processVenda(
+                  pendingVenda.method,
+                  pendingVenda.clienteId,
+                  pendingVenda.observacaoDinheiro,
+                  pendingVenda.pagamentosOverride,
+                  cpfInput,
+                );
+              }}
+            >
+              Sim
+            </Button>
+          </div>
         </div>
       </Modal>
 

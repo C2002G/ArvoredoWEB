@@ -43,6 +43,12 @@ function money(v: number): string {
   return `R$ ${v.toFixed(2).replace(".", ",")}`;
 }
 
+function formatDateTimeLocal(isoLike: string): string {
+  const d = new Date(isoLike);
+  if (!Number.isFinite(d.getTime())) return isoLike;
+  return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
   const parsed = parser.parse(xmlAutorizado);
@@ -68,7 +74,7 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
     destinatario: dest?.xNome || "Consumidor final",
     numero: String(ide?.nNF || ""),
     serie: String(ide?.serie || ""),
-    dataEmissao: String(ide?.dhEmi || ""),
+    dataEmissao: formatDateTimeLocal(String(ide?.dhEmi || "")),
     itens: det.map((item: any) => ({
       descricao: item?.prod?.xProd || "Item",
       qtd: toNumber(item?.prod?.qCom),
@@ -145,10 +151,10 @@ export async function imprimirDanfeSimplificado(
         return;
       }
       try {
-        printer.align("ct").style("b");
-        for (const line of lines) printer.text(line);
+        printer.align("ct").style("b").size(1, 1).text(" ");
+        for (const line of lines) printer.style("b").text(line);
         if (data.qrCodeUrl) printer.qrcode(data.qrCodeUrl, 2, 6, "l");
-        printer.text("").cut().close();
+        printer.text(" ").cut().close();
         resolve();
       } catch (printErr) {
         reject(printErr);
