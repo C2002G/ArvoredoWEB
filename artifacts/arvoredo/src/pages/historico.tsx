@@ -47,6 +47,7 @@ export default function Historico() {
 
   const [statusMap, setStatusMap] = useState<StatusMap>({});
   const [nfceDetailMap, setNfceDetailMap] = useState<NfceDetailMap>({});
+  const [loadingStatus, setLoadingStatus] = useState(true);
   const [errorVendaId, setErrorVendaId] = useState<number | null>(null);
   const { toast } = useToast();
   const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
@@ -56,9 +57,11 @@ export default function Historico() {
     if (!vendas.length) {
       setStatusMap({});
       setNfceDetailMap({});
+      setLoadingStatus(false);
       return;
     }
     (async () => {
+      setLoadingStatus(true);
       const details = await Promise.all(
         vendas.map(async (v) => {
           try {
@@ -92,6 +95,7 @@ export default function Historico() {
           Object.entries(detailMap as NfceDetailMap).map(([vendaId, detail]) => [Number(vendaId), detail.status]),
         ),
       );
+      setLoadingStatus(false);
     })();
     return () => {
       active = false;
@@ -247,16 +251,20 @@ export default function Historico() {
                     <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
                     <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
                     <td className="px-6 py-4 text-center text-sm font-medium">
-                      <button
-                        className="hover:underline"
-                        onClick={() => {
-                          const s = statusMap[v.id] || "processando";
-                          if (s === "erro" || s === "rejeitada") setErrorVendaId(v.id);
-                        }}
-                        title="Clique para ver detalhes"
-                      >
-                        {statusLabel[statusMap[v.id] || "processando"]}
-                      </button>
+                      {loadingStatus ? (
+                        <span className="text-muted-foreground text-xs">...</span>
+                      ) : (
+                        <button
+                          className="hover:underline"
+                          onClick={() => {
+                            const s = statusMap[v.id] || "sem_emissao";
+                            if (s === "erro" || s === "rejeitada") setErrorVendaId(v.id);
+                          }}
+                          title="Clique para ver detalhes"
+                        >
+                          {statusLabel[statusMap[v.id] || "sem_emissao"]}
+                        </button>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="relative inline-block text-left">

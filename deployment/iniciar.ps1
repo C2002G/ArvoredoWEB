@@ -74,11 +74,13 @@ if (-not (Test-Path $logsDir)) {
 Write-Host "[3/5] Iniciando API (porta 8080)..." -ForegroundColor Yellow
 $apiLog = Join-Path $logsDir "api-$(Get-Date -Format yyyyMMdd-HHmmss).log"
 
+$env:TZ = "America/Sao_Paulo"
 $env:PORT = "8080"
 
 $apiJob = Start-Job -ScriptBlock {
     param($WorkDir, $LogFile, $DbUrl, $Port)
     $env:DATABASE_URL = $DbUrl
+    $env:TZ = "America/Sao_Paulo"
     $env:PORT = $Port
     Set-Location $WorkDir
     pnpm --filter @workspace/api-server run dev 2>&1 | Tee-Object -FilePath $LogFile

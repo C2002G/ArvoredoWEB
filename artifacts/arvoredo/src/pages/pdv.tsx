@@ -355,7 +355,10 @@ export default function Pdv() {
         setCpfInput("");
         setCpfModalOpen(false);
         setPendingVenda(null);
-        if (venda?.id) imprimirAposVenda(venda.id);
+        const danfeImpresso = (venda as { danfe_impresso?: boolean } | undefined)?.danfe_impresso;
+        if (venda?.id && !danfeImpresso) {
+          imprimirAposVenda(venda.id);
+        }
       },
       onError: (err) => {
         toast({ title: "Erro na Venda", description: err.message, variant: "destructive" });

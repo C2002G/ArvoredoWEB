@@ -1,3 +1,5 @@
+process.env.TZ = "America/Sao_Paulo";
+
 import "dotenv/config";
 import app from "./app";
 import { logger } from "./lib/logger";
@@ -25,6 +27,7 @@ runStartupMigrations()
         process.exit(1);
       }
 
+      logger.info({ now: new Date().toString(), tz: process.env.TZ }, "Timezone configured");
       logger.info({ port }, "Server listening");
     });
   })

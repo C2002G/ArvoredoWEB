@@ -193,6 +193,7 @@ router.post("/", async (req, res) => {
       criado_em: venda.criado_em.toISOString(),
       nfce_status: emissao.success ? "autorizada" : emissao.status,
       nfce_mensagem: emissao.mensagem ?? null,
+      danfe_impresso: emissao.success === true,
     });
   } catch (error: any) {
     req.log.error({ err: error, vendaId: venda.id }, "Falha ao emitir NFC-e ou imprimir.");
@@ -207,6 +208,7 @@ router.post("/", async (req, res) => {
       criado_em: venda.criado_em.toISOString(),
       nfce_status: ultimoLog?.status || "erro",
       nfce_mensagem: error.message,
+      danfe_impresso: false,
     });
   }
 });

@@ -17,4 +17,5 @@ export interface Venda {
   cliente_nome?: string | null;
   observacao?: string | null;
   criado_em: string;
+  danfe_impresso?: boolean;
 }

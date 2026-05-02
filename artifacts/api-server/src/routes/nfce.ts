@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { nfceLogsTable } from "@workspace/db/schema";
+import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable } from "@workspace/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { reimprimirDanfeSimplificado } from "../services/danfe.service";
 
@@ -41,13 +41,28 @@ router.post("/:vendaId/reimprimir", async (req, res) => {
     .orderBy(desc(nfceLogsTable.criado_em))
     .limit(1);
 
-  if (!log?.xml_autorizado) {
-    res.status(404).json({ ok: false, message: "XML autorizado nao encontrado para reimpressao" });
+  if (log?.xml_autorizado) {
+    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
+    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
     return;
   }
 
-  await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
-  res.json({ ok: true, message: "Reimpressao enviada para impressora" });
+  const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+  if (!venda) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, vendaId));
+  const [cliente] = venda.cliente_id
+    ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
+    : [undefined];
+
+  const { buildCupomText } = await import("../lib/print-layout");
+  const { printTextToWindowsPrinter } = await import("../lib/printer");
+  const text = buildCupomText(venda, itens, cliente?.nome);
+  await printTextToWindowsPrinter(text);
+  res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
 });
 
 router.post("/:vendaId/cancelar", async (req, res) => {

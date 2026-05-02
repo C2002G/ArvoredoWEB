@@ -1,4 +1,3 @@
-// in: artifacts/api-server/src/services/sefaz.service.ts
 import { db } from "@workspace/db";
 import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -65,19 +64,10 @@ function resolveUniNFeBaseDir(cnpjNumerico: string) {
 }
 
 function formatarDhEmi(data: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const ano = data.getFullYear();
-  const mes = pad(data.getMonth() + 1);
-  const dia = pad(data.getDate());
-  const hora = pad(data.getHours());
-  const min = pad(data.getMinutes());
-  const seg = pad(data.getSeconds());
-  const offsetMin = -data.getTimezoneOffset();
-  const sinal = offsetMin >= 0 ? "+" : "-";
-  const offsetAbs = Math.abs(offsetMin);
-  const offsetHora = pad(Math.floor(offsetAbs / 60));
-  const offsetMinutos = pad(offsetAbs % 60);
-  return `${ano}-${mes}-${dia}T${hora}:${min}:${seg}${sinal}${offsetHora}:${offsetMinutos}`;
+  const options = { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false } as const;
+  const parts = new Intl.DateTimeFormat("pt-BR", options).formatToParts(data);
+  const getP = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${getP("year")}-${getP("month")}-${getP("day")}T${getP("hour")}:${getP("minute")}:${getP("second")}-03:00`;
 }
 
 async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string) {
@@ -292,8 +282,8 @@ export async function emitirNfce(
     }).where(eq(nfceLogsTable.id, log.id));
 
     // Para impressão, extraímos o QR Code retornado pelo XML processado
-    const matchQr = autorizadoXML.match(/<qrCode><!\[CDATA\[(.*?)\]\]><\/qrCode>/) || autorizadoXML.match(/<qrCode>(.*?)<\/qrCode>/);
-    const qrCodeUrl = matchQr ? matchQr[1] : "";
+    const matchQr = autorizadoXML.match(/<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i);
+    const qrCodeUrl = matchQr ? matchQr[1].trim() : "";
 
     return { success: true, status: "autorizada", xmlAutorizado: autorizadoXML, chaveAcesso, qrCodeUrl };
   } catch (error: any) {
