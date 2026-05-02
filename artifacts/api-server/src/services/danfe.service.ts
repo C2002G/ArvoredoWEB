@@ -170,10 +170,15 @@ export async function imprimirDanfeSimplificado(
         try {
           const text = renderDanfeSimplificadoText(data);
           const lines = text.split(/\r?\n/);
-          printer.align("ct").style("b").size(1, 1).text(" ");
+          // Modo mais escuro para texto (double-strike + emphasized).
+          printer.raw(Buffer.from([0x1b, 0x47, 0x01])); // ESC G 1
+          printer.raw(Buffer.from([0x1b, 0x45, 0x01])); // ESC E 1
+          printer.align("ct").font("a").size(1, 1).text(" ");
           for (const line of lines) {
-            printer.style("b").text(line);
+            printer.text(line);
           }
+          printer.raw(Buffer.from([0x1b, 0x45, 0x00])); // ESC E 0
+          printer.raw(Buffer.from([0x1b, 0x47, 0x00])); // ESC G 0
 
           if (data.qrCodeUrl) {
             try {

@@ -95,6 +95,27 @@ async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string
   return null;
 }
 
+async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso: string) {
+  try {
+    const arquivos = await fs.readdir(pastaRetorno);
+    const candidatos = arquivos.filter(
+      (nome) =>
+        nome.toLowerCase().endsWith(".xml") &&
+        (nome.includes(chaveAcesso) || nome.toLowerCase().includes("proc")),
+    );
+    for (const nome of candidatos) {
+      const conteudo = await fs.readFile(path.join(pastaRetorno, nome), "utf8");
+      if (!conteudo.includes(chaveAcesso)) continue;
+      if (conteudo.includes("<protNFe") && /<cStat>\s*100\s*<\/cStat>/.test(conteudo)) {
+        return conteudo;
+      }
+    }
+  } catch {
+    // Ignora erros transitórios de leitura.
+  }
+  return "";
+}
+
 export async function emitirNfce(
   venda: Venda,
   itens: ItemVenda[],
@@ -240,16 +261,19 @@ export async function emitirNfce(
     const nomeArquivo = `${chaveAcesso}-nfe.xml`;
     await fs.writeFile(path.join(pastaEnvio, nomeArquivo), xmlContent, "utf8");
 
-    // Polling de 500ms até 15 segundos
+    // Polling configurável para aguardar retorno do UniNFe.
+    // Em algumas instalações o retorno pode passar de 15s.
     const arquivoAutorizado = path.join(pastaRetorno, `${chaveAcesso}-procNFe.xml`);
     const arquivoErro = path.join(pastaRetorno, `${chaveAcesso}-nfe.err`);
+    const intervaloMs = Number(process.env.NFCE_POLL_INTERVAL_MS || "1000");
+    const tentativas = Number(process.env.NFCE_POLL_RETRIES || "120");
 
-    let retries = 30;
+    let retries = Number.isFinite(tentativas) && tentativas > 0 ? tentativas : 120;
     let autorizadoXML = "";
     let erroTXT = "";
 
     while (retries > 0) {
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, intervaloMs));
       try {
         if (existsSync(arquivoAutorizado)) {
           autorizadoXML = await fs.readFile(arquivoAutorizado, "utf8");
@@ -268,12 +292,20 @@ export async function emitirNfce(
           erroTXT = resultadoProRec.mensagem || "Rejeicao retornada em arquivo pro-rec.xml";
           break;
         }
+        const xmlGenerico = await buscarArquivoAutorizadoPorChave(pastaRetorno, chaveAcesso);
+        if (xmlGenerico) {
+          autorizadoXML = xmlGenerico;
+          break;
+        }
       } catch (e) { }
       retries--;
     }
 
     if (erroTXT) throw new Error(`Rejeição da Sefaz: ${erroTXT}`);
-    if (!autorizadoXML) throw new Error("UniNFe não respondeu a tempo.");
+    if (!autorizadoXML) {
+      const tempoTotalSeg = Math.round((tentativas * intervaloMs) / 1000);
+      throw new Error(`UniNFe não respondeu a tempo (${tempoTotalSeg}s).`);
+    }
 
     await db.update(nfceLogsTable).set({
       status: "autorizada",

@@ -20,5 +20,6 @@ export function formatDate(dateStr: string | Date): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
   }).format(d);
 }
