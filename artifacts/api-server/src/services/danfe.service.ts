@@ -144,7 +144,12 @@ export async function imprimirDanfeSimplificado(
   xmlAutorizado: string,
 ) {
   const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  try {
+  const text = renderDanfeSimplificadoText(data);
+  const mode = (process.env.DANFE_PRINT_MODE || "auto").toLowerCase();
+  const openTimeoutMs = Number(process.env.DANFE_USB_OPEN_TIMEOUT_MS || "5000");
+  const totalTimeoutMs = Number(process.env.DANFE_USB_TOTAL_TIMEOUT_MS || "12000");
+
+  const printViaUsb = async () => {
     const escposMod: any = await import("escpos");
     const escpos = escposMod.default || escposMod;
     const escposUsbMod: any = await import("escpos-usb");
@@ -152,23 +157,32 @@ export async function imprimirDanfeSimplificado(
     escpos.USB = UsbCtor;
 
     await new Promise<void>((resolve, reject) => {
+      const totalTimer = setTimeout(() => {
+        reject(new Error(`Timeout geral ao imprimir DANFE via USB (${totalTimeoutMs}ms)`));
+      }, totalTimeoutMs);
       let device: any;
       try {
         device = new escpos.USB();
       } catch (err) {
+        clearTimeout(totalTimer);
         reject(err);
         return;
       }
 
       const printer = new escpos.Printer(device);
+      const openTimer = setTimeout(() => {
+        clearTimeout(totalTimer);
+        reject(new Error(`Timeout ao abrir impressora USB (${openTimeoutMs}ms)`));
+      }, openTimeoutMs);
       device.open(async (err: Error | null) => {
+        clearTimeout(openTimer);
         if (err) {
+          clearTimeout(totalTimer);
           reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
           return;
         }
         let qrTempPath: string | null = null;
         try {
-          const text = renderDanfeSimplificadoText(data);
           const lines = text.split(/\r?\n/);
           // Modo mais escuro para texto (double-strike + emphasized).
           printer.raw(Buffer.from([0x1b, 0x47, 0x01])); // ESC G 1
@@ -207,8 +221,12 @@ export async function imprimirDanfeSimplificado(
             }
           }
 
-          printer.text(" ").cut().close(() => resolve());
+          printer.text(" ").cut().close(() => {
+            clearTimeout(totalTimer);
+            resolve();
+          });
         } catch (printErr) {
+          clearTimeout(totalTimer);
           reject(printErr);
         } finally {
           if (qrTempPath) {
@@ -217,8 +235,21 @@ export async function imprimirDanfeSimplificado(
         }
       });
     });
+  };
+
+  if (mode === "windows") {
+    await printTextToWindowsPrinter(text);
+    return;
+  }
+
+  if (mode === "usb") {
+    await printViaUsb();
+    return;
+  }
+
+  try {
+    await printViaUsb();
   } catch {
-    const text = renderDanfeSimplificadoText(data);
     await printTextToWindowsPrinter(text);
   }
 }

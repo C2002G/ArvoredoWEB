@@ -260,6 +260,14 @@ export default function Pdv() {
           });
         }
       },
+      onError: (err: any) => {
+        console.error("[imprimirAposVenda] erro:", err);
+        toast({
+          title: "Erro de Impressão",
+          description: err?.message || "Falha ao comunicar com a impressora.",
+          variant: "destructive",
+        });
+      },
     });
   }, [imprimirCupom, toast]);
 
@@ -303,12 +311,13 @@ export default function Pdv() {
         });
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Falha ao enviar para maquininha";
+        console.warn("[maquininha] falhou mas venda continua:", error);
         toast({
-          title: "Erro na maquininha",
-          description: msg,
+          title: "Aviso: maquininha não acionada",
+          description: `${msg} — venda registrada normalmente.`,
           variant: "destructive",
         });
-        return;
+        // SEM return aqui — venda continua
       }
     }
 

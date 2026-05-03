@@ -169,48 +169,53 @@ router.post("/", async (req, res) => {
     }
   }
   
-  try {
-    const produtosIds = data.itens.map((i) => i.produto_id);
-    const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
-    const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
+  // Responder imediatamente ao frontend
+  res.status(201).json({
+    ...venda,
+    criado_em: venda.criado_em.toISOString(),
+    danfe_impresso: false,
+    nfce_status: "pendente",
+  });
 
-    const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
-    const vendaParaSefaz = {
-      ...venda,
-      observacao:
-        cpfNota.length === 11
-          ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
-          : venda.observacao,
-    };
+  // Processar NFC-e em background (não-bloqueante)
+  setImmediate(async () => {
+    try {
+      console.log("[NFC-e background] iniciando para venda", venda.id);
+      const produtosIds = data.itens.map((i) => i.produto_id);
+      const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
+      const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
 
-    const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
+      const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
+      const vendaParaSefaz = {
+        ...venda,
+        observacao:
+          cpfNota.length === 11
+            ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
+            : venda.observacao,
+      };
 
-    if (emissao.success && emissao.xmlAutorizado) {
-      await imprimirDanfeSimplificado(emissao.qrCodeUrl || "", emissao.chaveAcesso || "", emissao.xmlAutorizado);
+      const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
+
+      if (emissao.success && emissao.xmlAutorizado) {
+        const printTimeoutMs = Number(process.env.DANFE_PRINT_TIMEOUT_MS || "12000");
+        try {
+          await Promise.race([
+            imprimirDanfeSimplificado(emissao.qrCodeUrl || "", emissao.chaveAcesso || "", emissao.xmlAutorizado),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Timeout da impressao DANFE (${printTimeoutMs}ms)`)),
+                printTimeoutMs,
+              ),
+            ),
+          ]);
+        } catch (printError) {
+          console.error("[NFC-e background] Falha ao imprimir DANFE:", printError);
+        }
+      }
+    } catch (bgErr) {
+      console.error("[NFC-e background] erro:", bgErr);
     }
-    res.status(201).json({
-      ...venda,
-      criado_em: venda.criado_em.toISOString(),
-      nfce_status: emissao.success ? "autorizada" : emissao.status,
-      nfce_mensagem: emissao.mensagem ?? null,
-      danfe_impresso: emissao.success === true,
-    });
-  } catch (error: any) {
-    req.log.error({ err: error, vendaId: venda.id }, "Falha ao emitir NFC-e ou imprimir.");
-    const [ultimoLog] = await db
-      .select()
-      .from(nfceLogsTable)
-      .where(eq(nfceLogsTable.venda_id, venda.id))
-      .orderBy(desc(nfceLogsTable.criado_em))
-      .limit(1);
-    res.status(201).json({
-      ...venda,
-      criado_em: venda.criado_em.toISOString(),
-      nfce_status: ultimoLog?.status || "erro",
-      nfce_mensagem: error.message,
-      danfe_impresso: false,
-    });
-  }
+  });
 });
 
 router.put("/:id", async (req, res) => {
