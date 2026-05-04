@@ -175,6 +175,8 @@ router.post("/", async (req, res) => {
     criado_em: venda.criado_em.toISOString(),
     danfe_impresso: false,
     nfce_status: "pendente",
+    // Flag para indicar que DANFE será impresso em background (evita duplicação)
+    _danfe_will_print: true,
   });
 
   // Processar NFC-e em background (não-bloqueante)
@@ -200,7 +202,16 @@ router.post("/", async (req, res) => {
         const printTimeoutMs = Number(process.env.DANFE_PRINT_TIMEOUT_MS || "12000");
         try {
           await Promise.race([
-            imprimirDanfeSimplificado(emissao.qrCodeUrl || "", emissao.chaveAcesso || "", emissao.xmlAutorizado),
+            await imprimirDanfeSimplificado(
+              emissao.qrCodeUrl || "",
+              emissao.chaveAcesso || "",
+              emissao.xmlAutorizado,
+              {
+                venda: { ...venda, criado_em: venda.criado_em },
+                itens: insertedItensVenda,
+                clienteNome: cliente?.nome,
+              }
+            ),
             new Promise((_, reject) =>
               setTimeout(
                 () => reject(new Error(`Timeout da impressao DANFE (${printTimeoutMs}ms)`)),

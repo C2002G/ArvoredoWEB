@@ -70,6 +70,63 @@ function formatarDhEmi(data: Date) {
   return `${getP("year")}-${getP("month")}-${getP("day")}T${getP("hour")}:${getP("minute")}:${getP("second")}-03:00`;
 }
 
+/**
+ * Converte qualquer CST/CSOSN de entrada para um CSOSN válido para
+ * empresas do Simples Nacional (CRT=1). Valores aceitos pelo SEFAZ: 102, 103, 300, 400.
+ *
+ * Tabela de conversão:
+ * - CST 00 (tributado integralmente)         → CSOSN 102 (sem retenção ST)
+ * - CST 10 (com ST)                          → CSOSN 103 (com ICMSST retido)
+ * - CST 20 (com redução de BC)               → CSOSN 102
+ * - CST 30 (isento com ST)                   → CSOSN 300 (imune/isento)
+ * - CST 40/41/50 (isento/não tributado)      → CSOSN 300
+ * - CST 51 (diferimento)                     → CSOSN 102 (mais próximo para SN)
+ * - CST 60 (cobrado anteriormente por ST)    → CSOSN 400 (ST cobrada anteriormente)
+ * - CST 70 (redução de BC e ST)              → CSOSN 103
+ * - CST 90 (outros)                          → CSOSN 102
+ * - CSOSN 101 (com crédito de ICMS)          → CSOSN 102 (SN sem crédito genérico)
+ * - CSOSN 102 (sem permissão de crédito)     → 102 (mantém)
+ * - CSOSN 103 (isenção do ICMS no Simples)   → 103 (mantém)
+ * - CSOSN 201 (com ST e crédito)             → 103
+ * - CSOSN 202/203 (sem crédito com ST)       → 103
+ * - CSOSN 300 (imune)                        → 300 (mantém)
+ * - CSOSN 400 (não contribuinte)             → 400 (mantém)
+ * - CSOSN 500 (ST cobrada anteriormente)     → CSOSN 400
+ * - CSOSN 900 (outros)                       → CSOSN 102
+ * - Qualquer outro valor desconhecido        → CSOSN 102 (default seguro)
+ */
+function normalizarCSOSN(cstRaw: string | null | undefined): string {
+  const cst = String(cstRaw || "").replace(/\D/g, "").replace(/^0+/, "") || "0";
+  
+  const map: Record<string, string> = {
+    // CST regime normal → CSOSN Simples Nacional equivalente
+    "0": "102",   // CST 00 — tributado integralmente
+    "10": "103",  // CST 10 — com substituição tributária
+    "20": "102",  // CST 20 — com redução de base de cálculo
+    "30": "300",  // CST 30 — isento ou não tributado com ST
+    "40": "300",  // CST 40 — isento
+    "41": "300",  // CST 41 — não tributado
+    "50": "102",  // CST 50 — suspensão
+    "51": "102",  // CST 51 — diferimento
+    "60": "400",  // CST 60 — cobrado anteriormente por ST
+    "70": "103",  // CST 70 — redução de BC e ST
+    "90": "102",  // CST 90 — outros
+    // CSOSN Simples Nacional
+    "101": "102", // com direito a crédito → normaliza para 102
+    "102": "102", // sem permissão de crédito → mantém
+    "103": "103", // isenção do ICMS → mantém
+    "201": "103", // com ST e crédito
+    "202": "103", // sem crédito e com ST
+    "203": "103", // com cobrança de ST
+    "300": "300", // imune → mantém
+    "400": "400", // não contribuinte → mantém
+    "500": "400", // cobrada anteriormente por ST → 400
+    "900": "102", // outros → 102
+  };
+  
+  return map[cst] ?? "102"; // default seguro para Simples Nacional
+}
+
 async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string) {
   try {
     const arquivos = await fs.readdir(pastaRetorno);
@@ -197,7 +254,9 @@ export async function emitirNfce(
           ...(cpfDestinatario ? {
             dest: {
               CPF: cpfDestinatario.replace(/\D/g, ""),
-              xNome: cliente?.nome || "CONSUMIDOR",
+              xNome: config.ambiente === "homologacao"
+                ? "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
+                : (cliente?.nome || "CONSUMIDOR").toUpperCase().slice(0, 60),
               indIEDest: "9",
             },
           } : {}),
@@ -225,7 +284,15 @@ export async function emitirNfce(
                 indTot: "1",
               },
               imposto: {
-                ICMS: { ICMSSN102: { orig: "0", CSOSN: p?.cst || "102" } },
+                ICMS: (() => {
+                  const csosn = normalizarCSOSN(p?.cst);
+                  // A tag ICMS muda conforme o CSOSN: 102/103 → ICMSSN102, 300 → ICMSSN300, 400 → ICMSSN400
+                  const icmsTag =
+                    csosn === "300" ? "ICMSSN300"
+                    : csosn === "400" ? "ICMSSN400"
+                    : "ICMSSN102";
+                  return { [icmsTag]: { orig: "0", CSOSN: csosn } };
+                })(),
                 PIS: { PISOutr: { CST: "99", vBC: "0.00", pPIS: "0.00", vPIS: "0.00" } },
                 COFINS: { COFINSOutr: { CST: "99", vBC: "0.00", pCOFINS: "0.00", vCOFINS: "0.00" } },
               },

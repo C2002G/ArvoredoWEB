@@ -365,7 +365,9 @@ export default function Pdv() {
         setCpfModalOpen(false);
         setPendingVenda(null);
         const danfeImpresso = (venda as { danfe_impresso?: boolean } | undefined)?.danfe_impresso;
-        if (venda?.id && !danfeImpresso) {
+        const danfeWillPrint = (venda as { _danfe_will_print?: boolean } | undefined)?._danfe_will_print;
+        // Só imprimir cupom se DANFE não foi impresso E não será impresso em background
+        if (venda?.id && !danfeImpresso && !danfeWillPrint) {
           imprimirAposVenda(venda.id);
         }
       },

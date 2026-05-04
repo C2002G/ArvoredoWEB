@@ -21,7 +21,7 @@ pnpm --filter @workspace/db run push
 pnpm --filter @workspace/api-server run typecheck
 pnpm --filter @workspace/arvoredo run typecheck
 pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/arvoredo run build
+git
 ```
 
 ### 1.2 O que cada comando faz

@@ -11,7 +11,7 @@ export type CupomItem = {
   unidades?: number | null;
 };
 
-type CupomVenda = {
+export type CupomVenda = {
   id: number;
   criado_em: Date | string;
   total: number;

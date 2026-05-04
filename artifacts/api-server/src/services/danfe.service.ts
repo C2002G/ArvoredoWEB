@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import QRCode from "qrcode";
 import { printTextToWindowsPrinter } from "../lib/printer";
+import { buildCupomText, type CupomVenda, type CupomItem } from "../lib/print-layout";
 
 type DanfeData = {
   emitente: string;
@@ -36,6 +37,23 @@ function meioPagamento(cod: string): string {
   return map[cod] || cod;
 }
 
+function formatarDataEmissao(dhEmi: string | undefined): string {
+  if (!dhEmi) return new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  try {
+    // dhEmi vem no formato "2026-05-01T14:32:00-03:00"
+    const d = new Date(dhEmi);
+    return d.toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: false,
+    });
+    // Resultado: "01/05/2026 14:32:00"
+  } catch {
+    return dhEmi;
+  }
+}
+
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
   const parsed = parser.parse(xmlAutorizado);
@@ -56,29 +74,40 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   const qrcode = qrCodeUrl || (matchQr ? matchQr[1].trim() : "");
   const chave = chaveAcesso || prot?.chNFe || String(infNFe?.Id || "").replace(/^NFe/, "");
 
+  // Debug: logar estrutura do XML para diagnóstico
+  console.log("[DANFE] Estrutura XML:", JSON.stringify({
+    emitente: emit?.xFant || emit?.xNome,
+    destinatario: dest?.xNome,
+    numero: ide?.nNF,
+    serie: ide?.serie,
+    totalItens: det.length,
+    total: total?.vNF,
+    qrCodeLength: qrcode.length
+  }, null, 2));
+
   return {
-    emitente: emit?.xFant || emit?.xNome || "Emitente",
-    destinatario: dest?.xNome || "Consumidor final",
-    numero: String(ide?.nNF || ""),
-    serie: String(ide?.serie || ""),
-    dataEmissao: String(ide?.dhEmi || ""),
+    emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
+    destinatario: dest?.xNome || "Consumidor Final",
+    numero: String(ide?.nNF || "000"),
+    serie: String(ide?.serie || "1"),
+    dataEmissao: formatarDataEmissao(ide?.dhEmi),
     itens: det.map((item: any) => ({
-      descricao: item?.prod?.xProd || "Item",
-      qtd: toNumber(item?.prod?.qCom),
+      descricao: item?.prod?.xProd || "Produto Nao Identificado",
+      qtd: toNumber(item?.prod?.qCom) || 1,
       unidade: item?.prod?.uCom || "UN",
-      valorUnit: toNumber(item?.prod?.vUnCom),
-      total: toNumber(item?.prod?.vProd),
+      valorUnit: toNumber(item?.prod?.vUnCom) || 0,
+      total: toNumber(item?.prod?.vProd) || 0,
     })),
-    total: toNumber(total?.vNF),
-    desconto: toNumber(total?.vDesc),
-    valorPago: toNumber(pag?.vTroco ? toNumber(total?.vNF) + toNumber(pag?.vTroco) : total?.vNF),
-    troco: toNumber(pag?.vTroco),
+    total: toNumber(total?.vNF) || 0,
+    desconto: toNumber(total?.vDesc) || 0,
+    valorPago: toNumber(pag?.vTroco ? toNumber(total?.vNF) + toNumber(pag?.vTroco) : total?.vNF) || 0,
+    troco: toNumber(pag?.vTroco) || 0,
     pagamentos: detPag.map((item: any) => ({
-      meio: meioPagamento(String(item?.tPag || "")),
-      valor: toNumber(item?.vPag),
+      meio: meioPagamento(String(item?.tPag || "01")),
+      valor: toNumber(item?.vPag) || 0,
     })),
     qrCodeUrl: qrcode,
-    chaveAcesso: chave,
+    chaveAcesso: chave || "CHAVE_NAO_ENCONTRADA",
   };
 }
 
@@ -125,10 +154,9 @@ function renderDanfeSimplificadoText(data: DanfeData): string {
 
   if (data.qrCodeUrl) {
     rows.push(drawLine());
-    rows.push(center("Consulta via QR Code (Acesse o Link):"));
-    rows.push(data.qrCodeUrl.slice(0, W));
-    if (data.qrCodeUrl.length > W) rows.push(data.qrCodeUrl.slice(W, W * 2));
-    if (data.qrCodeUrl.length > W * 2) rows.push(data.qrCodeUrl.slice(W * 2, W * 3));
+    rows.push(center("Consulta via QR Code:"));
+    rows.push(center("Aponte a câmera para o QR Code abaixo"));
+    // QR Code será impresso como imagem via ESC/POS, não como texto
   }
 
   rows.push(drawLine());
@@ -142,9 +170,45 @@ export async function imprimirDanfeSimplificado(
   qrCodeUrl: string,
   chaveAcesso: string,
   xmlAutorizado: string,
+  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
 ) {
   const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  const text = renderDanfeSimplificadoText(data);
+  // Usar dados reais da venda quando disponíveis, senão fallback para XML
+  let text: string;
+  if (vendaDados) {
+    // Usar buildCupomText com dados reais do banco
+    text = buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome);
+    
+    // Adicionar bloco fiscal no final (chave de acesso + QR Code)
+    const W = 48;
+    const drawLine = () => "-".repeat(W);
+    const center = (str: string) => {
+      const textStr = str.trim().slice(0, W);
+      const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
+      return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
+    };
+    
+    text += "\r\n\r\n" + drawLine() + "\r\n";
+    text += center("DANFE NFC-e - DOCUMENTO AUXILIAR") + "\r\n";
+    text += center("Consulta pela chave de acesso em:") + "\r\n";
+    text += center("www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx") + "\r\n";
+    text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
+    
+    if (data.qrCodeUrl) {
+      text += drawLine() + "\r\n";
+      text += center("Consulta via QR Code:") + "\r\n";
+      text += center("Aponte a câmera para o QR Code abaixo") + "\r\n";
+      // QR Code será impresso como imagem via ESC/POS, não como texto
+    }
+    
+    text += drawLine() + "\r\n";
+    text += center("Obrigado pela preferencia!") + "\r\n";
+    text += "\r\n\r\n\r\n\r\n"; // Folga para corte
+  } else {
+    // Fallback: usar renderDanfeSimplificadoText baseado apenas no XML
+    text = renderDanfeSimplificadoText(data);
+  }
+  
   const mode = (process.env.DANFE_PRINT_MODE || "auto").toLowerCase();
   const openTimeoutMs = Number(process.env.DANFE_USB_OPEN_TIMEOUT_MS || "5000");
   const totalTimeoutMs = Number(process.env.DANFE_USB_TOTAL_TIMEOUT_MS || "12000");
@@ -237,20 +301,60 @@ export async function imprimirDanfeSimplificado(
     });
   };
 
-  if (mode === "windows") {
-    await printTextToWindowsPrinter(text);
-    return;
+  // Priorizar USB para QR Code como imagem
+  if (mode === "usb" || mode === "auto") {
+    try {
+      await printViaUsb();
+      return;
+    } catch (usbError) {
+      console.log("[DANFE] Falha na impressão USB, usando fallback Windows:", usbError);
+    }
   }
 
-  if (mode === "usb") {
-    await printViaUsb();
-    return;
-  }
+  // Fallback Windows: primeiro imprimir texto, depois QR Code como imagem
+  await printTextToWindowsPrinter(text);
+  
+  if (data.qrCodeUrl) {
+    try {
+      const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { type: "png", width: 200, margin: 1 });
+      const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
+      await fs.writeFile(qrTempPath, qrBuffer);
+      
+      // PowerShell: imprimir a imagem PNG diretamente na impressora padrão
+      const psScript = `
+Add-Type -AssemblyName System.Drawing
+$img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, "\\\\")}')
+$pd = New-Object System.Drawing.Printing.PrintDocument
+$pd.add_PrintPage({
+  param($s, $e)
+  $e.Graphics.DrawImage($img, 0, 0, 200, 200)
+})
+$pd.Print()
+$img.Dispose()
+`.trim();
 
-  try {
-    await printViaUsb();
-  } catch {
-    await printTextToWindowsPrinter(text);
+      const { exec } = await import("node:child_process");
+      await new Promise<void>((res, rej) => {
+        exec(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, " ")}"`,
+          (err) => { if (err) rej(err); else res(); }
+        );
+      });
+      await fs.rm(qrTempPath, { force: true }).catch(() => {});
+    } catch (qrPrintErr) {
+      console.error("[DANFE] Falha ao imprimir QR Code via PowerShell:", qrPrintErr);
+      // fallback final: imprimir URL como texto mesmo
+      const W = 48;
+      const drawLine = () => "-".repeat(W);
+      const center = (str: string) => {
+        const textStr = str.trim().slice(0, W);
+        const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
+        return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
+      };
+      let fallbackText = "\r\n\r\n" + drawLine() + "\r\n" + center("QR Code (URL):") + "\r\n";
+      const qrLines = data.qrCodeUrl.match(/.{1,48}/g) || [data.qrCodeUrl];
+      fallbackText += qrLines.join("\r\n");
+      await printTextToWindowsPrinter(fallbackText);
+    }
   }
 }
 
