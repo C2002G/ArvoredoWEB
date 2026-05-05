@@ -60,7 +60,7 @@ router.post("/:vendaId/reimprimir", async (req, res) => {
 
   const { buildCupomText } = await import("../lib/print-layout");
   const { printTextToWindowsPrinter } = await import("../lib/printer");
-  const text = buildCupomText(venda, itens, cliente?.nome);
+  const text = await buildCupomText(venda, itens, cliente?.nome); 
   await printTextToWindowsPrinter(text);
   res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
 });

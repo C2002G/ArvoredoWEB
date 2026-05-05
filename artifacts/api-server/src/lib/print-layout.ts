@@ -1,38 +1,14 @@
+import type { Venda, ItemVenda } from "@workspace/db/schema";
+
 /**
- * Cupom ~48 colunas (bobina 80mm), alinhado ao visual em modelo-nota/.
+ * Tipos simplificados para a função de impressão.
  */
-export type CupomItem = {
-  /** Opcional: vem de itens_venda no banco */
-  produto_id?: number;
-  nome_snap: string;
-  quantidade: number;
-  preco_unit: number;
-  subtotal: number;
-  unidades?: number | null;
-};
+export type CupomItem = Pick<ItemVenda, 'produto_id' | 'nome_snap' | 'quantidade' | 'preco_unit' | 'subtotal' | 'unidades'>;
+export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao'>;
+export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
+export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
+export type SangriaItem = { valor: number; };
 
-export type CupomVenda = {
-  id: number;
-  criado_em: Date | string;
-  total: number;
-  desconto?: number | null;
-  observacao?: string | null;
-};
-
-type SangriaPayload = {
-  data_inicio: string;
-  data_fim: string;
-  sessao_id?: number | null;
-};
-
-type SangriaVenda = {
-  total: number;
-  pagamento: string;
-};
-
-type SangriaItem = {
-  valor: number;
-};
 
 export const PRINTER_LAYOUT = {
   colunas: 48,
@@ -48,6 +24,24 @@ export const PRINTER_LAYOUT = {
 const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
 const formatMoneyTight = (value: number) => value.toFixed(2).replace(".", ",");
 const drawLine = (width = PRINTER_LAYOUT.colunas) => "-".repeat(width);
+
+/**
+ * VERSÃO CORRIGIDA: Formata a data/hora usando o fuso horário padrão do servidor,
+ * que já está definido como "America/Sao_Paulo" em index.ts. Isso evita dupla correção.
+ */
+function formatarHorarioBrasil(data: Date | string): string {
+  const date = new Date(data);
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    // A opção timeZone foi REMOVIDA para usar a configuração do ambiente
+  });
+}
 
 function normalizeText(text: string) {
   return text
@@ -76,21 +70,18 @@ function centerText(value: string, width = PRINTER_LAYOUT.colunas) {
 }
 
 function wrapText(text: string, w: number): string[] {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (t.length <= w) return [t];
-  const out: string[] = [];
-  let rest = t;
-  while (rest.length > 0) {
-    if (rest.length <= w) {
-      out.push(rest);
-      break;
+    const t = text.replace(/\s+/g, " ").trim();
+    if (t.length <= w) return [t];
+    const out: string[] = [];
+    let rest = t;
+    while (rest.length > 0) {
+        if (rest.length <= w) { out.push(rest); break; }
+        let cut = rest.lastIndexOf(" ", w);
+        if (cut <= 0) cut = w;
+        out.push(rest.slice(0, cut).trim());
+        rest = rest.slice(cut).trim();
     }
-    let cut = rest.lastIndexOf(" ", w);
-    if (cut <= 0) cut = w;
-    out.push(rest.slice(0, cut).trim());
-    rest = rest.slice(cut).trim();
-  }
-  return out;
+    return out;
 }
 
 function codigo6(item: CupomItem) {
@@ -101,20 +92,14 @@ function codigo6(item: CupomItem) {
   return (n + "000000").slice(0, 6);
 }
 
-/** Qtd. + Und. — referência: modelo-nota/ */
 function qtdUndItem(item: CupomItem) {
   const u = item.unidades != null && item.unidades > 0;
-  if (u) {
-    return { qNum: item.unidades, und: "UN" as const };
-  }
+  if (u) return { qNum: item.unidades, und: "UN" as const };
   const isInteiro = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
-  if (isInteiro) {
-    return { qNum: item.quantidade, und: "UN" as const };
-  }
+  if (isInteiro) return { qNum: item.quantidade, und: "UN" as const };
   return { qNum: item.quantidade, und: "KG" as const };
 }
 
-/** 6+20+5+2+6+4+5 = 48 (fonte monoespaçada na impressora) */
 function linhaItem48(item: CupomItem) {
   const cod = codigo6(item);
   const desc = String(item.nome_snap).replace(/\s+/g, " ").trim();
@@ -125,25 +110,25 @@ function linhaItem48(item: CupomItem) {
   return (
     padRight(cod, 6) +
     padRight(desc, 20) +
-    q5 +
-    und +
+    q5 + und +
     padLeft(vu, 6) +
     padLeft("0,00", 4) +
     padLeft(vt, 5)
   );
 }
 
-export function buildCupomText(venda: CupomVenda, itens: CupomItem[], clienteNome?: string) {
+export async function buildCupomText(
+  venda: CupomVenda,
+  itens: CupomItem[],
+  clienteNome?: string,
+  chaveAcesso?: string,
+) {
   const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
 
   rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
-  rows.push(
-    `CNPJ: ${PRINTER_LAYOUT.empresa.cnpj}  IE: ${PRINTER_LAYOUT.empresa.ie}`.slice(0, W),
-  );
-  for (const ln of wrapText(PRINTER_LAYOUT.empresa.endereco, W)) {
-    rows.push(ln);
-  }
+  rows.push(`CNPJ: ${PRINTER_LAYOUT.empresa.cnpj}  IE: ${PRINTER_LAYOUT.empresa.ie}`.slice(0, W));
+  for (const ln of wrapText(PRINTER_LAYOUT.empresa.endereco, W)) rows.push(ln);
   rows.push(`Fone: ${PRINTER_LAYOUT.empresa.telefone}`.slice(0, W));
   rows.push(centerText("Documento Auxiliar da Nota Fiscal de", W));
   rows.push(centerText("Consumidor Eletronica", W));
@@ -156,11 +141,7 @@ export function buildCupomText(venda: CupomVenda, itens: CupomItem[], clienteNom
     rows.push(linhaItem48(item).slice(0, W));
     const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
     const isInteiroQtd = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
-    if (u > 0) {
-      rows.push(
-        `  * Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg  x  ${formatMoney(item.preco_unit)}/kg`.slice(0, W),
-      );
-    } else if (!isInteiroQtd) {
+    if (u > 0 || !isInteiroQtd) {
       rows.push(
         `  * Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg  x  ${formatMoney(item.preco_unit)}/kg`.slice(0, W),
       );
@@ -174,17 +155,24 @@ export function buildCupomText(venda: CupomVenda, itens: CupomItem[], clienteNom
     rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`.slice(0, W));
   }
   rows.push(drawLine(W));
-  if (clienteNome) {
-    rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
-  }
+  if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
   if (venda.observacao) {
-    for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) {
-      rows.push(ln);
-    }
+     for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
   }
-  rows.push(
-    `NFC-e ref. venda #${venda.id}  ${new Date(venda.criado_em).toLocaleString("pt-BR")}`.slice(0, W),
-  );
+  rows.push(`NFC-e ref. venda #${venda.id}  ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
+  
+  if (chaveAcesso) {
+    rows.push(drawLine(W));
+    rows.push(centerText("Consulte pela Chave de Acesso em:", W));
+    rows.push(centerText("www.sefaz.rs.gov.br/nfce/consulta", W));
+    rows.push(centerText(chaveAcesso.replace(/(\d{4})/g, "$1 ").trim(), W));
+    rows.push(drawLine(W));
+    rows.push(centerText("Consulte sua NFC-e pelo QR Code", W));
+  } else {
+    rows.push(drawLine(W));
+    rows.push(centerText("CUPOM SEM VALOR FISCAL", W));
+  }
+  
   rows.push(drawLine(W));
   rows.push(centerText("Obrigado pela preferencia!", W));
   rows.push("");
@@ -203,24 +191,14 @@ export function buildSangriaText(
   rows.push(centerText("RELATORIO DE SANGRIA", W));
   rows.push(drawLine(W));
   rows.push(`PERIODO: ${payload.data_inicio} ate ${payload.data_fim}`.slice(0, W));
-  if (payload.sessao_id) {
-    rows.push(`SESSAO: ${payload.sessao_id}`.slice(0, W));
-  }
+  if (payload.sessao_id) rows.push(`SESSAO: ${payload.sessao_id}`.slice(0, W));
   rows.push(drawLine(W));
 
   const totalVendas = vendas.reduce((sum, item) => sum + item.total, 0);
-  const totalDinheiro = vendas
-    .filter((item) => item.pagamento === "dinheiro")
-    .reduce((sum, item) => sum + item.total, 0);
-  const totalPix = vendas
-    .filter((item) => item.pagamento === "pix")
-    .reduce((sum, item) => sum + item.total, 0);
-  const totalCartao = vendas
-    .filter((item) => item.pagamento === "cartao")
-    .reduce((sum, item) => sum + item.total, 0);
-  const totalFiado = vendas
-    .filter((item) => item.pagamento === "fiado")
-    .reduce((sum, item) => sum + item.total, 0);
+  const totalDinheiro = vendas.filter((v) => v.pagamento === "dinheiro").reduce((s, v) => s + v.total, 0);
+  const totalPix = vendas.filter((v) => v.pagamento === "pix").reduce((s, v) => s + v.total, 0);
+  const totalCartao = vendas.filter((v) => v.pagamento === "cartao").reduce((s, v) => s + v.total, 0);
+  const totalFiado = vendas.filter((v) => v.pagamento === "fiado").reduce((s, v) => s + v.total, 0);
   const totalSangrias = sangrias.reduce((sum, item) => sum + item.valor, 0);
 
   rows.push(`Vendas: ${vendas.length}`.slice(0, W));

@@ -38,20 +38,36 @@ function meioPagamento(cod: string): string {
 }
 
 function formatarDataEmissao(dhEmi: string | undefined): string {
-  if (!dhEmi) return new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  if (!dhEmi) return formatarHorarioBrasil(new Date());
   try {
     // dhEmi vem no formato "2026-05-01T14:32:00-03:00"
     const d = new Date(dhEmi);
-    return d.toLocaleString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
-      day: "2-digit", month: "2-digit", year: "numeric",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-      hour12: false,
-    });
+    return formatarHorarioBrasil(d);
     // Resultado: "01/05/2026 14:32:00"
   } catch {
     return dhEmi;
   }
+}
+
+/**
+ * Formata data/hora para timezone Brasil (UTC-3) de forma robusta.
+ * Evita problemas com timezone America/Sao_Paulo que pode ter DST desatualizado.
+ */
+function formatarHorarioBrasil(data: Date | string): string {
+  const date = new Date(data);
+  // Converte para UTC-3 (Brasil) sem depender de timezone do sistema
+  const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000);
+  const brasilTime = new Date(utcTime + (3 * 3600000)); // UTC-3
+  
+  return brasilTime.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
 }
 
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
@@ -177,7 +193,7 @@ export async function imprimirDanfeSimplificado(
   let text: string;
   if (vendaDados) {
     // Usar buildCupomText com dados reais do banco
-    text = buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome);
+    text = await buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome, data.qrCodeUrl || undefined,);
     
     // Adicionar bloco fiscal no final (chave de acesso + QR Code)
     const W = 48;
@@ -260,28 +276,38 @@ export async function imprimirDanfeSimplificado(
 
           if (data.qrCodeUrl) {
             try {
-              const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
-                type: "png",
-                width: 200,
-                margin: 1,
-              });
-              qrTempPath = path.join(
-                os.tmpdir(),
-                `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
-              );
-              await fs.writeFile(qrTempPath, qrBuffer);
-              const image = await new Promise<any>((res, rej) => {
-                escpos.Image.load(qrTempPath, (img: any) => {
-                  if (!img) {
-                    rej(new Error("Falha ao carregar imagem QR"));
-                    return;
-                  }
-                  res(img);
+              // Tenta QR Code via ESC/POS command primeiro (mais confiável)
+              printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "M");
+            } catch (qrError) {
+              console.log("[DANFE] ESC/POS QR Code falhou, tentando como imagem:", qrError);
+              try {
+                // Fallback: gerar imagem PNG e imprimir como raster
+                const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
+                  type: "png",
+                  width: 160, // Reduzido para melhor compatibilidade
+                  margin: 2,
+                  errorCorrectionLevel: "M",
                 });
-              });
-              printer.align("ct").raster(image);
-            } catch {
-              printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "l");
+                qrTempPath = path.join(
+                  os.tmpdir(),
+                  `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
+                );
+                await fs.writeFile(qrTempPath, qrBuffer);
+                const image = await new Promise<any>((res, rej) => {
+                  escpos.Image.load(qrTempPath, (img: any) => {
+                    if (!img) {
+                      rej(new Error("Falha ao carregar imagem QR"));
+                      return;
+                    }
+                    res(img);
+                  });
+                });
+                printer.align("ct").raster(image);
+              } catch (imgError) {
+                console.log("[DANFE] Imagem QR Code falhou, imprimindo URL:", imgError);
+                // Fallback final: imprimir URL como texto
+                printer.align("ct").text("QR Code: " + data.qrCodeUrl);
+              }
             }
           }
 
@@ -316,33 +342,71 @@ export async function imprimirDanfeSimplificado(
   
   if (data.qrCodeUrl) {
     try {
-      const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { type: "png", width: 200, margin: 1 });
+      console.log("[DANFE] Gerando QR Code para impressão Windows...");
+      const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { 
+        type: "png", 
+        width: 160, // Reduzido para melhor compatibilidade
+        margin: 2,
+        errorCorrectionLevel: "M"
+      });
       const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
       await fs.writeFile(qrTempPath, qrBuffer);
       
-      // PowerShell: imprimir a imagem PNG diretamente na impressora padrão
+      // PowerShell melhorado: imprimir com tratamento de erro e especificar impressora padrão
       const psScript = `
-Add-Type -AssemblyName System.Drawing
-$img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, "\\\\")}')
-$pd = New-Object System.Drawing.Printing.PrintDocument
-$pd.add_PrintPage({
-  param($s, $e)
-  $e.Graphics.DrawImage($img, 0, 0, 200, 200)
-})
-$pd.Print()
-$img.Dispose()
+try {
+  Add-Type -AssemblyName System.Drawing
+  Add-Type -AssemblyName System.Windows.Forms
+  
+  $img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, "\\\\")}')
+  $pd = New-Object System.Drawing.Printing.PrintDocument
+  
+  # Usar impressora padrão do sistema
+  $pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
+  $pd.DefaultPageSettings.Landscape = $false
+  
+  $pd.add_PrintPage({
+    param($s, $e)
+    # Centralizar QR Code na página
+    $pageWidth = $s.MarginBounds.Width
+    $pageHeight = $s.MarginBounds.Height
+    $qrSize = 160
+    $x = ($pageWidth - $qrSize) / 2
+    $y = 20
+    $e.Graphics.DrawImage($img, $x, $y, $qrSize, $qrSize)
+  })
+  
+  $pd.Print()
+  $img.Dispose()
+  Write-Output "QR Code impresso com sucesso"
+} catch {
+  Write-Error "Erro ao imprimir QR Code: $_"
+  exit 1
+}
 `.trim();
 
       const { exec } = await import("node:child_process");
       await new Promise<void>((res, rej) => {
-        exec(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, " ")}"`,
-          (err) => { if (err) rej(err); else res(); }
-        );
+        const psCommand = `powershell -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
+        console.log("[DANFE] Executando PowerShell para QR Code...");
+        exec(psCommand, { timeout: 30000 }, (err, stdout, stderr) => {
+          if (err) {
+            console.error("[DANFE] PowerShell error:", stderr);
+            rej(err);
+          } else {
+            console.log("[DANFE] PowerShell output:", stdout);
+            res();
+          }
+        });
       });
+      
+      // Limpar arquivo temporário
       await fs.rm(qrTempPath, { force: true }).catch(() => {});
+      console.log("[DANFE] QR Code impresso via PowerShell com sucesso");
+      
     } catch (qrPrintErr) {
       console.error("[DANFE] Falha ao imprimir QR Code via PowerShell:", qrPrintErr);
-      // fallback final: imprimir URL como texto mesmo
+      // fallback final: imprimir URL como texto formatado
       const W = 48;
       const drawLine = () => "-".repeat(W);
       const center = (str: string) => {
@@ -353,6 +417,7 @@ $img.Dispose()
       let fallbackText = "\r\n\r\n" + drawLine() + "\r\n" + center("QR Code (URL):") + "\r\n";
       const qrLines = data.qrCodeUrl.match(/.{1,48}/g) || [data.qrCodeUrl];
       fallbackText += qrLines.join("\r\n");
+      fallbackText += "\r\n" + center("Escaneie o código acima") + "\r\n";
       await printTextToWindowsPrinter(fallbackText);
     }
   }
