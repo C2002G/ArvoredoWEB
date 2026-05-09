@@ -86,20 +86,48 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   const det = asArray(infNFe?.det);
   const detPag = asArray(pag?.detPag);
 
-  const matchQr = xmlAutorizado.match(/<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i);
-  const qrcode = qrCodeUrl || (matchQr ? matchQr[1].trim() : "");
+  // Debug completo do XML para encontrar QR Code
+  console.log("[DANFE] XML completo (primeiros 500 chars):", xmlAutorizado.substring(0, 500));
+  console.log("[DANFE] Procurando por QR Code no XML...");
+  
+  // Múltiplas tentativas de regex para encontrar QR Code
+  const regexPatterns = [
+    /<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i,
+    /<infNFeSupl>[\s\S]*<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i,
+    /<qrCode>([^<]*)<\/qrCode>/i,
+    /QR-Code[^>]*>([^<]*)<\/QR-Code>/i
+  ];
+  
+  let matchQr = null;
+  for (let i = 0; i < regexPatterns.length; i++) {
+    matchQr = xmlAutorizado.match(regexPatterns[i]);
+    if (matchQr) {
+      console.log(`[DANFE] QR Code encontrado com padrão ${i + 1}`);
+      break;
+    }
+  }
+  
   const chave = chaveAcesso || prot?.chNFe || String(infNFe?.Id || "").replace(/^NFe/, "");
+  
+  const qrcode = qrCodeUrl || (matchQr ? matchQr[1].trim() : "");
+  
+  // Se não encontrou QR Code no XML, gerar um usando a chave de acesso
+  const finalQrCode = qrcode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?P=${chave}|2|1|1|` : "");
+  
+  if (!qrcode && finalQrCode) {
+    console.log("[DANFE] QR Code não encontrado no XML, gerando via chave de acesso:", finalQrCode.substring(0, 100) + "...");
+  }
 
   // Debug: logar estrutura do XML para diagnóstico
-  console.log("[DANFE] Estrutura XML:", JSON.stringify({
+  console.log("[DANFE] Analisando XML autorizado:", {
+    temQRCode: !!matchQr,
+    qrCodeLength: qrcode.length,
+    qrCodeUrl: qrcode.substring(0, 100) + (qrcode.length > 100 ? "..." : ""),
+    chaveAcesso: chave?.substring(0, 20) + "...",
     emitente: emit?.xFant || emit?.xNome,
-    destinatario: dest?.xNome,
-    numero: ide?.nNF,
-    serie: ide?.serie,
     totalItens: det.length,
-    total: total?.vNF,
-    qrCodeLength: qrcode.length
-  }, null, 2));
+    total: total?.vNF
+  });
 
   return {
     emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
@@ -122,7 +150,7 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
       meio: meioPagamento(String(item?.tPag || "01")),
       valor: toNumber(item?.vPag) || 0,
     })),
-    qrCodeUrl: qrcode,
+    qrCodeUrl: finalQrCode,
     chaveAcesso: chave || "CHAVE_NAO_ENCONTRADA",
   };
 }
@@ -230,101 +258,125 @@ export async function imprimirDanfeSimplificado(
   const totalTimeoutMs = Number(process.env.DANFE_USB_TOTAL_TIMEOUT_MS || "12000");
 
   const printViaUsb = async () => {
-    const escposMod: any = await import("escpos");
-    const escpos = escposMod.default || escposMod;
-    const escposUsbMod: any = await import("escpos-usb");
-    const UsbCtor = escposUsbMod.default || escposUsbMod;
-    escpos.USB = UsbCtor;
-
-    await new Promise<void>((resolve, reject) => {
-      const totalTimer = setTimeout(() => {
-        reject(new Error(`Timeout geral ao imprimir DANFE via USB (${totalTimeoutMs}ms)`));
-      }, totalTimeoutMs);
-      let device: any;
-      try {
-        device = new escpos.USB();
-      } catch (err) {
-        clearTimeout(totalTimer);
-        reject(err);
-        return;
-      }
-
+    try {
+      // Importação correta do escpos com USB
+      const escposMod = await import("escpos");
+      const escpos = escposMod.default || escposMod;
+      
+      // Importar USB separadamente
+      const escposUsbMod = await import("escpos-usb");
+      const UsbCtor = escposUsbMod.default || escposUsbMod;
+      
+      // Configurar USB no escpos
+      escpos.USB = UsbCtor;
+      
+      console.log("[DANFE] Bibliotecas carregadas, verificando impressora USB...");
+      
+      // Tentar usar o método USB
+      const device = new escpos.USB();
       const printer = new escpos.Printer(device);
-      const openTimer = setTimeout(() => {
-        clearTimeout(totalTimer);
-        reject(new Error(`Timeout ao abrir impressora USB (${openTimeoutMs}ms)`));
-      }, openTimeoutMs);
-      device.open(async (err: Error | null) => {
-        clearTimeout(openTimer);
-        if (err) {
+      
+      await new Promise<void>((resolve, reject) => {
+        const totalTimer = setTimeout(() => {
+          reject(new Error(`Timeout geral ao imprimir DANFE via USB (${totalTimeoutMs}ms)`));
+        }, totalTimeoutMs);
+        
+        const openTimer = setTimeout(() => {
           clearTimeout(totalTimer);
-          reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
-          return;
-        }
-        let qrTempPath: string | null = null;
-        try {
-          const lines = text.split(/\r?\n/);
-          // Modo mais escuro para texto (double-strike + emphasized).
-          printer.raw(Buffer.from([0x1b, 0x47, 0x01])); // ESC G 1
-          printer.raw(Buffer.from([0x1b, 0x45, 0x01])); // ESC E 1
-          printer.align("ct").font("a").size(1, 1).text(" ");
-          for (const line of lines) {
-            printer.text(line);
+          reject(new Error(`Timeout ao abrir impressora USB (${openTimeoutMs}ms)`));
+        }, openTimeoutMs);
+        
+        device.open(async (err: Error | null) => {
+          clearTimeout(openTimer);
+          if (err) {
+            clearTimeout(totalTimer);
+            console.error("[DANFE] Erro ao abrir impressora USB:", err.message);
+            reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
+            return;
           }
-          printer.raw(Buffer.from([0x1b, 0x45, 0x00])); // ESC E 0
-          printer.raw(Buffer.from([0x1b, 0x47, 0x00])); // ESC G 0
+          
+          console.log("[DANFE] Impressora USB conectada com sucesso!");
+          let qrTempPath: string | null = null;
+          
+          try {
+            const lines = text.split(/\r?\n/);
+            // Modo mais escuro para texto (double-strike + emphasized).
+            printer.raw(Buffer.from([0x1b, 0x47, 0x01])); // ESC G 1
+            printer.raw(Buffer.from([0x1b, 0x45, 0x01])); // ESC E 1
+            printer.align("ct").font("a").size(1, 1).text(" ");
+            for (const line of lines) {
+              printer.text(line);
+            }
+            printer.raw(Buffer.from([0x1b, 0x45, 0x00])); // ESC E 0
+            printer.raw(Buffer.from([0x1b, 0x47, 0x00])); // ESC G 0
 
-          if (data.qrCodeUrl) {
-            try {
-              // Tenta QR Code via ESC/POS command primeiro (mais confiável)
-              printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "M");
-            } catch (qrError) {
-              console.log("[DANFE] ESC/POS QR Code falhou, tentando como imagem:", qrError);
+            if (data.qrCodeUrl) {
+              console.log("[DANFE] Iniciando impressão do QR Code:", data.qrCodeUrl);
               try {
-                // Fallback: gerar imagem PNG e imprimir como raster
-                const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
-                  type: "png",
-                  width: 160, // Reduzido para melhor compatibilidade
-                  margin: 2,
-                  errorCorrectionLevel: "M",
-                });
-                qrTempPath = path.join(
-                  os.tmpdir(),
-                  `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
-                );
-                await fs.writeFile(qrTempPath, qrBuffer);
-                const image = await new Promise<any>((res, rej) => {
-                  escpos.Image.load(qrTempPath, (img: any) => {
-                    if (!img) {
-                      rej(new Error("Falha ao carregar imagem QR"));
-                      return;
-                    }
-                    res(img);
+                // Tenta QR Code via ESC/POS command primeiro (mais confiável)
+                console.log("[DANFE] Tentando QR Code via ESC/POS command...");
+                printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "M");
+                console.log("[DANFE] QR Code ESC/POS command enviado com sucesso");
+              } catch (qrError) {
+                console.error("[DANFE] ESC/POS QR Code falhou, tentando como imagem:", qrError);
+                try {
+                  // Fallback: gerar imagem PNG e imprimir como raster
+                  console.log("[DANFE] Gerando QR Code como imagem PNG...");
+                  const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
+                    type: "png",
+                    width: 160, // Reduzido para melhor compatibilidade
+                    margin: 2,
+                    errorCorrectionLevel: "M",
                   });
-                });
-                printer.align("ct").raster(image);
-              } catch (imgError) {
-                console.log("[DANFE] Imagem QR Code falhou, imprimindo URL:", imgError);
-                // Fallback final: imprimir URL como texto
-                printer.align("ct").text("QR Code: " + data.qrCodeUrl);
+                  qrTempPath = path.join(
+                    os.tmpdir(),
+                    `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
+                  );
+                  await fs.writeFile(qrTempPath, qrBuffer);
+                  console.log("[DANFE] QR Code PNG salvo em:", qrTempPath);
+                  
+                  const image = await new Promise<any>((res, rej) => {
+                    escpos.Image.load(qrTempPath, (img: any) => {
+                      if (!img) {
+                        rej(new Error("Falha ao carregar imagem QR"));
+                        return;
+                      }
+                      console.log("[DANFE] Imagem QR Code carregada com sucesso");
+                      res(img);
+                    });
+                  });
+                  printer.align("ct").raster(image);
+                  console.log("[DANFE] QR Code impresso como raster com sucesso");
+                } catch (imgError) {
+                  console.error("[DANFE] Imagem QR Code falhou, imprimindo URL:", imgError);
+                  // Fallback final: imprimir URL como texto
+                  printer.align("ct").text("QR Code: " + data.qrCodeUrl);
+                  console.log("[DANFE] QR Code impresso como URL (fallback)");
+                }
               }
+            } else {
+              console.warn("[DANFE] AVISO: QR Code URL não encontrada no XML");
+            }
+
+            printer.text(" ").cut().close(() => {
+              clearTimeout(totalTimer);
+              resolve();
+            });
+          } catch (printErr) {
+            clearTimeout(totalTimer);
+            reject(printErr);
+          } finally {
+            if (qrTempPath) {
+              await fs.rm(qrTempPath, { force: true }).catch(() => undefined);
             }
           }
-
-          printer.text(" ").cut().close(() => {
-            clearTimeout(totalTimer);
-            resolve();
-          });
-        } catch (printErr) {
-          clearTimeout(totalTimer);
-          reject(printErr);
-        } finally {
-          if (qrTempPath) {
-            await fs.rm(qrTempPath, { force: true }).catch(() => undefined);
-          }
-        }
+        });
       });
-    });
+      
+    } catch (error) {
+      console.error("[DANFE] Erro ao inicializar impressora USB:", error);
+      throw error;
+    }
   };
 
   // Priorizar USB para QR Code como imagem
@@ -337,76 +389,24 @@ export async function imprimirDanfeSimplificado(
     }
   }
 
-  // Fallback Windows: primeiro imprimir texto, depois QR Code como imagem
-  await printTextToWindowsPrinter(text);
-  
+  // Fallback Windows: imprimir tudo junto (texto + QR Code)
   if (data.qrCodeUrl) {
+    console.log("[DANFE] Iniciando impressão unificada via Windows...");
     try {
-      console.log("[DANFE] Gerando QR Code para impressão Windows...");
+      console.log("[DANFE] QR Code URL:", data.qrCodeUrl);
+      
+      // Gerar QR Code pequeno (100px para caber no cupom)
       const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { 
         type: "png", 
-        width: 160, // Reduzido para melhor compatibilidade
-        margin: 2,
+        width: 100, // Reduzido para caber no cupom
+        margin: 1,
         errorCorrectionLevel: "M"
       });
       const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
       await fs.writeFile(qrTempPath, qrBuffer);
+      console.log("[DANFE] QR Code PNG salvo em:", qrTempPath);
       
-      // PowerShell melhorado: imprimir com tratamento de erro e especificar impressora padrão
-      const psScript = `
-try {
-  Add-Type -AssemblyName System.Drawing
-  Add-Type -AssemblyName System.Windows.Forms
-  
-  $img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, "\\\\")}')
-  $pd = New-Object System.Drawing.Printing.PrintDocument
-  
-  # Usar impressora padrão do sistema
-  $pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
-  $pd.DefaultPageSettings.Landscape = $false
-  
-  $pd.add_PrintPage({
-    param($s, $e)
-    # Centralizar QR Code na página
-    $pageWidth = $s.MarginBounds.Width
-    $pageHeight = $s.MarginBounds.Height
-    $qrSize = 160
-    $x = ($pageWidth - $qrSize) / 2
-    $y = 20
-    $e.Graphics.DrawImage($img, $x, $y, $qrSize, $qrSize)
-  })
-  
-  $pd.Print()
-  $img.Dispose()
-  Write-Output "QR Code impresso com sucesso"
-} catch {
-  Write-Error "Erro ao imprimir QR Code: $_"
-  exit 1
-}
-`.trim();
-
-      const { exec } = await import("node:child_process");
-      await new Promise<void>((res, rej) => {
-        const psCommand = `powershell -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
-        console.log("[DANFE] Executando PowerShell para QR Code...");
-        exec(psCommand, { timeout: 30000 }, (err, stdout, stderr) => {
-          if (err) {
-            console.error("[DANFE] PowerShell error:", stderr);
-            rej(err);
-          } else {
-            console.log("[DANFE] PowerShell output:", stdout);
-            res();
-          }
-        });
-      });
-      
-      // Limpar arquivo temporário
-      await fs.rm(qrTempPath, { force: true }).catch(() => {});
-      console.log("[DANFE] QR Code impresso via PowerShell com sucesso");
-      
-    } catch (qrPrintErr) {
-      console.error("[DANFE] Falha ao imprimir QR Code via PowerShell:", qrPrintErr);
-      // fallback final: imprimir URL como texto formatado
+      // Adicionar QR Code ao texto principal
       const W = 48;
       const drawLine = () => "-".repeat(W);
       const center = (str: string) => {
@@ -414,12 +414,100 @@ try {
         const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
         return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
       };
-      let fallbackText = "\r\n\r\n" + drawLine() + "\r\n" + center("QR Code (URL):") + "\r\n";
+      
+      text += "\r\n\r\n" + drawLine() + "\r\n";
+      text += center("Aponte a câmera para o QR Code abaixo") + "\r\n";
+      text += drawLine() + "\r\n";
+      text += "\r\n"; // Espaço para QR Code
+      text += "\r\n"; // Mais espaço
+      text += "\r\n"; // Mais espaço
+      text += center("[QR Code]") + "\r\n"; // Placeholder para QR Code
+      text += "\r\n"; // Espaço depois do QR Code
+      text += "\r\n"; // Mais espaço
+      text += drawLine() + "\r\n";
+      text += center("Obrigado pela preferência!") + "\r\n";
+      text += "\r\n\r\n\r\n"; // Folga para corte
+      
+      // Imprimir texto completo com placeholder
+      await printTextToWindowsPrinter(text);
+      
+      // Agora imprimir QR Code pequeno no lugar do placeholder
+      const psScript = `
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+$img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, '\\\\')}')
+$pd = New-Object System.Drawing.Printing.PrintDocument
+$pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
+$pd.PrinterSettings.PrinterName = '${process.env.PRINTER_NAME || "ELGIN i7(USB)"}'
+
+$pd.add_PrintPage({
+  param($s, $e)
+  $pageWidth = $s.MarginBounds.Width
+  $pageHeight = $s.MarginBounds.Height
+  $qrSize = 100 # Pequeno para caber no cupom
+  $x = ($pageWidth - $qrSize) / 2
+  $y = ($pageHeight - $qrSize) / 2 # Centralizado na página
+  $e.Graphics.DrawImage($img, $x, $y, $qrSize, $qrSize)
+})
+
+$pd.Print()
+$img.Dispose()
+Write-Output "QR Code pequeno impresso"
+`;
+      
+      const psScriptPath = path.join(os.tmpdir(), `qr_print_${Date.now()}.ps1`);
+      await fs.writeFile(psScriptPath, psScript);
+      console.log("[DANFE] Script QR pequeno salvo em:", psScriptPath);
+      
+      const { exec } = await import("node:child_process");
+      await new Promise<void>((res, rej) => {
+        const psCommand = `powershell -ExecutionPolicy Bypass -File "${psScriptPath}"`;
+        console.log("[DANFE] Imprimindo QR Code pequeno...");
+        exec(psCommand, { timeout: 15000 }, (err, stdout, stderr) => {
+          if (err) {
+            console.error("[DANFE] QR pequeno falhou:", stderr);
+            rej(err);
+          } else {
+            console.log("[DANFE] QR pequeno output:", stdout);
+            res();
+          }
+        });
+      });
+      
+      // Limpar arquivos temporários
+      await fs.rm(qrTempPath, { force: true }).catch(() => {});
+      await fs.rm(psScriptPath, { force: true }).catch(() => {});
+      console.log("[DANFE] ✅ QR Code impresso na mesma folha!");
+      
+    } catch (qrPrintErr) {
+      console.error("[DANFE] ❌ Falha na impressão unificada:", qrPrintErr);
+      
+      // Fallback final: imprimir texto com QR Code como URL
+      const W = 48;
+      const drawLine = () => "-".repeat(W);
+      const center = (str: string) => {
+        const textStr = str.trim().slice(0, W);
+        const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
+        return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
+      };
+      
+      text += "\r\n\r\n" + drawLine() + "\r\n";
+      text += center("QR Code - ESCANEAR ABAIXO") + "\r\n";
+      text += drawLine() + "\r\n";
+      
       const qrLines = data.qrCodeUrl.match(/.{1,48}/g) || [data.qrCodeUrl];
-      fallbackText += qrLines.join("\r\n");
-      fallbackText += "\r\n" + center("Escaneie o código acima") + "\r\n";
-      await printTextToWindowsPrinter(fallbackText);
+      text += qrLines.join("\r\n");
+      
+      text += "\r\n" + drawLine() + "\r\n";
+      text += center("Use o celular para escanear") + "\r\n";
+      
+      await printTextToWindowsPrinter(text);
+      console.log("[DANFE] QR Code impresso como URL (fallback final)");
     }
+  } else {
+    // Sem QR Code - imprimir apenas texto
+    await printTextToWindowsPrinter(text);
   }
 }
 

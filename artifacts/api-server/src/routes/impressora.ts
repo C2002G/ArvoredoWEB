@@ -120,7 +120,7 @@ router.post("/cupom", async (req, res) => {
       // sem NFC-e autorizada — imprime sem QR
     }
 
-    const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso);
+    const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso, qrUrl);
     const result = await printCupomWithQrCode(text, qrUrl);
     
     return res.json(result);
