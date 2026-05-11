@@ -22,7 +22,8 @@ const router = Router();
 async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
   try {
     const escpos = (await import("escpos")).default;
-    const UsbDevice = (await import("escpos-usb")).default;
+    const escposUsbMod = await import("escpos-usb");
+    const UsbDevice = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
     escpos.USB = UsbDevice;
     const device = new escpos.USB();
     const printer = new escpos.Printer(device);
@@ -114,7 +115,7 @@ router.post("/cupom", async (req, res) => {
       if (nfceLog?.status === "autorizada" && nfceLog.chave_acesso) {
         chaveAcesso = nfceLog.chave_acesso;
         // URL padrão SEFAZ RS para consulta NFC-e
-        qrUrl = `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?P=${nfceLog.chave_acesso}|2|1|1|`;
+        qrUrl = `https://dfe-portal.svrs.rs.gov.br/Dfe/QrCodeNFce?p=${nfceLog.chave_acesso}|2|1|1`;
       }
     } catch {
       // sem NFC-e autorizada — imprime sem QR

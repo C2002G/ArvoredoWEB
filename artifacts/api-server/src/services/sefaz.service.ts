@@ -154,17 +154,34 @@ async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string
 
 async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso: string) {
   try {
+    console.log(`[SEFAZ] Buscando XML autorizado em: ${pastaRetorno}`);
+    console.log(`[SEFAZ] Chave de acesso: ${chaveAcesso}`);
+    
     const arquivos = await fs.readdir(pastaRetorno);
+    console.log(`[SEFAZ] Arquivos encontrados:`, arquivos);
+    
     const candidatos = arquivos.filter(
       (nome) =>
         nome.toLowerCase().endsWith(".xml") &&
         (nome.includes(chaveAcesso) || nome.toLowerCase().includes("proc")),
     );
+    console.log(`[SEFAZ] Arquivos candidatos:`, candidatos);
+    
     for (const nome of candidatos) {
+      console.log(`[SEFAZ] Analisando arquivo: ${nome}`);
       const conteudo = await fs.readFile(path.join(pastaRetorno, nome), "utf8");
-      if (!conteudo.includes(chaveAcesso)) continue;
+      console.log(`[SEFAZ] Conteúdo do arquivo ${nome} (primeiros 500 chars):`, conteudo.substring(0, 500));
+      
+      // Verificar se a chave está no conteúdo (pode estar como texto ou no atributo Id)
+      if (!conteudo.includes(chaveAcesso) && !conteudo.includes(`Id="NFe${chaveAcesso}"`)) {
+        console.log(`[SEFAZ] Arquivo ${nome} não contém a chave de acesso`);
+        continue;
+      }
       if (conteudo.includes("<protNFe") && /<cStat>\s*100\s*<\/cStat>/.test(conteudo)) {
+        console.log(`[SEFAZ] XML autorizado encontrado em: ${nome}`);
         return conteudo;
+      } else {
+        console.log(`[SEFAZ] Arquivo ${nome} não está autorizado ou não tem protNFe`);
       }
     }
   } catch {
@@ -359,10 +376,41 @@ export async function emitirNfce(
           erroTXT = resultadoProRec.mensagem || "Rejeicao retornada em arquivo pro-rec.xml";
           break;
         }
+        // Tenta buscar na pasta Retorno primeiro
         const xmlGenerico = await buscarArquivoAutorizadoPorChave(pastaRetorno, chaveAcesso);
         if (xmlGenerico) {
           autorizadoXML = xmlGenerico;
           break;
+        }
+        
+        // Se não encontrou, tenta na pasta correta dos XML autorizados
+        const pastaAutorizados = path.join(pastaRetorno, "..", "Enviado", "Autorizados", new Date().toISOString().slice(0, 7).replace("-", ""));
+        try {
+          console.log(`[SEFAZ] Tentando buscar em: ${pastaAutorizados}`);
+          
+          // Verificar se a pasta existe e listar arquivos
+          try {
+            const arquivosAutorizados = await fs.readdir(pastaAutorizados);
+            console.log(`[SEFAZ] Arquivos encontrados em Autorizados:`, arquivosAutorizados.slice(0, 20)); // Mostra só os 20 primeiros
+            
+            // Procurar especificamente pelo arquivo da chave
+            const arquivoEspecifico = arquivosAutorizados.find(nome => nome.includes(chaveAcesso));
+            if (arquivoEspecifico) {
+              console.log(`[SEFAZ] Arquivo específico encontrado: ${arquivoEspecifico}`);
+            } else {
+              console.log(`[SEFAZ] Arquivo específico não encontrado para chave: ${chaveAcesso}`);
+            }
+          } catch (dirError) {
+            console.log(`[SEFAZ] Erro ao ler pasta Autorizados:`, dirError);
+          }
+          
+          const xmlAutorizados = await buscarArquivoAutorizadoPorChave(pastaAutorizados, chaveAcesso);
+          if (xmlAutorizados) {
+            autorizadoXML = xmlAutorizados;
+            break;
+          }
+        } catch (e) {
+          console.log("[SEFAZ] Pasta Enviado/Autorizados não encontrada ou sem acesso:", e);
         }
       } catch (e) { }
       retries--;
@@ -381,8 +429,42 @@ export async function emitirNfce(
     }).where(eq(nfceLogsTable.id, log.id));
 
     // Para impressão, extraímos o QR Code retornado pelo XML processado
-    const matchQr = autorizadoXML.match(/<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i);
+    console.log("[SEFAZ] XML completo para análise (primeiros 1500 chars):", autorizadoXML.substring(0, 1500));
+    
+    // Verificar especificamente pela tag infNFeSupl
+    const infNFeSuplMatch = autorizadoXML.match(/<infNFeSupl>[\s\S]*?<\/infNFeSupl>/i);
+    if (infNFeSuplMatch) {
+      console.log("[SEFAZ] infNFeSupl encontrado:", infNFeSuplMatch[0]);
+    } else {
+      console.log("[SEFAZ] infNFeSupl NÃO encontrado no XML");
+    }
+    
+    // Padrões corrigidos para encontrar o QR Code correto no XML
+    const regexPatterns = [
+      // Padrão específico para QR Code em infNFeSupl (formato real do XML)
+      /<infNFeSupl>[\s\S]*?<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/www\.sefaz\.rs\.gov\.br\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
+      // Padrão geral para qrCode (qualquer URL)
+      /<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
+      // Padrão sem CDATA
+      /<qrCode>(https?:\/\/[^<]*)<\/qrCode>/i,
+      // Padrão alternativo
+      /QR-Code[^>]*>(https?:\/\/[^<]*)<\/QR-Code>/i
+    ];
+    
+    let matchQr = null;
+    for (let i = 0; i < regexPatterns.length; i++) {
+      matchQr = autorizadoXML.match(regexPatterns[i]);
+      if (matchQr) {
+        console.log(`[SEFAZ] QR Code encontrado com padrão ${i + 1}:`, matchQr[1].substring(0, 100) + "...");
+        break;
+      }
+    }
+    
     const qrCodeUrl = matchQr ? matchQr[1].trim() : "";
+    
+    if (!qrCodeUrl) {
+      console.log("[SEFAZ] AVISO: QR Code não encontrado no XML autorizado");
+    }
 
     return { success: true, status: "autorizada", xmlAutorizado: autorizadoXML, chaveAcesso, qrCodeUrl };
   } catch (error: any) {

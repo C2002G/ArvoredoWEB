@@ -165,7 +165,7 @@ export async function buildCupomText(
   if (chaveAcesso) {
     rows.push(drawLine(W));
     rows.push(centerText("Consulte pela Chave de Acesso em:", W));
-    rows.push(centerText("www.sefaz.rs.gov.br/nfce/consulta", W));
+    rows.push(centerText("dfe-portal.svrs.rs.gov.br", W));
     rows.push(centerText(chaveAcesso.replace(/(\d{4})/g, "$1 ").trim(), W));
     rows.push(drawLine(W));
     rows.push(centerText("Consulte sua NFC-e pelo QR Code", W));

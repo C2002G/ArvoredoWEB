@@ -71,6 +71,11 @@ function formatarHorarioBrasil(data: Date | string): string {
 }
 
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
+  // Log para debug do qrCodeUrl recebido
+  if (qrCodeUrl) {
+    console.log("[DANFE] QR Code URL recebida como parâmetro:", qrCodeUrl.substring(0, 100) + "...");
+  }
+  
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
   const parsed = parser.parse(xmlAutorizado);
   const nfeProc = parsed?.nfeProc || parsed?.NFe || parsed;
@@ -87,23 +92,37 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   const detPag = asArray(pag?.detPag);
 
   // Debug completo do XML para encontrar QR Code
-  console.log("[DANFE] XML completo (primeiros 500 chars):", xmlAutorizado.substring(0, 500));
+  console.log("[DANFE] XML completo (primeiros 1000 chars):", xmlAutorizado.substring(0, 1000));
   console.log("[DANFE] Procurando por QR Code no XML...");
+  
+  // Procurar especificamente por infNFeSupl para debug
+  const infNFeSuplMatch = xmlAutorizado.match(/<infNFeSupl>[\s\S]*?<\/infNFeSupl>/i);
+  if (infNFeSuplMatch) {
+    console.log("[DANFE] infNFeSupl encontrado:", infNFeSuplMatch[0].substring(0, 200) + "...");
+  } else {
+    console.log("[DANFE] infNFeSupl NÃO encontrado no XML");
+  }
   
   // Múltiplas tentativas de regex para encontrar QR Code
   const regexPatterns = [
-    /<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i,
-    /<infNFeSupl>[\s\S]*<qrCode[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/qrCode>/i,
-    /<qrCode>([^<]*)<\/qrCode>/i,
-    /QR-Code[^>]*>([^<]*)<\/QR-Code>/i
+    // Padrão específico para QR Code em infNFeSupl (formato real do XML)
+    /<infNFeSupl>[\s\S]*?<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/www\.sefaz\.rs\.gov\.br\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
+    // Padrão geral para qrCode (qualquer URL)
+    /<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
+    // Padrão sem CDATA
+    /<qrCode>(https?:\/\/[^<]*)<\/qrCode>/i,
+    // Padrão alternativo
+    /QR-Code[^>]*>(https?:\/\/[^<]*)<\/QR-Code>/i
   ];
   
   let matchQr = null;
   for (let i = 0; i < regexPatterns.length; i++) {
     matchQr = xmlAutorizado.match(regexPatterns[i]);
     if (matchQr) {
-      console.log(`[DANFE] QR Code encontrado com padrão ${i + 1}`);
+      console.log(`[DANFE] QR Code encontrado com padrão ${i + 1}:`, matchQr[1].substring(0, 100) + "...");
       break;
+    } else {
+      console.log(`[DANFE] Padrão ${i + 1} não encontrou QR Code`);
     }
   }
   
@@ -112,7 +131,8 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   const qrcode = qrCodeUrl || (matchQr ? matchQr[1].trim() : "");
   
   // Se não encontrou QR Code no XML, gerar um usando a chave de acesso
-  const finalQrCode = qrcode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${chave}|2|1|1` : "");
+  // NOTA: Isso só deve ser usado como último recurso. O ideal é usar a URL do XML.
+  const finalQrCode = qrcode || (chave ? `https://dfe-portal.svrs.rs.gov.br/Dfe/QrCodeNFce?p=${chave}|2|1|1` : "");
   
   if (!qrcode && finalQrCode) {
     console.log("[DANFE] QR Code não encontrado no XML, gerando via chave de acesso:", finalQrCode.substring(0, 100) + "...");
@@ -193,7 +213,7 @@ function renderDanfeSimplificadoText(data: DanfeData): string {
 
   rows.push(drawLine());
   rows.push(center("Consulte pela chave de acesso em:"));
-  rows.push(center("www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx"));
+  rows.push(center("dfe-portal.svrs.rs.gov.br"));
   rows.push(center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()));
 
   if (data.qrCodeUrl) {
@@ -216,6 +236,11 @@ export async function imprimirDanfeSimplificado(
   xmlAutorizado: string,
   vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
 ) {
+  console.log("[DANFE] imprimirDanfeSimplificado - Parâmetros recebidos:");
+  console.log("  qrCodeUrl:", qrCodeUrl ? qrCodeUrl.substring(0, 100) + "..." : "undefined");
+  console.log("  chaveAcesso:", chaveAcesso);
+  console.log("  xmlAutorizado length:", xmlAutorizado.length);
+  
   const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
   // Usar dados reais da venda quando disponíveis, senão fallback para XML
   let text: string;
@@ -235,7 +260,7 @@ export async function imprimirDanfeSimplificado(
     text += "\r\n\r\n" + drawLine() + "\r\n";
     text += center("DANFE NFC-e - DOCUMENTO AUXILIAR") + "\r\n";
     text += center("Consulta pela chave de acesso em:") + "\r\n";
-    text += center("www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx") + "\r\n";
+    text += center("dfe-portal.svrs.rs.gov.br") + "\r\n";
     text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
     
     if (data.qrCodeUrl) {
@@ -263,9 +288,9 @@ export async function imprimirDanfeSimplificado(
       const escposMod = await import("escpos");
       const escpos = escposMod.default || escposMod;
       
-      // Importar USB separadamente
+      // Importar USB separadamente - corrigindo para usar a exportação correta
       const escposUsbMod = await import("escpos-usb");
-      const UsbCtor = escposUsbMod.default || escposUsbMod;
+      const UsbCtor = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
       
       // Configurar USB no escpos
       escpos.USB = UsbCtor;
@@ -395,11 +420,11 @@ export async function imprimirDanfeSimplificado(
     try {
       console.log("[DANFE] QR Code URL:", data.qrCodeUrl);
       
-      // Gerar QR Code pequeno e legível (120px)
+      // Gerar QR Code pequeno e legível (120px para corresponder ao tamanho de impressão)
       const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { 
         type: "png", 
-        width: 120, // Tamanho ideal para escaneamento
-        margin: 2,
+        width: 120, // Tamanho correspondente ao tamanho de impressão
+        margin: 1,
         errorCorrectionLevel: "L" // Menos correção, mais legível
       });
       const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
@@ -418,7 +443,7 @@ export async function imprimirDanfeSimplificado(
       // Adicionar seção fiscal com QR Code no lugar correto
       text += "\r\n\r\n" + drawLine() + "\r\n";
       text += center("Consulte pela chave de acesso em:") + "\r\n";
-      text += center("www.sefaz.rs.gov.br/nfce/consulta") + "\r\n";
+      text += center("dfe-portal.svrs.rs.gov.br") + "\r\n";
       text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
       text += drawLine() + "\r\n";
       text += center("Consulte sua NFC-e pelo QR Code") + "\r\n";
@@ -435,25 +460,26 @@ $textContent = "${text.replace(/"/g, '""').replace(/\r\n/g, '`r`n')}"
 $img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, '\\\\')}')
 
 # Configurar papel personalizado para impressora térmica (58mm)
-$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 226, 3000) # 58mm = 226px @ 96dpi
+# 48 colunas = aprox. 384px @ 80dpi (densidade típica de impressoras térmicas)
+$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 384, 3000)
 $paperSize.RawKind = 256 # Custom paper size
 
 $pd = New-Object System.Drawing.Printing.PrintDocument
 $pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
 $pd.PrinterSettings.PrinterName = '${process.env.PRINTER_NAME || "ELGIN i7(USB)"}'
 $pd.DefaultPageSettings.PaperSize = $paperSize
-$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(5, 5, 10, 10) # Margens pequenas
+$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(2, 2, 5, 5) # Margens mínimas
 
 $pd.add_PrintPage({
   param($s, $e)
   
   # Configurar fonte para impressora térmica
-  $font = New-Object System.Drawing.Font("Courier New", 7, [System.Drawing.FontStyle]::Regular)
+  $font = New-Object System.Drawing.Font("Courier New", 6, [System.Drawing.FontStyle]::Regular)
   $brush = [System.Drawing.Brushes]::Black
-  $x = 5
-  $y = 10
-  $lineHeight = 12
-  $maxWidth = 216 # Largura útil para 58mm
+  $x = 2
+  $y = 5
+  $lineHeight = 10
+  $maxWidth = 380 # Largura útil para 48 colunas @ 80dpi
   
   # Desenhar cada linha do texto
   $lines = $textContent -split '\r\n'
@@ -464,10 +490,10 @@ $pd.add_PrintPage({
     }
   }
   
-  # Desenhar QR Code centralizado com tamanho adequado
-  $qrSize = 80 # Tamanho ideal para 58mm
-  $qrX = ($maxWidth - $qrSize) / 2 + 5
-  $qrY = $y + 10
+  # Desenhar QR Code centralizado com tamanho adequado para 48 colunas
+  $qrSize = 120 # Tamanho ajustado para 48 colunas
+  $qrX = ($maxWidth - $qrSize) / 2
+  $qrY = $y + 5
   $e.Graphics.DrawImage($img, $qrX, $qrY, $qrSize, $qrSize)
   
   # Indicar que não há mais páginas
