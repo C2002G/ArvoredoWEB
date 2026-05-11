@@ -423,40 +423,55 @@ export async function imprimirDanfeSimplificado(
       text += drawLine() + "\r\n";
       text += center("Consulte sua NFC-e pelo QR Code") + "\r\n";
       text += drawLine() + "\r\n";
-      text += "\r\n"; // Espaço para QR Code
-      text += "\r\n"; // Mais espaço
-      text += "\r\n"; // Mais espaço
-      text += "\r\n"; // Espaço para QR Code
-      text += "\r\n"; // Mais espaço
-      text += drawLine() + "\r\n";
       text += center("Obrigado pela preferência!") + "\r\n";
       text += "\r\n\r\n\r\n"; // Folga para corte
       
-      // Criar script PowerShell que imprime texto E QR Code juntos
+      // Criar script PowerShell que imprime texto E QR Code em um único job
       const psScript = `
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 
-# Primeiro imprimir o texto
 $textContent = "${text.replace(/"/g, '""').replace(/\r\n/g, '`r`n')}"
-$textContent | Out-Printer -Name '${process.env.PRINTER_NAME || "ELGIN i7(USB)"}'
-
-# Agora imprimir o QR Code pequeno
-Start-Sleep -Milliseconds 500
-
 $img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, '\\\\')}')
+
+# Configurar papel personalizado para impressora térmica (58mm)
+$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 226, 3000) # 58mm = 226px @ 96dpi
+$paperSize.RawKind = 256 # Custom paper size
+
 $pd = New-Object System.Drawing.Printing.PrintDocument
 $pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
 $pd.PrinterSettings.PrinterName = '${process.env.PRINTER_NAME || "ELGIN i7(USB)"}'
+$pd.DefaultPageSettings.PaperSize = $paperSize
+$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(5, 5, 10, 10) # Margens pequenas
 
 $pd.add_PrintPage({
   param($s, $e)
-  $pageWidth = $s.MarginBounds.Width
-  $pageHeight = $s.MarginBounds.Height
-  $qrSize = 120
-  $x = ($pageWidth - $qrSize) / 2
-  $y = ($pageHeight - $qrSize) / 2
-  $e.Graphics.DrawImage($img, $x, $y, $qrSize, $qrSize)
+  
+  # Configurar fonte para impressora térmica
+  $font = New-Object System.Drawing.Font("Courier New", 7, [System.Drawing.FontStyle]::Regular)
+  $brush = [System.Drawing.Brushes]::Black
+  $x = 5
+  $y = 10
+  $lineHeight = 12
+  $maxWidth = 216 # Largura útil para 58mm
+  
+  # Desenhar cada linha do texto
+  $lines = $textContent -split '\r\n'
+  foreach ($line in $lines) {
+    if ($y -lt 2800) { # Limite de altura para papel contínuo
+      $e.Graphics.DrawString($line, $font, $brush, $x, $y)
+      $y += $lineHeight
+    }
+  }
+  
+  # Desenhar QR Code centralizado com tamanho adequado
+  $qrSize = 80 # Tamanho ideal para 58mm
+  $qrX = ($maxWidth - $qrSize) / 2 + 5
+  $qrY = $y + 10
+  $e.Graphics.DrawImage($img, $qrX, $qrY, $qrSize, $qrSize)
+  
+  # Indicar que não há mais páginas
+  $e.HasMorePages = $false
 })
 
 $pd.Print()
