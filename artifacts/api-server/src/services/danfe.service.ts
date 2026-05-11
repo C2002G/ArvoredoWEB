@@ -132,7 +132,8 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   
   // Se não encontrou QR Code no XML, gerar um usando a chave de acesso
   // NOTA: Isso só deve ser usado como último recurso. O ideal é usar a URL do XML.
-  const finalQrCode = qrcode || (chave ? `https://dfe-portal.svrs.rs.gov.br/Dfe/QrCodeNFce?p=${chave}|2|1|1` : "");
+  // Usando o domínio correto da SEFAZ RS para NFC-e
+  const finalQrCode = qrcode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${chave}|3|2` : "");
   
   if (!qrcode && finalQrCode) {
     console.log("[DANFE] QR Code não encontrado no XML, gerando via chave de acesso:", finalQrCode.substring(0, 100) + "...");
@@ -213,7 +214,7 @@ function renderDanfeSimplificadoText(data: DanfeData): string {
 
   rows.push(drawLine());
   rows.push(center("Consulte pela chave de acesso em:"));
-  rows.push(center("dfe-portal.svrs.rs.gov.br"));
+  rows.push(center("www.sefaz.rs.gov.br/nfce/consulta"));
   rows.push(center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()));
 
   if (data.qrCodeUrl) {
@@ -260,7 +261,7 @@ export async function imprimirDanfeSimplificado(
     text += "\r\n\r\n" + drawLine() + "\r\n";
     text += center("DANFE NFC-e - DOCUMENTO AUXILIAR") + "\r\n";
     text += center("Consulta pela chave de acesso em:") + "\r\n";
-    text += center("dfe-portal.svrs.rs.gov.br") + "\r\n";
+    text += center("www.sefaz.rs.gov.br/nfce/consulta") + "\r\n";
     text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
     
     if (data.qrCodeUrl) {
@@ -443,7 +444,7 @@ export async function imprimirDanfeSimplificado(
       // Adicionar seção fiscal com QR Code no lugar correto
       text += "\r\n\r\n" + drawLine() + "\r\n";
       text += center("Consulte pela chave de acesso em:") + "\r\n";
-      text += center("dfe-portal.svrs.rs.gov.br") + "\r\n";
+      text += center("www.sefaz.rs.gov.br/nfce/consulta") + "\r\n";
       text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
       text += drawLine() + "\r\n";
       text += center("Consulte sua NFC-e pelo QR Code") + "\r\n";

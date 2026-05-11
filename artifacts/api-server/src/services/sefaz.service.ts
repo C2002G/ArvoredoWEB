@@ -160,32 +160,60 @@ async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso
     const arquivos = await fs.readdir(pastaRetorno);
     console.log(`[SEFAZ] Arquivos encontrados:`, arquivos);
     
-    const candidatos = arquivos.filter(
-      (nome) =>
-        nome.toLowerCase().endsWith(".xml") &&
-        (nome.includes(chaveAcesso) || nome.toLowerCase().includes("proc")),
+    // Filtrar apenas arquivos procNFe.xml
+    const procArquivos = arquivos.filter(
+      (nome) => nome.toLowerCase().endsWith("-procnfe.xml")
     );
-    console.log(`[SEFAZ] Arquivos candidatos:`, candidatos);
+    console.log(`[SEFAZ] Arquivos procNFe encontrados:`, procArquivos);
     
-    for (const nome of candidatos) {
-      console.log(`[SEFAZ] Analisando arquivo: ${nome}`);
-      const conteudo = await fs.readFile(path.join(pastaRetorno, nome), "utf8");
-      console.log(`[SEFAZ] Conteúdo do arquivo ${nome} (primeiros 500 chars):`, conteudo.substring(0, 500));
+    if (procArquivos.length === 0) {
+      console.log(`[SEFAZ] Nenhum arquivo procNFe.xml encontrado`);
+      return "";
+    }
+    
+    // Obter arquivos com datas de modificação para encontrar o mais recente
+    const arquivosComData = await Promise.all(
+      procArquivos.map(async (nome) => {
+        const filePath = path.join(pastaRetorno, nome);
+        const stats = await fs.stat(filePath);
+        return {
+          nome,
+          dataModificacao: stats.mtime,
+          caminho: filePath
+        };
+      })
+    );
+    
+    // Ordenar por data de modificação (mais recente primeiro)
+    arquivosComData.sort((a, b) => b.dataModificacao.getTime() - a.dataModificacao.getTime());
+    
+    console.log(`[SEFAZ] Arquivo mais recente: ${arquivosComData[0].nome}`);
+    
+    // Ler o arquivo mais recente
+    const conteudo = await fs.readFile(arquivosComData[0].caminho, "utf8");
+    console.log(`[SEFAZ] Conteúdo do arquivo mais recente (primeiros 500 chars):`, conteudo.substring(0, 500));
+    
+    // Verificar se tem QR Code
+    if (conteudo.includes("<infNFeSupl>") && conteudo.includes("<qrCode>")) {
+      console.log(`[SEFAZ] QR Code encontrado no arquivo mais recente`);
+      return conteudo;
+    } else {
+      console.log(`[SEFAZ] Arquivo mais recente não contém QR Code`);
       
-      // Verificar se a chave está no conteúdo (pode estar como texto ou no atributo Id)
-      if (!conteudo.includes(chaveAcesso) && !conteudo.includes(`Id="NFe${chaveAcesso}"`)) {
-        console.log(`[SEFAZ] Arquivo ${nome} não contém a chave de acesso`);
-        continue;
-      }
-      if (conteudo.includes("<protNFe") && /<cStat>\s*100\s*<\/cStat>/.test(conteudo)) {
-        console.log(`[SEFAZ] XML autorizado encontrado em: ${nome}`);
-        return conteudo;
-      } else {
-        console.log(`[SEFAZ] Arquivo ${nome} não está autorizado ou não tem protNFe`);
+      // Se o mais recente não tiver QR Code, tentar os próximos
+      for (let i = 1; i < arquivosComData.length; i++) {
+        console.log(`[SEFAZ] Tentando próximo arquivo: ${arquivosComData[i].nome}`);
+        const proximoConteudo = await fs.readFile(arquivosComData[i].caminho, "utf8");
+        if (proximoConteudo.includes("<infNFeSupl>") && proximoConteudo.includes("<qrCode>")) {
+          console.log(`[SEFAZ] QR Code encontrado no arquivo: ${arquivosComData[i].nome}`);
+          return proximoConteudo;
+        }
       }
     }
-  } catch {
-    // Ignora erros transitórios de leitura.
+    
+    console.log(`[SEFAZ] Nenhum arquivo com QR Code encontrado`);
+  } catch (error) {
+    console.log(`[SEFAZ] Erro ao buscar arquivo:`, error);
   }
   return "";
 }

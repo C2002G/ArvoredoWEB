@@ -115,7 +115,7 @@ router.post("/cupom", async (req, res) => {
       if (nfceLog?.status === "autorizada" && nfceLog.chave_acesso) {
         chaveAcesso = nfceLog.chave_acesso;
         // URL padrão SEFAZ RS para consulta NFC-e
-        qrUrl = `https://dfe-portal.svrs.rs.gov.br/Dfe/QrCodeNFce?p=${nfceLog.chave_acesso}|2|1|1`;
+        qrUrl = `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${nfceLog.chave_acesso}|3|2`;
       }
     } catch {
       // sem NFC-e autorizada — imprime sem QR
