@@ -174,11 +174,9 @@ export async function buildCupomText(
     rows.push(centerText("Consulte sua NFC-e pelo QR Code", W));
     
     if (qrCodeUrl) {
-      rows.push(centerText("QR Code gerado com sucesso", W));
       console.log("[CUPOM] QR Code URL extraída:", qrCodeUrl);
     } else {
       console.log("[CUPOM] AVISO: QR Code URL não fornecida");
-      rows.push(centerText("QR Code não disponível", W));
     }
   } else {
     rows.push(drawLine(W));

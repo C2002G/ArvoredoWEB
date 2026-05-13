@@ -330,24 +330,7 @@ export async function imprimirDanfeSimplificado(
       const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
       await fs.writeFile(qrTempPath, qrBuffer);
       
-      // Adicionar seção fiscal unificada com QR Code
-      const W = 48;
-      const drawLine = () => "-".repeat(W);
-      const center = (str: string) => {
-        const textStr = str.trim().slice(0, W);
-        const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
-        return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
-      };
-      
-      text += "\r\n\r\n" + drawLine() + "\r\n";
-      text += center("Consulte pela chave de acesso em:") + "\r\n";
-      text += center("www.sefaz.rs.gov.br/nfce/consulta") + "\r\n";
-      text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
-      text += drawLine() + "\r\n";
-      text += center("Consulte sua NFC-e pelo QR Code") + "\r\n";
-      text += drawLine() + "\r\n";
-      text += center("Obrigado pela preferência!") + "\r\n";
-      text += "\r\n\r\n\r\n"; // Folga para corte
+      // O texto já contém a seção fiscal do buildCupomText, não duplicar
       
       // Criar script PowerShell que imprime texto E QR Code em um único job
       const psScript = `
