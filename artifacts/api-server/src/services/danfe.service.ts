@@ -40,42 +40,38 @@ function meioPagamento(cod: string): string {
 function formatarDataEmissao(dhEmi: string | undefined): string {
   if (!dhEmi) return formatarHorarioBrasil(new Date());
   try {
-    // dhEmi vem no formato "2026-05-01T14:32:00-03:00"
+    // dhEmi vem no formato "2026-05-11T19:26:42-03:00" com timezone já incluído
+    // Parse direto sem ajustes manuais de timezone
     const d = new Date(dhEmi);
     return formatarHorarioBrasil(d);
-    // Resultado: "01/05/2026 14:32:00"
+    // Resultado: "11/05/2026 19:26:42"
   } catch {
     return dhEmi;
   }
 }
 
 /**
- * Formata data/hora para timezone Brasil (UTC-3) de forma robusta.
- * Evita problemas com timezone America/Sao_Paulo que pode ter DST desatualizado.
+ * Formata data/hora usando o fuso horário Brasil explicitamente.
+ * Remove conversões manuais de timezone que causam problemas.
  */
 function formatarHorarioBrasil(data: Date | string): string {
   const date = new Date(data);
-  // Converte para UTC-3 (Brasil) sem depender de timezone do sistema
-  const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000);
-  const brasilTime = new Date(utcTime + (3 * 3600000)); // UTC-3
   
-  return brasilTime.toLocaleString("pt-BR", {
+  // Remove conversão manual de timezone - usa o timezone do sistema automaticamente
+  // O JavaScript já converte automaticamente datas ISO com timezone para o local
+  return date.toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit", 
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false
+    hour12: false,
+    timeZone: "America/Sao_Paulo"
   });
 }
 
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
-  // Log para debug do qrCodeUrl recebido
-  if (qrCodeUrl) {
-    console.log("[DANFE] QR Code URL recebida como parâmetro:", qrCodeUrl.substring(0, 100) + "...");
-  }
-  
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
   const parsed = parser.parse(xmlAutorizado);
   const nfeProc = parsed?.nfeProc || parsed?.NFe || parsed;
@@ -91,64 +87,20 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   const det = asArray(infNFe?.det);
   const detPag = asArray(pag?.detPag);
 
-  // Debug completo do XML para encontrar QR Code
-  console.log("[DANFE] XML completo (primeiros 1000 chars):", xmlAutorizado.substring(0, 1000));
-  console.log("[DANFE] Procurando por QR Code no XML...");
+  // Extrair QR Code de forma limpa e direta
+  const infNFeSupl = infNFe?.infNFeSupl || {};
+  let extractedQrCode = infNFeSupl?.qrCode || "";
   
-  // Procurar especificamente por infNFeSupl para debug
-  const infNFeSuplMatch = xmlAutorizado.match(/<infNFeSupl>[\s\S]*?<\/infNFeSupl>/i);
-  if (infNFeSuplMatch) {
-    console.log("[DANFE] infNFeSupl encontrado:", infNFeSuplMatch[0].substring(0, 200) + "...");
-  } else {
-    console.log("[DANFE] infNFeSupl NÃO encontrado no XML");
-  }
-  
-  // Múltiplas tentativas de regex para encontrar QR Code
-  const regexPatterns = [
-    // Padrão específico para QR Code em infNFeSupl (formato real do XML)
-    /<infNFeSupl>[\s\S]*?<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/www\.sefaz\.rs\.gov\.br\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
-    // Padrão geral para qrCode (qualquer URL)
-    /<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
-    // Padrão sem CDATA
-    /<qrCode>(https?:\/\/[^<]*)<\/qrCode>/i,
-    // Padrão alternativo
-    /QR-Code[^>]*>(https?:\/\/[^<]*)<\/QR-Code>/i
-  ];
-  
-  let matchQr = null;
-  for (let i = 0; i < regexPatterns.length; i++) {
-    matchQr = xmlAutorizado.match(regexPatterns[i]);
-    if (matchQr) {
-      console.log(`[DANFE] QR Code encontrado com padrão ${i + 1}:`, matchQr[1].substring(0, 100) + "...");
-      break;
-    } else {
-      console.log(`[DANFE] Padrão ${i + 1} não encontrou QR Code`);
-    }
+  // Se não encontrou no XML parseado, tentar regex como fallback
+  if (!extractedQrCode) {
+    const qrMatch = xmlAutorizado.match(/<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i);
+    extractedQrCode = qrMatch ? qrMatch[1].trim() : "";
   }
   
   const chave = chaveAcesso || prot?.chNFe || String(infNFe?.Id || "").replace(/^NFe/, "");
   
-  const qrcode = qrCodeUrl || (matchQr ? matchQr[1].trim() : "");
-  
-  // Se não encontrou QR Code no XML, gerar um usando a chave de acesso
-  // NOTA: Isso só deve ser usado como último recurso. O ideal é usar a URL do XML.
-  // Usando o domínio correto da SEFAZ RS para NFC-e
-  const finalQrCode = qrcode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${chave}|3|2` : "");
-  
-  if (!qrcode && finalQrCode) {
-    console.log("[DANFE] QR Code não encontrado no XML, gerando via chave de acesso:", finalQrCode.substring(0, 100) + "...");
-  }
-
-  // Debug: logar estrutura do XML para diagnóstico
-  console.log("[DANFE] Analisando XML autorizado:", {
-    temQRCode: !!matchQr,
-    qrCodeLength: qrcode.length,
-    qrCodeUrl: qrcode.substring(0, 100) + (qrcode.length > 100 ? "..." : ""),
-    chaveAcesso: chave?.substring(0, 20) + "...",
-    emitente: emit?.xFant || emit?.xNome,
-    totalItens: det.length,
-    total: total?.vNF
-  });
+  // Priorizar QR Code do parâmetro, depois do XML, depois gerar via chave
+  const finalQrCode = qrCodeUrl || extractedQrCode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${chave}|3|2` : "");
 
   return {
     emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
@@ -212,6 +164,7 @@ function renderDanfeSimplificadoText(data: DanfeData): string {
   }
   if (data.troco > 0) rows.push(`Troco: R$ ${data.troco.toFixed(2)}`);
 
+  // Seção fiscal unificada - sem duplicações
   rows.push(drawLine());
   rows.push(center("Consulte pela chave de acesso em:"));
   rows.push(center("www.sefaz.rs.gov.br/nfce/consulta"));
@@ -237,45 +190,13 @@ export async function imprimirDanfeSimplificado(
   xmlAutorizado: string,
   vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
 ) {
-  console.log("[DANFE] imprimirDanfeSimplificado - Parâmetros recebidos:");
-  console.log("  qrCodeUrl:", qrCodeUrl ? qrCodeUrl.substring(0, 100) + "..." : "undefined");
-  console.log("  chaveAcesso:", chaveAcesso);
-  console.log("  xmlAutorizado length:", xmlAutorizado.length);
-  
   const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
+  
   // Usar dados reais da venda quando disponíveis, senão fallback para XML
   let text: string;
   if (vendaDados) {
-    // Usar buildCupomText com dados reais do banco
-    text = await buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome, data.qrCodeUrl || undefined,);
-    
-    // Adicionar bloco fiscal no final (chave de acesso + QR Code)
-    const W = 48;
-    const drawLine = () => "-".repeat(W);
-    const center = (str: string) => {
-      const textStr = str.trim().slice(0, W);
-      const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
-      return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
-    };
-    
-    text += "\r\n\r\n" + drawLine() + "\r\n";
-    text += center("DANFE NFC-e - DOCUMENTO AUXILIAR") + "\r\n";
-    text += center("Consulta pela chave de acesso em:") + "\r\n";
-    text += center("www.sefaz.rs.gov.br/nfce/consulta") + "\r\n";
-    text += center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()) + "\r\n";
-    
-    if (data.qrCodeUrl) {
-      text += drawLine() + "\r\n";
-      text += center("Consulta via QR Code:") + "\r\n";
-      text += center("Aponte a câmera para o QR Code abaixo") + "\r\n";
-      // QR Code será impresso como imagem via ESC/POS, não como texto
-    }
-    
-    text += drawLine() + "\r\n";
-    text += center("Obrigado pela preferencia!") + "\r\n";
-    text += "\r\n\r\n\r\n\r\n"; // Folga para corte
+    text = await buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome, data.chaveAcesso, data.qrCodeUrl);
   } else {
-    // Fallback: usar renderDanfeSimplificadoText baseado apenas no XML
     text = renderDanfeSimplificadoText(data);
   }
   
@@ -337,20 +258,13 @@ export async function imprimirDanfeSimplificado(
             printer.raw(Buffer.from([0x1b, 0x47, 0x00])); // ESC G 0
 
             if (data.qrCodeUrl) {
-              console.log("[DANFE] Iniciando impressão do QR Code:", data.qrCodeUrl);
               try {
-                // Tenta QR Code via ESC/POS command primeiro (mais confiável)
-                console.log("[DANFE] Tentando QR Code via ESC/POS command...");
                 printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "M");
-                console.log("[DANFE] QR Code ESC/POS command enviado com sucesso");
               } catch (qrError) {
-                console.error("[DANFE] ESC/POS QR Code falhou, tentando como imagem:", qrError);
                 try {
-                  // Fallback: gerar imagem PNG e imprimir como raster
-                  console.log("[DANFE] Gerando QR Code como imagem PNG...");
                   const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
                     type: "png",
-                    width: 160, // Reduzido para melhor compatibilidade
+                    width: 160,
                     margin: 2,
                     errorCorrectionLevel: "M",
                   });
@@ -359,29 +273,18 @@ export async function imprimirDanfeSimplificado(
                     `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
                   );
                   await fs.writeFile(qrTempPath, qrBuffer);
-                  console.log("[DANFE] QR Code PNG salvo em:", qrTempPath);
                   
                   const image = await new Promise<any>((res, rej) => {
                     escpos.Image.load(qrTempPath, (img: any) => {
-                      if (!img) {
-                        rej(new Error("Falha ao carregar imagem QR"));
-                        return;
-                      }
-                      console.log("[DANFE] Imagem QR Code carregada com sucesso");
+                      if (!img) rej(new Error("Falha ao carregar imagem QR"));
                       res(img);
                     });
                   });
                   printer.align("ct").raster(image);
-                  console.log("[DANFE] QR Code impresso como raster com sucesso");
                 } catch (imgError) {
-                  console.error("[DANFE] Imagem QR Code falhou, imprimindo URL:", imgError);
-                  // Fallback final: imprimir URL como texto
                   printer.align("ct").text("QR Code: " + data.qrCodeUrl);
-                  console.log("[DANFE] QR Code impresso como URL (fallback)");
                 }
               }
-            } else {
-              console.warn("[DANFE] AVISO: QR Code URL não encontrada no XML");
             }
 
             printer.text(" ").cut().close(() => {
@@ -417,22 +320,17 @@ export async function imprimirDanfeSimplificado(
 
   // Fallback Windows: imprimir tudo em um único comando
   if (data.qrCodeUrl) {
-    console.log("[DANFE] Iniciando impressão completa em uma folha...");
     try {
-      console.log("[DANFE] QR Code URL:", data.qrCodeUrl);
-      
-      // Gerar QR Code pequeno e legível (120px para corresponder ao tamanho de impressão)
       const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { 
         type: "png", 
-        width: 120, // Tamanho correspondente ao tamanho de impressão
+        width: 120,
         margin: 1,
-        errorCorrectionLevel: "L" // Menos correção, mais legível
+        errorCorrectionLevel: "L"
       });
       const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
       await fs.writeFile(qrTempPath, qrBuffer);
-      console.log("[DANFE] QR Code PNG salvo em:", qrTempPath);
       
-      // Adicionar QR Code ao texto principal na posição correta
+      // Adicionar seção fiscal unificada com QR Code
       const W = 48;
       const drawLine = () => "-".repeat(W);
       const center = (str: string) => {
@@ -441,7 +339,6 @@ export async function imprimirDanfeSimplificado(
         return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
       };
       
-      // Adicionar seção fiscal com QR Code no lugar correto
       text += "\r\n\r\n" + drawLine() + "\r\n";
       text += center("Consulte pela chave de acesso em:") + "\r\n";
       text += center("www.sefaz.rs.gov.br/nfce/consulta") + "\r\n";
@@ -508,18 +405,14 @@ Write-Output "Impressão completa concluída"
       
       const psScriptPath = path.join(os.tmpdir(), `complete_print_${Date.now()}.ps1`);
       await fs.writeFile(psScriptPath, psScript);
-      console.log("[DANFE] Script completo salvo em:", psScriptPath);
       
       const { exec } = await import("node:child_process");
       await new Promise<void>((res, rej) => {
         const psCommand = `powershell -ExecutionPolicy Bypass -File "${psScriptPath}"`;
-        console.log("[DANFE] Executando impressão completa...");
         exec(psCommand, { timeout: 20000 }, (err, stdout, stderr) => {
           if (err) {
-            console.error("[DANFE] Impressão completa falhou:", stderr);
             rej(err);
           } else {
-            console.log("[DANFE] Impressão completa output:", stdout);
             res();
           }
         });
@@ -528,11 +421,8 @@ Write-Output "Impressão completa concluída"
       // Limpar arquivos temporários
       await fs.rm(qrTempPath, { force: true }).catch(() => {});
       await fs.rm(psScriptPath, { force: true }).catch(() => {});
-      console.log("[DANFE] ✅ Impressão completa em uma folha!");
       
     } catch (qrPrintErr) {
-      console.error("[DANFE] ❌ Falha na impressão completa:", qrPrintErr);
-      
       // Fallback final: imprimir texto com QR Code como URL
       const W = 48;
       const drawLine = () => "-".repeat(W);
@@ -553,7 +443,6 @@ Write-Output "Impressão completa concluída"
       text += center("Use o celular para escanear") + "\r\n";
       
       await printTextToWindowsPrinter(text);
-      console.log("[DANFE] QR Code impresso como URL (fallback final)");
     }
   } else {
     // Sem QR Code - imprimir apenas texto

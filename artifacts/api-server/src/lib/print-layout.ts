@@ -26,20 +26,23 @@ const formatMoneyTight = (value: number) => value.toFixed(2).replace(".", ",");
 const drawLine = (width = PRINTER_LAYOUT.colunas) => "-".repeat(width);
 
 /**
- * VERSÃO CORRIGIDA: Formata a data/hora usando o fuso horário padrão do servidor,
- * que já está definido como "America/Sao_Paulo" em index.ts. Isso evita dupla correção.
+ * Formata data/hora usando o fuso horário Brasil explicitamente.
+ * Remove conversões manuais de timezone que causam problemas.
  */
 function formatarHorarioBrasil(data: Date | string): string {
   const date = new Date(data);
+  
+  // Remove conversão manual de timezone - usa o timezone do sistema automaticamente
+  // O JavaScript já converte automaticamente datas ISO com timezone para o local
   return date.toLocaleString("pt-BR", {
     day: "2-digit",
-    month: "2-digit",
+    month: "2-digit", 
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-    // A opção timeZone foi REMOVIDA para usar a configuração do ambiente
+    timeZone: "America/Sao_Paulo"
   });
 }
 
