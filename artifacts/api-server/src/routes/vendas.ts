@@ -122,6 +122,10 @@ router.post("/", async (req, res) => {
       pagamento: data.pagamento,
       cliente_id: data.cliente_id ?? null,
       observacao: data.observacao ?? null,
+      cnpj_credenciadora: (data as any).cnpj_credenciadora ?? null,
+      codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
+      bandeira_cartao: (data as any).bandeira_cartao ?? null,
+      tipo_pagamento: (data as any).tipo_pagamento ?? null,
     })
     .returning();
 

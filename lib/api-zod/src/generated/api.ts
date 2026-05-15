@@ -247,6 +247,10 @@ export const RegistrarVendaBody = zod.object({
   pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
   cliente_id: zod.number().nullish(),
   observacao: zod.string().nullish(),
+  cnpj_credenciadora: zod.string().nullish(),
+  codigo_autorizacao: zod.string().nullish(),
+  bandeira_cartao: zod.string().nullish(),
+  tipo_pagamento: zod.string().nullish(),
   itens: zod.array(
     zod.object({
       produto_id: zod.number(),

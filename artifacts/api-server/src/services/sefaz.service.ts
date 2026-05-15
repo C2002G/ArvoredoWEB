@@ -351,6 +351,7 @@ export async function emitirNfce(
               vDesc: venda.desconto.toFixed(2), vII: "0.00", vIPI: "0.00",
               vIPIDevol: "0.00", vPIS: "0.00", vCOFINS: "0.00", vOutro: "0.00",
               vNF: (venda.total - venda.desconto).toFixed(2),
+              vTotTrib: "0.00",
             },
           },
           transp: {
@@ -360,7 +361,14 @@ export async function emitirNfce(
             detPag: [{
               tPag: venda.pagamento === "dinheiro" ? "01" : venda.pagamento === "pix" ? "17" : (venda.pagamento === "cartao" ? "03" : "99"),
               vPag: (venda.total - venda.desconto).toFixed(2),
-              ...(venda.pagamento === "cartao" ? { card: { tpIntegra: "2" } } : {}),
+              ...(venda.pagamento === "cartao" ? {
+                card: {
+                  tpIntegra: "1",
+                  CNPJ: venda.cnpj_credenciadora || "00000000000000",
+                  tBand: venda.bandeira_cartao || "99",
+                  cAut: venda.codigo_autorizacao || "000000",
+                },
+              } : {}),
             }],
           },
         },

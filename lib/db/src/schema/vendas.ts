@@ -17,6 +17,10 @@ export const vendasTable = pgTable("vendas", {
   pagamento: pagamentoEnum("pagamento").notNull(),
   cliente_id: integer("cliente_id").references(() => clientesTable.id),
   observacao: text("observacao"),
+  cnpj_credenciadora: text("cnpj_credenciadora"),
+  codigo_autorizacao: text("codigo_autorizacao"),
+  bandeira_cartao: text("bandeira_cartao"),
+  tipo_pagamento: text("tipo_pagamento"),
   criado_em: timestamp("criado_em").notNull().defaultNow(),
 });
 

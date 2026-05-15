@@ -118,23 +118,37 @@ router.post("/enviar", async (req, res) => {
     });
   }
 
-  if (!config.api_url) {
+  const terminalIp = process.env.STONE_TERMINAL_IP?.trim();
+  const useStoneEmulator = !!terminalIp && (payload.metodo === "debito" || payload.metodo === "credito");
+
+  if (!config.api_url && !useStoneEmulator) {
     return res.status(400).json({
       ok: false,
       enviado: false,
       modo: config.modo_conexao,
-      mensagem: "Defina a URL da API/gateway da maquininha em Dispositivos.",
+      mensagem: "Defina a URL da API/gateway da maquininha em Dispositivos ou STONE_TERMINAL_IP no .env.",
     });
   }
 
+  const endpoint = useStoneEmulator
+    ? `http://${terminalIp}/api/v1/pagamentos`
+    : config.api_url;
+
   try {
-    const response = await fetch(config.api_url, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(config.api_token ? { Authorization: `Bearer ${config.api_token}` } : {}),
+        ...(config.api_token && !useStoneEmulator ? { Authorization: `Bearer ${config.api_token}` } : {}),
       },
-      body: JSON.stringify(envio),
+      body: JSON.stringify(
+        useStoneEmulator
+          ? {
+              valor: payload.valor_total,
+              tipo: payload.metodo === "credito" ? "credito" : "debito",
+            }
+          : envio,
+      ),
       signal: AbortSignal.timeout(config.timeout_ms),
     });
 
@@ -149,11 +163,38 @@ router.post("/enviar", async (req, res) => {
       });
     }
 
+    const result = await response.json().catch(() => ({}));
+    const status = String(result?.status || result?.Status || result?.aprovado || result?.approved || "").toLowerCase();
+    const aprovado = useStoneEmulator
+      ? status === "aprovado" || status === "approved" || status === "true" || status === "ok" || result?.approved === true
+      : true;
+
+    if (useStoneEmulator && !aprovado) {
+      return res.status(502).json({
+        ok: false,
+        enviado: false,
+        modo: "stone-dpos",
+        mensagem: `Pagamento não aprovado pela maquininha Stone: ${JSON.stringify(result)}`,
+        detalhe: result,
+      });
+    }
+
+    const dadosCartao = useStoneEmulator
+      ? {
+          cnpj_credenciadora: result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || null,
+          codigo_autorizacao: result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || null,
+          bandeira_cartao: result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || null,
+          tipo_pagamento: payload.metodo === "credito" ? "03" : "04",
+        }
+      : undefined;
+
     return res.json({
       ok: true,
       enviado: true,
-      modo: config.modo_conexao,
-      mensagem: "Pedido enviado para a integracao da maquininha.",
+      modo: useStoneEmulator ? "stone-dpos" : config.modo_conexao,
+      mensagem: useStoneEmulator ? "Pagamento aprovado na Stone" : "Pedido enviado para a integracao da maquininha.",
+      dados_cartao: dadosCartao,
+      resultado_maquininha: result,
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Falha de comunicacao com gateway";

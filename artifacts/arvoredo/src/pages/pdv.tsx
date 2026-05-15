@@ -289,6 +289,13 @@ export default function Pdv() {
           : "mercado";
     const tipoMaquininha = method === 'debito' || method === 'credito' || method === 'pix';
 
+    let dadosCartao: {
+      cnpj_credenciadora?: string | null;
+      codigo_autorizacao?: string | null;
+      bandeira_cartao?: string | null;
+      tipo_pagamento?: string | null;
+    } | null = null;
+
     if (tipoMaquininha) {
       try {
         const resposta = await enviarMaquininha.mutateAsync({
@@ -309,6 +316,9 @@ export default function Pdv() {
           description: resposta.mensagem,
           className: "bg-blue-600 text-white",
         });
+        if (resposta?.dados_cartao) {
+          dadosCartao = resposta.dados_cartao;
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Falha ao enviar para maquininha";
         console.warn("[maquininha] falhou mas venda continua:", error);
@@ -351,6 +361,7 @@ export default function Pdv() {
         cliente_id: clienteId,
         observacao: observacaoComCpf,
         itens: cart.getPayloadItens(),
+        ...dadosCartao,
       }
     }, {
       onSuccess: (venda) => {

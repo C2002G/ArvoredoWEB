@@ -20,6 +20,9 @@ type DanfeData = {
   pagamentos: Array<{ meio: string; valor: number }>;
   qrCodeUrl: string;
   chaveAcesso: string;
+  nProt?: string;
+  dhRecbto?: string;
+  vTotTrib?: number;
 };
 
 function toNumber(value: unknown): number {
@@ -125,6 +128,9 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
     })),
     qrCodeUrl: finalQrCode,
     chaveAcesso: chave || "CHAVE_NAO_ENCONTRADA",
+    nProt: prot?.nProt || "",
+    dhRecbto: prot?.dhRecbto || "",
+    vTotTrib: toNumber(total?.vTotTrib),
   };
 }
 
@@ -188,14 +194,25 @@ export async function imprimirDanfeSimplificado(
   qrCodeUrl: string,
   chaveAcesso: string,
   xmlAutorizado: string,
-  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
+  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string; nProt?: string; dhRecbto?: string; vTotTrib?: number },
 ) {
   const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
   
   // Usar dados reais da venda quando disponíveis, senão fallback para XML
   let text: string;
   if (vendaDados) {
-    text = await buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome, data.chaveAcesso, data.qrCodeUrl);
+    text = await buildCupomText(
+      vendaDados.venda,
+      vendaDados.itens,
+      vendaDados.clienteNome,
+      data.chaveAcesso,
+      data.qrCodeUrl,
+      {
+        nProt: vendaDados.nProt ?? data.nProt,
+        dhRecbto: vendaDados.dhRecbto ?? data.dhRecbto,
+        vTotTrib: vendaDados.vTotTrib ?? data.vTotTrib,
+      },
+    );
   } else {
     text = renderDanfeSimplificadoText(data);
   }

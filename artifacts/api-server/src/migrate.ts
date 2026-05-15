@@ -8,5 +8,8 @@ export async function runStartupMigrations(): Promise<void> {
   await pool.query(
     "ALTER TABLE itens_venda ADD COLUMN IF NOT EXISTS unidades real",
   );
-  logger.info("Migrações de startup OK (itens_venda.unidades)");
+  await pool.query(
+    "ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cnpj_credenciadora text, ADD COLUMN IF NOT EXISTS codigo_autorizacao text, ADD COLUMN IF NOT EXISTS bandeira_cartao text, ADD COLUMN IF NOT EXISTS tipo_pagamento text",
+  );
+  logger.info("Migrações de startup OK (itens_venda.unidades + vendas pagamentos Stone)");
 }

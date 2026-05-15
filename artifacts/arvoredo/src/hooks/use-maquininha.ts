@@ -52,10 +52,23 @@ export function useSalvarMaquininhaConfig() {
   });
 }
 
+export type MaquininhaResponse = {
+  ok: boolean;
+  enviado: boolean;
+  mensagem: string;
+  modo: string;
+  dados_cartao?: {
+    cnpj_credenciadora?: string | null;
+    codigo_autorizacao?: string | null;
+    bandeira_cartao?: string | null;
+    tipo_pagamento?: string | null;
+  };
+};
+
 export function useEnviarParaMaquininha() {
   return useMutation({
     mutationFn: (data: EnvioMaquininhaInput) =>
-      request<{ ok: boolean; enviado: boolean; mensagem: string; modo: string }>("/enviar", {
+      request<MaquininhaResponse>("/enviar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

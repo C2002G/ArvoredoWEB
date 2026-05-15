@@ -4,7 +4,7 @@ import type { Venda, ItemVenda } from "@workspace/db/schema";
  * Tipos simplificados para a função de impressão.
  */
 export type CupomItem = Pick<ItemVenda, 'produto_id' | 'nome_snap' | 'quantidade' | 'preco_unit' | 'subtotal' | 'unidades'>;
-export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao'>;
+export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao' | 'pagamento' | 'cnpj_credenciadora' | 'codigo_autorizacao' | 'bandeira_cartao' | 'tipo_pagamento'>;
 export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
 export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
 export type SangriaItem = { valor: number; };
@@ -126,6 +126,7 @@ export async function buildCupomText(
   clienteNome?: string,
   chaveAcesso?: string,
   qrCodeUrl?: string,
+  nfeDados?: { nProt?: string; dhRecbto?: string; vTotTrib?: number },
 ) {
   const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
@@ -159,10 +160,41 @@ export async function buildCupomText(
     rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`.slice(0, W));
   }
   rows.push(drawLine(W));
+
+  if (venda.pagamento === "cartao") {
+    rows.push(centerText("FORMA DE PAGAMENTO: CARTAO", W));
+    if (venda.bandeira_cartao) rows.push(`Bandeira: ${venda.bandeira_cartao}`.slice(0, W));
+    if (venda.cnpj_credenciadora) rows.push(`CNPJ Credenciadora: ${venda.cnpj_credenciadora}`.slice(0, W));
+    if (venda.codigo_autorizacao) rows.push(`Cod. Autorizacao: ${venda.codigo_autorizacao}`.slice(0, W));
+  } else {
+    rows.push(centerText(`FORMA DE PAGAMENTO: ${String(venda.pagamento).toUpperCase()}`, W));
+  }
+
+  rows.push(drawLine(W));
+  rows.push(`NFC-e Nº ${venda.id}  Serie 1`.slice(0, W));
+  if (nfeDados?.nProt) {
+    rows.push(`Protocolo: ${nfeDados.nProt}`.slice(0, W));
+    if (nfeDados.dhRecbto) rows.push(`Autorizacao: ${formatarHorarioBrasil(nfeDados.dhRecbto)}`.slice(0, W));
+  } else {
+    rows.push(`Data: ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
+  }
+
   if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
   if (venda.observacao) {
      for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
   }
+
+  const tributosBase = nfeDados?.vTotTrib || (venda.total * 0.12);
+  const tribFederal = (tributosBase * 0.42).toFixed(2);
+  const tribEstadual = (tributosBase * 0.58).toFixed(2);
+  rows.push(drawLine(W));
+  rows.push(centerText("Tributos Totais Incidentes (Lei 12.741/2012)", W));
+  rows.push(centerText(`Aprox: R$ ${tributosBase.toFixed(2)} (Fed R$ ${tribFederal} | Est R$ ${tribEstadual} | Mun R$ 0,00)`, W));
+  rows.push(drawLine(W));
+  for (const ln of wrapText("DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL; NAO GERA DIREITO A CREDITO FISCAL DE IPI", W)) {
+      rows.push(centerText(ln, W));
+  }
+  rows.push(drawLine(W));
   rows.push(`NFC-e ref. venda #${venda.id}  ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
   
   if (chaveAcesso) {
