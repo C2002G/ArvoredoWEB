@@ -126,7 +126,7 @@ router.post("/", async (req, res) => {
       codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
       bandeira_cartao: (data as any).bandeira_cartao ?? null,
       tipo_pagamento: (data as any).tipo_pagamento ?? null,
-    })
+    } as any)
     .returning();
 
   const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];

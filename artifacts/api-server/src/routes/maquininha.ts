@@ -163,7 +163,7 @@ router.post("/enviar", async (req, res) => {
       });
     }
 
-    const result = await response.json().catch(() => ({}));
+    const result: any = await response.json().catch(() => ({}));
     const status = String(result?.status || result?.Status || result?.aprovado || result?.approved || "").toLowerCase();
     const aprovado = useStoneEmulator
       ? status === "aprovado" || status === "approved" || status === "true" || status === "ok" || result?.approved === true
@@ -179,6 +179,17 @@ router.post("/enviar", async (req, res) => {
       });
     }
 
+    const additionalCardData = {
+      cnpj_credenciadora:
+        result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || result?.dados_cartao?.cnpj_credenciadora || result?.dados_cartao?.CNPJ || null,
+      codigo_autorizacao:
+        result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || result?.dados_cartao?.codigo_autorizacao || result?.dados_cartao?.autorizacao || null,
+      bandeira_cartao:
+        result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || result?.dados_cartao?.bandeira_cartao || null,
+      tipo_pagamento:
+        result?.tipo_pagamento || result?.tipoPagamento || result?.tpPagamento || result?.dados_cartao?.tipo_pagamento || null,
+    };
+
     const dadosCartao = useStoneEmulator
       ? {
           cnpj_credenciadora: result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || null,
@@ -186,7 +197,9 @@ router.post("/enviar", async (req, res) => {
           bandeira_cartao: result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || null,
           tipo_pagamento: payload.metodo === "credito" ? "03" : "04",
         }
-      : undefined;
+      : (payload.metodo === "debito" || payload.metodo === "credito")
+        ? additionalCardData
+        : undefined;
 
     return res.json({
       ok: true,

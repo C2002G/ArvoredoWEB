@@ -218,8 +218,15 @@ async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso
   return "";
 }
 
+type VendaComCartao = Venda & {
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+};
+
 export async function emitirNfce(
-  venda: Venda,
+  venda: VendaComCartao,
   itens: ItemVenda[],
   produtos: Produto[],
   cliente?: Cliente | null,
@@ -359,16 +366,41 @@ export async function emitirNfce(
           },
           pag: {
             detPag: [{
-              tPag: venda.pagamento === "dinheiro" ? "01" : venda.pagamento === "pix" ? "17" : (venda.pagamento === "cartao" ? "03" : "99"),
+              tPag: venda.pagamento === "dinheiro"
+                ? "01"
+                : venda.pagamento === "pix"
+                  ? "17"
+                  : venda.pagamento === "cartao"
+                    ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
+                        ? (venda.tipo_pagamento || "03")
+                        : "99")
+                    : "99",
               vPag: (venda.total - venda.desconto).toFixed(2),
-              ...(venda.pagamento === "cartao" ? {
-                card: {
-                  tpIntegra: "1",
-                  CNPJ: venda.cnpj_credenciadora || "00000000000000",
-                  tBand: venda.bandeira_cartao || "99",
-                  cAut: venda.codigo_autorizacao || "000000",
-                },
-              } : {}),
+              ...((() => {
+                const tPag = venda.pagamento === "dinheiro"
+                  ? "01"
+                  : venda.pagamento === "pix"
+                    ? "17"
+                    : venda.pagamento === "cartao"
+                      ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
+                          ? (venda.tipo_pagamento || "03")
+                          : "99")
+                      : "99";
+                const result: any = {};
+                // SEFAZ requires xPag (description) when tPag is 99
+                if (tPag === "99") {
+                  result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
+                }
+                if (venda.pagamento === "cartao" && (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao)) {
+                  result.card = {
+                    tpIntegra: "1",
+                    CNPJ: venda.cnpj_credenciadora || "00000000000000",
+                    tBand: venda.bandeira_cartao || "99",
+                    cAut: venda.codigo_autorizacao || "000000",
+                  };
+                }
+                return result;
+              })()),
             }],
           },
         },

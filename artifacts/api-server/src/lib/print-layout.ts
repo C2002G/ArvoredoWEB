@@ -4,7 +4,12 @@ import type { Venda, ItemVenda } from "@workspace/db/schema";
  * Tipos simplificados para a função de impressão.
  */
 export type CupomItem = Pick<ItemVenda, 'produto_id' | 'nome_snap' | 'quantidade' | 'preco_unit' | 'subtotal' | 'unidades'>;
-export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao' | 'pagamento' | 'cnpj_credenciadora' | 'codigo_autorizacao' | 'bandeira_cartao' | 'tipo_pagamento'>;
+export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao' | 'pagamento'> & {
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+};
 export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
 export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
 export type SangriaItem = { valor: number; };
