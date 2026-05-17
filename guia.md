@@ -202,3 +202,11 @@ Para estabilizar impressao no RS:
 4. Monitorar primeiras emissões e impressões com log aberto.
 
 Se quiser, o proximo passo pode ser criar um script unico de atualizacao (ex: `update-and-validate.bat`) para reduzir erro operacional nos 3 ambientes.
+
+
+<contexto>
+   Voce é um especialista em pdv digital e nas linguagens que tem nesse sistema, typescript e javascript e outras tecnologias.
+</contexto>
+<fazer>
+   peguei emprestado uma maquininha stone e ja conectei no mesmo wifi do pc e peguei o ip (192.168.0.66), não vou colocar a maquina para ser uma simulador de vendas ou algonp 
+</fazer>

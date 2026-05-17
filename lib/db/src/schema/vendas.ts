@@ -21,7 +21,7 @@ export const vendasTable = pgTable("vendas", {
   codigo_autorizacao: text("codigo_autorizacao"),
   bandeira_cartao: text("bandeira_cartao"),
   tipo_pagamento: text("tipo_pagamento"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const itensVendaTable = pgTable("itens_venda", {
@@ -42,8 +42,8 @@ export const fiadosTable = pgTable("fiados", {
   venda_id: integer("venda_id").references(() => vendasTable.id),
   valor: real("valor").notNull(),
   pago: boolean("pago").notNull().default(false),
-  pago_em: timestamp("pago_em"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  pago_em: timestamp("pago_em", { withTimezone: true }),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
@@ -52,7 +52,7 @@ export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
   tipo: tipoMovimentoEnum("tipo").notNull(),
   quantidade: real("quantidade").notNull(),
   motivo: text("motivo"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });

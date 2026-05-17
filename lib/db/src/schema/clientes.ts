@@ -8,7 +8,7 @@ export const clientesTable = pgTable("clientes", {
   cpf: text("cpf"),
   telefone: text("telefone"),
   observacao: text("observacao"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertClienteSchema = createInsertSchema(clientesTable).omit({ id: true, criado_em: true });

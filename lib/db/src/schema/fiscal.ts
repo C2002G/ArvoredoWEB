@@ -25,7 +25,7 @@ export const configFiscalTable = pgTable("config_fiscal", {
   caminho_certificado: text("caminho_certificado").notNull(),
   senha_certificado: text("senha_certificado").notNull(),
   ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Tabela para logar todas as tentativas de emissão de NFC-e
@@ -41,5 +41,5 @@ export const nfceLogsTable = pgTable("nfce_logs", {
   xml_enviado: text("xml_enviado"),
   xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
   json_retorno_sefaz: jsonb("json_retorno_sefaz"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });

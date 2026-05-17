@@ -23,7 +23,7 @@ export const produtosTable = pgTable(
     unidade: text("unidade").notNull().default("un"),
     validade: text("validade"),
     ativo: boolean("ativo").notNull().default(true),
-    criado_em: timestamp("criado_em").notNull().defaultNow(),
+    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),

@@ -176,6 +176,7 @@ deployment/menu.ps1
 deployment/parar.ps1
 deployment/SQL/2026-04-24-add-categoria-feira.sql
 deployment/SQL/2026-04-24-itens-venda-unidades.sql
+deployment/SQL/2026-05-15-vendas-cartoes-stone.sql
 deployment/SQL/criar-banco.sql
 doge.png
 estabelecimento2.0.md
@@ -429,21 +430,6 @@ export const logger = pino({
 
 </file>
 
-<file path="artifacts/api-server/src/migrate.ts">
-import { pool } from "@workspace/db";
-import { logger } from "./lib/logger";
-
-/**
- * Garante colunas esperadas pelo código (ex.: pull em PC que ainda não rodou o SQL manual).
- */
-export async function runStartupMigrations(): Promise<void> {
-  await pool.query(
-    "ALTER TABLE itens_venda ADD COLUMN IF NOT EXISTS unidades real",
-  );
-  logger.info("Migrações de startup OK (itens_venda.unidades)");
-}
-</file>
-
 <file path="artifacts/api-server/src/routes/health.ts">
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
@@ -453,191 +439,6 @@ const router: IRouter = Router();
 router.get("/healthz", (_req, res) => {
   const data = HealthCheckResponse.parse({ status: "ok" });
   res.json(data);
-});
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/routes/maquininha.ts">
-import { Router, type IRouter } from "express";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-
-type ModoConexao = "manual" | "api" | "usb_bridge";
-
-type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: ModoConexao;
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-};
-
-const router: IRouter = Router();
-
-const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  ativo: true,
-  modo_conexao: "manual",
-  api_url: "",
-  api_token: "",
-  timeout_ms: 8000,
-  empresa_nome: "NOME DA EMPRESA",
-  empresa_cnpj: "00.000.000/0000-00",
-  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-};
-
-async function loadConfig(): Promise<MaquininhaConfig> {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return {
-      ...DEFAULT_CONFIG,
-      ...parsed,
-    };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
-}
-
-async function saveConfig(config: MaquininhaConfig): Promise<void> {
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
-}
-
-router.get("/config", async (_req, res) => {
-  const config = await loadConfig();
-  res.json(config);
-});
-
-router.post("/config", async (req, res) => {
-  const current = await loadConfig();
-  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
-  const merged: MaquininhaConfig = {
-    ...current,
-    ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 8000)),
-  };
-  await saveConfig(merged);
-  res.json({ ok: true, config: merged });
-});
-
-router.post("/enviar", async (req, res) => {
-  const config = await loadConfig();
-
-  const payload = req.body as {
-    venda_local_id?: string;
-    metodo: "debito" | "credito" | "pix";
-    valor_total: number;
-    desconto?: number;
-    itens: Array<{
-      produto_id: number;
-      nome: string;
-      quantidade: number;
-      preco_unit: number;
-      subtotal: number;
-    }>;
-  };
-
-  const envio = {
-    origem: "arvoredo-pdv",
-    enviado_em: new Date().toISOString(),
-    empresa: {
-      nome: config.empresa_nome,
-      cnpj: config.empresa_cnpj,
-      regra: config.empresa_regra_padrao,
-    },
-    pedido: {
-      venda_local_id: payload.venda_local_id ?? null,
-      metodo: payload.metodo,
-      valor_total: payload.valor_total,
-      desconto: payload.desconto ?? 0,
-      itens: payload.itens ?? [],
-    },
-  };
-
-  if (!config.ativo) {
-    return res.json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: "Integracao de maquininha esta desativada.",
-    });
-  }
-
-  if (config.modo_conexao !== "api") {
-    return res.json({
-      ok: true,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem:
-        "Solicitacao preparada. Conexao nao-API exige middleware do fabricante ou uso manual na maquininha.",
-      payload_preview: envio,
-    });
-  }
-
-  if (!config.api_url) {
-    return res.status(400).json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: "Defina a URL da API/gateway da maquininha em Dispositivos.",
-    });
-  }
-
-  try {
-    const response = await fetch(config.api_url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(config.api_token ? { Authorization: `Bearer ${config.api_token}` } : {}),
-      },
-      body: JSON.stringify(envio),
-      signal: AbortSignal.timeout(config.timeout_ms),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      return res.status(502).json({
-        ok: false,
-        enviado: false,
-        modo: config.modo_conexao,
-        mensagem: `Gateway da maquininha respondeu erro HTTP ${response.status}.`,
-        detalhe: text || null,
-      });
-    }
-
-    return res.json({
-      ok: true,
-      enviado: true,
-      modo: config.modo_conexao,
-      mensagem: "Pedido enviado para a integracao da maquininha.",
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Falha de comunicacao com gateway";
-    return res.status(502).json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: msg,
-    });
-  }
-});
-
-router.post("/testar", async (_req, res) => {
-  const config = await loadConfig();
-  res.json({
-    ok: true,
-    ativo: config.ativo,
-    modo_conexao: config.modo_conexao,
-    mensagem:
-      config.modo_conexao === "api"
-        ? "Teste de configuracao pronto. Use o PDV para teste real com envio de valor."
-        : "Modo sem API: o sistema prepara os dados e a confirmacao segue manual.",
-  });
 });
 
 export default router;
@@ -6764,83 +6565,6 @@ export function useMovimentarEstoqueWrapper() {
 }
 </file>
 
-<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
-import { useMutation, useQuery } from "@tanstack/react-query";
-
-const BASE = "/api/maquininha";
-
-export type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: "manual" | "api" | "usb_bridge";
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-};
-
-type EnvioMaquininhaInput = {
-  venda_local_id?: string;
-  metodo: "debito" | "credito" | "pix";
-  valor_total: number;
-  desconto?: number;
-  itens: Array<{
-    produto_id: number;
-    nome: string;
-    quantidade: number;
-    preco_unit: number;
-    subtotal: number;
-  }>;
-};
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
-  const payload = await res.json();
-  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisicao da maquininha");
-  return payload as T;
-}
-
-export function useMaquininhaConfig() {
-  return useQuery({
-    queryKey: ["maquininha", "config"],
-    queryFn: () => request<MaquininhaConfig>("/config"),
-  });
-}
-
-export function useSalvarMaquininhaConfig() {
-  return useMutation({
-    mutationFn: (data: Partial<MaquininhaConfig>) =>
-      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useEnviarParaMaquininha() {
-  return useMutation({
-    mutationFn: (data: EnvioMaquininhaInput) =>
-      request<{ ok: boolean; enviado: boolean; mensagem: string; modo: string }>("/enviar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useTestarMaquininha() {
-  return useMutation({
-    mutationFn: () =>
-      request<{ ok: boolean; mensagem: string; modo_conexao: string }>("/testar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }),
-  });
-}
-</file>
-
 <file path="artifacts/arvoredo/src/hooks/use-mobile.tsx">
 import * as React from "react"
 
@@ -7606,6 +7330,14 @@ $$;
 ALTER TABLE itens_venda ADD COLUMN IF NOT EXISTS unidades real;
 </file>
 
+<file path="deployment/SQL/2026-05-15-vendas-cartoes-stone.sql">
+ALTER TABLE vendas
+  ADD COLUMN IF NOT EXISTS cnpj_credenciadora text,
+  ADD COLUMN IF NOT EXISTS codigo_autorizacao text,
+  ADD COLUMN IF NOT EXISTS bandeira_cartao text,
+  ADD COLUMN IF NOT EXISTS tipo_pagamento text;
+</file>
+
 <file path="deployment/SQL/criar-banco.sql">
 -- Arvoredo PDV - Script de Criacao do Banco de Dados
 -- Execute este script no pgAdmin para criar o banco de dados
@@ -7838,6 +7570,14 @@ Para estabilizar impressao no RS:
 4. Monitorar primeiras emissões e impressões com log aberto.
 
 Se quiser, o proximo passo pode ser criar um script unico de atualizacao (ex: `update-and-validate.bat`) para reduzir erro operacional nos 3 ambientes.
+
+
+<contexto>
+   Voce é um especialista em pdv digital e nas linguagens que tem nesse sistema, typescript e javascript e outras tecnologias.
+</contexto>
+<fazer>
+   peguei emprestado uma maquininha stone e ja conectei no mesmo wifi do pc e peguei o ip (192.168.0.66), não vou colocar a maquina para ser uma simulador de vendas ou algonp 
+</fazer>
 </file>
 
 <file path="lib/api-client-react/src/custom-fetch.ts">
@@ -8976,6 +8716,24 @@ export async function printTextToWindowsPrinter(text: string, printerName?: stri
 }
 </file>
 
+<file path="artifacts/api-server/src/migrate.ts">
+import { pool } from "@workspace/db";
+import { logger } from "./lib/logger";
+
+/**
+ * Garante colunas esperadas pelo código (ex.: pull em PC que ainda não rodou o SQL manual).
+ */
+export async function runStartupMigrations(): Promise<void> {
+  await pool.query(
+    "ALTER TABLE itens_venda ADD COLUMN IF NOT EXISTS unidades real",
+  );
+  await pool.query(
+    "ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cnpj_credenciadora text, ADD COLUMN IF NOT EXISTS codigo_autorizacao text, ADD COLUMN IF NOT EXISTS bandeira_cartao text, ADD COLUMN IF NOT EXISTS tipo_pagamento text",
+  );
+  logger.info("Migrações de startup OK (itens_venda.unidades + vendas pagamentos Stone)");
+}
+</file>
+
 <file path="artifacts/api-server/src/routes/caixa.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -9677,6 +9435,96 @@ export function useImprimirSangria() {
 export function useTestarImpressora() {
   return useMutation({
     mutationFn: () => post("/teste", {}),
+  });
+}
+</file>
+
+<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
+import { useMutation, useQuery } from "@tanstack/react-query";
+
+const BASE = "/api/maquininha";
+
+export type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: "manual" | "api" | "usb_bridge";
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+};
+
+type EnvioMaquininhaInput = {
+  venda_local_id?: string;
+  metodo: "debito" | "credito" | "pix";
+  valor_total: number;
+  desconto?: number;
+  itens: Array<{
+    produto_id: number;
+    nome: string;
+    quantidade: number;
+    preco_unit: number;
+    subtotal: number;
+  }>;
+};
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, init);
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisicao da maquininha");
+  return payload as T;
+}
+
+export function useMaquininhaConfig() {
+  return useQuery({
+    queryKey: ["maquininha", "config"],
+    queryFn: () => request<MaquininhaConfig>("/config"),
+  });
+}
+
+export function useSalvarMaquininhaConfig() {
+  return useMutation({
+    mutationFn: (data: Partial<MaquininhaConfig>) =>
+      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export type MaquininhaResponse = {
+  ok: boolean;
+  enviado: boolean;
+  mensagem: string;
+  modo: string;
+  dados_cartao?: {
+    cnpj_credenciadora?: string | null;
+    codigo_autorizacao?: string | null;
+    bandeira_cartao?: string | null;
+    tipo_pagamento?: string | null;
+  };
+};
+
+export function useEnviarParaMaquininha() {
+  return useMutation({
+    mutationFn: (data: EnvioMaquininhaInput) =>
+      request<MaquininhaResponse>("/enviar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export function useTestarMaquininha() {
+  return useMutation({
+    mutationFn: () =>
+      request<{ ok: boolean; mensagem: string; modo_conexao: string }>("/testar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }),
   });
 }
 </file>
@@ -11138,73 +10986,6 @@ export type InsertCliente = z.infer<typeof insertClienteSchema>;
 export type Cliente = typeof clientesTable.$inferSelect;
 </file>
 
-<file path="lib/db/src/schema/vendas.ts">
-import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-import { sessoesCaixaTable } from "./caixa";
-import { clientesTable } from "./clientes";
-import { produtosTable } from "./produtos";
-
-export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
-export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
-
-export const vendasTable = pgTable("vendas", {
-  id: serial("id").primaryKey(),
-  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
-  categoria: text("categoria").notNull(),
-  total: real("total").notNull(),
-  desconto: real("desconto").notNull().default(0),
-  pagamento: pagamentoEnum("pagamento").notNull(),
-  cliente_id: integer("cliente_id").references(() => clientesTable.id),
-  observacao: text("observacao"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
-
-export const itensVendaTable = pgTable("itens_venda", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  nome_snap: text("nome_snap").notNull(),
-  quantidade: real("quantidade").notNull(),
-  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
-  unidades: real("unidades"),
-  preco_unit: real("preco_unit").notNull(),
-  subtotal: real("subtotal").notNull(),
-});
-
-export const fiadosTable = pgTable("fiados", {
-  id: serial("id").primaryKey(),
-  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
-  venda_id: integer("venda_id").references(() => vendasTable.id),
-  valor: real("valor").notNull(),
-  pago: boolean("pago").notNull().default(false),
-  pago_em: timestamp("pago_em"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
-
-export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
-  id: serial("id").primaryKey(),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  tipo: tipoMovimentoEnum("tipo").notNull(),
-  quantidade: real("quantidade").notNull(),
-  motivo: text("motivo"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
-
-export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
-export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
-export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
-export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
-
-export type Venda = typeof vendasTable.$inferSelect;
-export type ItemVenda = typeof itensVendaTable.$inferSelect;
-export type Fiado = typeof fiadosTable.$inferSelect;
-export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
-export type InsertVenda = z.infer<typeof insertVendaSchema>;
-export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
-</file>
-
 <file path=".gitignore">
 # See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
@@ -11263,6 +11044,245 @@ Thumbs.db
 .env.*
 !.env.example
 Logs/
+</file>
+
+<file path="artifacts/api-server/src/routes/maquininha.ts">
+import { Router, type IRouter } from "express";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+type ModoConexao = "manual" | "api" | "usb_bridge";
+
+type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: ModoConexao;
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+};
+
+const router: IRouter = Router();
+
+const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  ativo: true,
+  modo_conexao: "manual",
+  api_url: "",
+  api_token: "",
+  timeout_ms: 8000,
+  empresa_nome: "NOME DA EMPRESA",
+  empresa_cnpj: "00.000.000/0000-00",
+  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+};
+
+async function loadConfig(): Promise<MaquininhaConfig> {
+  try {
+    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
+    return {
+      ...DEFAULT_CONFIG,
+      ...parsed,
+    };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function saveConfig(config: MaquininhaConfig): Promise<void> {
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+router.get("/config", async (_req, res) => {
+  const config = await loadConfig();
+  res.json(config);
+});
+
+router.post("/config", async (req, res) => {
+  const current = await loadConfig();
+  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
+  const merged: MaquininhaConfig = {
+    ...current,
+    ...body,
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 8000)),
+  };
+  await saveConfig(merged);
+  res.json({ ok: true, config: merged });
+});
+
+router.post("/enviar", async (req, res) => {
+  const config = await loadConfig();
+
+  const payload = req.body as {
+    venda_local_id?: string;
+    metodo: "debito" | "credito" | "pix";
+    valor_total: number;
+    desconto?: number;
+    itens: Array<{
+      produto_id: number;
+      nome: string;
+      quantidade: number;
+      preco_unit: number;
+      subtotal: number;
+    }>;
+  };
+
+  const envio = {
+    origem: "arvoredo-pdv",
+    enviado_em: new Date().toISOString(),
+    empresa: {
+      nome: config.empresa_nome,
+      cnpj: config.empresa_cnpj,
+      regra: config.empresa_regra_padrao,
+    },
+    pedido: {
+      venda_local_id: payload.venda_local_id ?? null,
+      metodo: payload.metodo,
+      valor_total: payload.valor_total,
+      desconto: payload.desconto ?? 0,
+      itens: payload.itens ?? [],
+    },
+  };
+
+  if (!config.ativo) {
+    return res.json({
+      ok: false,
+      enviado: false,
+      modo: config.modo_conexao,
+      mensagem: "Integracao de maquininha esta desativada.",
+    });
+  }
+
+  if (config.modo_conexao !== "api") {
+    return res.json({
+      ok: true,
+      enviado: false,
+      modo: config.modo_conexao,
+      mensagem:
+        "Solicitacao preparada. Conexao nao-API exige middleware do fabricante ou uso manual na maquininha.",
+      payload_preview: envio,
+    });
+  }
+
+  const terminalIp = process.env.STONE_TERMINAL_IP?.trim();
+  const useStoneEmulator = !!terminalIp && (payload.metodo === "debito" || payload.metodo === "credito");
+
+  if (!config.api_url && !useStoneEmulator) {
+    return res.status(400).json({
+      ok: false,
+      enviado: false,
+      modo: config.modo_conexao,
+      mensagem: "Defina a URL da API/gateway da maquininha em Dispositivos ou STONE_TERMINAL_IP no .env.",
+    });
+  }
+
+  const endpoint = useStoneEmulator
+    ? `http://${terminalIp}/api/v1/pagamentos`
+    : config.api_url;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(config.api_token && !useStoneEmulator ? { Authorization: `Bearer ${config.api_token}` } : {}),
+      },
+      body: JSON.stringify(
+        useStoneEmulator
+          ? {
+              valor: payload.valor_total,
+              tipo: payload.metodo === "credito" ? "credito" : "debito",
+            }
+          : envio,
+      ),
+      signal: AbortSignal.timeout(config.timeout_ms),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(502).json({
+        ok: false,
+        enviado: false,
+        modo: config.modo_conexao,
+        mensagem: `Gateway da maquininha respondeu erro HTTP ${response.status}.`,
+        detalhe: text || null,
+      });
+    }
+
+    const result: any = await response.json().catch(() => ({}));
+    const status = String(result?.status || result?.Status || result?.aprovado || result?.approved || "").toLowerCase();
+    const aprovado = useStoneEmulator
+      ? status === "aprovado" || status === "approved" || status === "true" || status === "ok" || result?.approved === true
+      : true;
+
+    if (useStoneEmulator && !aprovado) {
+      return res.status(502).json({
+        ok: false,
+        enviado: false,
+        modo: "stone-dpos",
+        mensagem: `Pagamento não aprovado pela maquininha Stone: ${JSON.stringify(result)}`,
+        detalhe: result,
+      });
+    }
+
+    const additionalCardData = {
+      cnpj_credenciadora:
+        result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || result?.dados_cartao?.cnpj_credenciadora || result?.dados_cartao?.CNPJ || null,
+      codigo_autorizacao:
+        result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || result?.dados_cartao?.codigo_autorizacao || result?.dados_cartao?.autorizacao || null,
+      bandeira_cartao:
+        result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || result?.dados_cartao?.bandeira_cartao || null,
+      tipo_pagamento:
+        result?.tipo_pagamento || result?.tipoPagamento || result?.tpPagamento || result?.dados_cartao?.tipo_pagamento || null,
+    };
+
+    const dadosCartao = useStoneEmulator
+      ? {
+          cnpj_credenciadora: result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || null,
+          codigo_autorizacao: result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || null,
+          bandeira_cartao: result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || null,
+          tipo_pagamento: payload.metodo === "credito" ? "03" : "04",
+        }
+      : (payload.metodo === "debito" || payload.metodo === "credito")
+        ? additionalCardData
+        : undefined;
+
+    return res.json({
+      ok: true,
+      enviado: true,
+      modo: useStoneEmulator ? "stone-dpos" : config.modo_conexao,
+      mensagem: useStoneEmulator ? "Pagamento aprovado na Stone" : "Pedido enviado para a integracao da maquininha.",
+      dados_cartao: dadosCartao,
+      resultado_maquininha: result,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Falha de comunicacao com gateway";
+    return res.status(502).json({
+      ok: false,
+      enviado: false,
+      modo: config.modo_conexao,
+      mensagem: msg,
+    });
+  }
+});
+
+router.post("/testar", async (_req, res) => {
+  const config = await loadConfig();
+  res.json({
+    ok: true,
+    ativo: config.ativo,
+    modo_conexao: config.modo_conexao,
+    mensagem:
+      config.modo_conexao === "api"
+        ? "Teste de configuracao pronto. Use o PDV para teste real com envio de valor."
+        : "Modo sem API: o sistema prepara os dados e a confirmacao segue manual.",
+  });
+});
+
+export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/store/use-cart.ts">
@@ -14375,6 +14395,77 @@ export * from "./caixa";
 export * from "./clientes";
 export * from "./vendas";
 export * from "./fiscal";
+</file>
+
+<file path="lib/db/src/schema/vendas.ts">
+import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { sessoesCaixaTable } from "./caixa";
+import { clientesTable } from "./clientes";
+import { produtosTable } from "./produtos";
+
+export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
+export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
+
+export const vendasTable = pgTable("vendas", {
+  id: serial("id").primaryKey(),
+  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
+  categoria: text("categoria").notNull(),
+  total: real("total").notNull(),
+  desconto: real("desconto").notNull().default(0),
+  pagamento: pagamentoEnum("pagamento").notNull(),
+  cliente_id: integer("cliente_id").references(() => clientesTable.id),
+  observacao: text("observacao"),
+  cnpj_credenciadora: text("cnpj_credenciadora"),
+  codigo_autorizacao: text("codigo_autorizacao"),
+  bandeira_cartao: text("bandeira_cartao"),
+  tipo_pagamento: text("tipo_pagamento"),
+  criado_em: timestamp("criado_em").notNull().defaultNow(),
+});
+
+export const itensVendaTable = pgTable("itens_venda", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  nome_snap: text("nome_snap").notNull(),
+  quantidade: real("quantidade").notNull(),
+  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
+  unidades: real("unidades"),
+  preco_unit: real("preco_unit").notNull(),
+  subtotal: real("subtotal").notNull(),
+});
+
+export const fiadosTable = pgTable("fiados", {
+  id: serial("id").primaryKey(),
+  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
+  venda_id: integer("venda_id").references(() => vendasTable.id),
+  valor: real("valor").notNull(),
+  pago: boolean("pago").notNull().default(false),
+  pago_em: timestamp("pago_em"),
+  criado_em: timestamp("criado_em").notNull().defaultNow(),
+});
+
+export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
+  id: serial("id").primaryKey(),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  tipo: tipoMovimentoEnum("tipo").notNull(),
+  quantidade: real("quantidade").notNull(),
+  motivo: text("motivo"),
+  criado_em: timestamp("criado_em").notNull().defaultNow(),
+});
+
+export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
+export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
+export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
+export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
+
+export type Venda = typeof vendasTable.$inferSelect;
+export type ItemVenda = typeof itensVendaTable.$inferSelect;
+export type Fiado = typeof fiadosTable.$inferSelect;
+export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
+export type InsertVenda = z.infer<typeof insertVendaSchema>;
+export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
 </file>
 
 <file path="artifacts/api-server/src/index.ts">
@@ -18122,570 +18213,6 @@ do {
 } while ($choice -ne "0")
 </file>
 
-<file path="lib/api-zod/src/generated/api.ts">
-/**
- * Generated by orval v8.5.3 🍺
- * Do not edit manually.
- * Api
- * Arvoredo PDV API
- * OpenAPI spec version: 0.2.0
- */
-import * as zod from "zod";
-
-/**
- * @summary Health check
- */
-export const HealthCheckResponse = zod.object({
-  status: zod.string(),
-});
-
-/**
- * @summary Listar produtos
- */
-export const ListarProdutosQueryParams = zod.object({
-  q: zod.coerce.string().optional(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
-});
-
-export const ListarProdutosResponseItem = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
-});
-export const ListarProdutosResponse = zod.array(ListarProdutosResponseItem);
-
-/**
- * @summary Criar produto
- */
-export const criarProdutoBodyCustoDefault = 0;
-export const criarProdutoBodyEstoqueDefault = 0;
-export const criarProdutoBodyEstoqueMinDefault = 5;
-export const criarProdutoBodyUnidadeDefault = `un`;
-
-export const CriarProdutoBody = zod.object({
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number().default(criarProdutoBodyCustoDefault),
-  estoque: zod.number().default(criarProdutoBodyEstoqueDefault),
-  estoque_min: zod.number().default(criarProdutoBodyEstoqueMinDefault),
-  unidade: zod.string().default(criarProdutoBodyUnidadeDefault),
-  validade: zod.string().nullish(),
-});
-
-/**
- * @summary Buscar produto por código ou nome
- */
-export const BuscarProdutoQueryParams = zod.object({
-  codigo: zod.coerce.string().optional(),
-  nome: zod.coerce.string().optional(),
-  q: zod.coerce.string().optional(),
-});
-
-export const BuscarProdutoResponseItem = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
-});
-export const BuscarProdutoResponse = zod.array(BuscarProdutoResponseItem);
-
-/**
- * @summary Produtos com estoque baixo ou vencendo
- */
-export const AlertasEstoqueResponse = zod.object({
-  estoque_baixo: zod.array(
-    zod.object({
-      id: zod.number(),
-      codigo: zod.string().nullish(),
-      nome: zod.string(),
-      marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha", "feira"]),
-      ncm: zod.string().nullish(),
-      cst: zod.string().nullish(),
-      preco: zod.number(),
-      custo: zod.number(),
-      estoque: zod.number(),
-      estoque_min: zod.number(),
-      unidade: zod.string(),
-      validade: zod.string().nullish(),
-      ativo: zod.boolean(),
-      criado_em: zod.string(),
-    }),
-  ),
-  vencendo: zod.array(
-    zod.object({
-      id: zod.number(),
-      codigo: zod.string().nullish(),
-      nome: zod.string(),
-      marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha", "feira"]),
-      ncm: zod.string().nullish(),
-      cst: zod.string().nullish(),
-      preco: zod.number(),
-      custo: zod.number(),
-      estoque: zod.number(),
-      estoque_min: zod.number(),
-      unidade: zod.string(),
-      validade: zod.string().nullish(),
-      ativo: zod.boolean(),
-      criado_em: zod.string(),
-    }),
-  ),
-  vencidos: zod.array(
-    zod.object({
-      id: zod.number(),
-      codigo: zod.string().nullish(),
-      nome: zod.string(),
-      marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha", "feira"]),
-      ncm: zod.string().nullish(),
-      cst: zod.string().nullish(),
-      preco: zod.number(),
-      custo: zod.number(),
-      estoque: zod.number(),
-      estoque_min: zod.number(),
-      unidade: zod.string(),
-      validade: zod.string().nullish(),
-      ativo: zod.boolean(),
-      criado_em: zod.string(),
-    }),
-  ),
-  total_alertas: zod.number(),
-});
-
-/**
- * @summary Editar produto
- */
-export const EditarProdutoParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const EditarProdutoBody = zod.object({
-  codigo: zod.string().nullish(),
-  nome: zod.string().optional(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number().optional(),
-  custo: zod.number().optional(),
-  estoque: zod.number().optional(),
-  estoque_min: zod.number().optional(),
-  unidade: zod.string().optional(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean().optional(),
-});
-
-export const EditarProdutoResponse = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
-});
-
-/**
- * @summary Soft delete produto
- */
-export const DeletarProdutoParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const DeletarProdutoResponse = zod.object({
-  ok: zod.boolean(),
-  message: zod.string().optional(),
-});
-
-/**
- * @summary Listar vendas
- */
-export const listarVendasQueryLimitDefault = 50;
-
-export const ListarVendasQueryParams = zod.object({
-  data: zod.coerce.string().optional(),
-  data_inicio: zod.coerce.string().optional(),
-  data_fim: zod.coerce.string().optional(),
-  categoria: zod.coerce.string().optional(),
-  limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
-});
-
-export const ListarVendasResponseItem = zod.object({
-  id: zod.number(),
-  sessao_id: zod.number().nullish(),
-  categoria: zod.string(),
-  total: zod.number(),
-  desconto: zod.number(),
-  pagamento: zod.string(),
-  cliente_id: zod.number().nullish(),
-  cliente_nome: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarVendasResponse = zod.array(ListarVendasResponseItem);
-
-/**
- * @summary Registrar venda
- */
-export const registrarVendaBodyDescontoDefault = 0;
-
-export const RegistrarVendaBody = zod.object({
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  desconto: zod.number().default(registrarVendaBodyDescontoDefault),
-  pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
-  cliente_id: zod.number().nullish(),
-  observacao: zod.string().nullish(),
-  itens: zod.array(
-    zod.object({
-      produto_id: zod.number(),
-      quantidade: zod.number(),
-      preco_unit: zod.number(),
-      unidades: zod.number().optional(),
-    }),
-  ),
-});
-
-/**
- * @summary Resumo das vendas de hoje
- */
-export const ResumoHojeResponse = zod.object({
-  total: zod.number(),
-  total_dinheiro: zod.number(),
-  total_pix: zod.number(),
-  total_cartao: zod.number(),
-  total_fiado: zod.number(),
-  num_vendas: zod.number(),
-  mercado: zod.number(),
-  cozinha: zod.number(),
-  feira: zod.number().optional(),
-});
-
-/**
- * @summary Itens de uma venda
- */
-export const ItensDaVendaParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const ItensDaVendaResponseItem = zod.object({
-  id: zod.number(),
-  venda_id: zod.number(),
-  produto_id: zod.number(),
-  nome_snap: zod.string(),
-  quantidade: zod.number(),
-  unidades: zod.number().nullish(),
-  preco_unit: zod.number(),
-  subtotal: zod.number(),
-});
-export const ItensDaVendaResponse = zod.array(ItensDaVendaResponseItem);
-
-/**
- * @summary Registrar movimento de estoque
- */
-export const MovimentarEstoqueBody = zod.object({
-  produto_id: zod.number(),
-  tipo: zod.enum(["entrada", "saida", "ajuste"]),
-  quantidade: zod.number(),
-  motivo: zod.string().nullish(),
-});
-
-/**
- * @summary Histórico de movimentos de estoque
- */
-export const listarMovimentosQueryLimitDefault = 100;
-
-export const ListarMovimentosQueryParams = zod.object({
-  produto_id: zod.coerce.number().optional(),
-  limit: zod.coerce.number().default(listarMovimentosQueryLimitDefault),
-});
-
-export const ListarMovimentosResponseItem = zod.object({
-  id: zod.number(),
-  produto_id: zod.number(),
-  produto_nome: zod.string().nullish(),
-  tipo: zod.string(),
-  quantidade: zod.number(),
-  motivo: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarMovimentosResponse = zod.array(ListarMovimentosResponseItem);
-
-/**
- * @summary Listar clientes
- */
-export const ListarClientesQueryParams = zod.object({
-  q: zod.coerce.string().optional(),
-});
-
-export const ListarClientesResponseItem = zod.object({
-  id: zod.number(),
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarClientesResponse = zod.array(ListarClientesResponseItem);
-
-/**
- * @summary Criar cliente
- */
-export const CriarClienteBody = zod.object({
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-});
-
-/**
- * @summary Editar cliente
- */
-export const EditarClienteParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const EditarClienteBody = zod.object({
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-});
-
-export const EditarClienteResponse = zod.object({
-  id: zod.number(),
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-
-/**
- * @summary Extrato do cliente
- */
-export const ExtratoClienteParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const ExtratoClienteResponse = zod.object({
-  cliente: zod.object({
-    id: zod.number(),
-    nome: zod.string(),
-    apelido: zod.string().nullish(),
-    telefone: zod.string().nullish(),
-    cpf: zod.string().nullish(),
-    observacao: zod.string().nullish(),
-    criado_em: zod.string(),
-  }),
-  fiados: zod.array(
-    zod.object({
-      id: zod.number(),
-      venda_id: zod.number().nullish(),
-      valor: zod.number(),
-      pago: zod.boolean(),
-      pago_em: zod.string().nullish(),
-      criado_em: zod.string(),
-    }),
-  ),
-  total_aberto: zod.number(),
-});
-
-/**
- * @summary Registrar pagamento de fiado
- */
-export const PagarFiadoParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const PagarFiadoBody = zod.object({
-  valor: zod.number(),
-});
-
-export const PagarFiadoResponse = zod.object({
-  ok: zod.boolean(),
-  message: zod.string().optional(),
-});
-
-/**
- * @summary Clientes com dívida em aberto
- */
-export const ResumoFiadoResponseItem = zod.object({
-  cliente: zod.object({
-    id: zod.number(),
-    nome: zod.string(),
-    apelido: zod.string().nullish(),
-    telefone: zod.string().nullish(),
-    cpf: zod.string().nullish(),
-    observacao: zod.string().nullish(),
-    criado_em: zod.string(),
-  }),
-  total_aberto: zod.number(),
-});
-export const ResumoFiadoResponse = zod.array(ResumoFiadoResponseItem);
-
-/**
- * @summary Status atual do caixa
- */
-export const StatusCaixaResponse = zod.object({
-  aberto: zod.boolean(),
-  sessao: zod
-    .object({
-      id: zod.number(),
-      aberto_em: zod.string(),
-      fechado_em: zod.string().nullish(),
-      fundo_inicial: zod.number(),
-      total_dinheiro: zod.number(),
-      total_pix: zod.number(),
-      total_cartao: zod.number(),
-      total_fiado: zod.number(),
-      total_sangria: zod.number(),
-      status: zod.enum(["aberto", "fechado"]),
-    })
-    .nullish(),
-});
-
-/**
- * @summary Abrir sessão de caixa
- */
-export const abrirCaixaBodyFundoInicialDefault = 300;
-
-export const AbrirCaixaBody = zod.object({
-  fundo_inicial: zod.number().default(abrirCaixaBodyFundoInicialDefault),
-});
-
-/**
- * @summary Fechar sessão de caixa
- */
-export const FecharCaixaResponse = zod.object({
-  id: zod.number(),
-  aberto_em: zod.string(),
-  fechado_em: zod.string().nullish(),
-  fundo_inicial: zod.number(),
-  total_dinheiro: zod.number(),
-  total_pix: zod.number(),
-  total_cartao: zod.number(),
-  total_fiado: zod.number(),
-  total_sangria: zod.number(),
-  status: zod.enum(["aberto", "fechado"]),
-});
-
-/**
- * @summary Registrar sangria
- */
-export const RegistrarSangriaBody = zod.object({
-  valor: zod.number(),
-  motivo: zod.string().nullish(),
-});
-
-/**
- * @summary Listar sangrias
- */
-export const ListarSangriasQueryParams = zod.object({
-  sessao_id: zod.coerce.number().optional(),
-});
-
-export const ListarSangriasResponseItem = zod.object({
-  id: zod.number(),
-  sessao_id: zod.number(),
-  valor: zod.number(),
-  motivo: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarSangriasResponse = zod.array(ListarSangriasResponseItem);
-
-/**
- * @summary Histórico de sessões
- */
-export const HistoricoCaixaResponseItem = zod.object({
-  id: zod.number(),
-  aberto_em: zod.string(),
-  fechado_em: zod.string().nullish(),
-  fundo_inicial: zod.number(),
-  total_dinheiro: zod.number(),
-  total_pix: zod.number(),
-  total_cartao: zod.number(),
-  total_fiado: zod.number(),
-  total_sangria: zod.number(),
-  status: zod.enum(["aberto", "fechado"]),
-});
-export const HistoricoCaixaResponse = zod.array(HistoricoCaixaResponseItem);
-
-/**
- * @summary Imprimir cupom de venda
- */
-export const ImprimirCupomBody = zod.object({
-  venda_id: zod.number(),
-});
-
-export const ImprimirCupomResponse = zod.object({
-  ok: zod.boolean(),
-  erro: zod.string().nullish(),
-});
-
-/**
- * @summary Imprimir relatório de sangria/vendas por período
- */
-export const ImprimirSangriaBody = zod.object({
-  data_inicio: zod.string(),
-  data_fim: zod.string(),
-  sessao_id: zod.number().nullish(),
-});
-
-export const ImprimirSangriaResponse = zod.object({
-  ok: zod.boolean(),
-  erro: zod.string().nullish(),
-});
-
-/**
- * @summary Testar impressora
- */
-export const TestImpressoraResponse = zod.object({
-  ok: zod.boolean(),
-  erro: zod.string().nullish(),
-});
-</file>
-
 <file path="package.json">
 {
   "name": "workspace",
@@ -19235,6 +18762,654 @@ export default function Historico() {
 }
 </file>
 
+<file path="lib/api-zod/src/generated/api.ts">
+/**
+ * Generated by orval v8.5.3 🍺
+ * Do not edit manually.
+ * Api
+ * Arvoredo PDV API
+ * OpenAPI spec version: 0.2.0
+ */
+import * as zod from "zod";
+
+/**
+ * @summary Health check
+ */
+export const HealthCheckResponse = zod.object({
+  status: zod.string(),
+});
+
+/**
+ * @summary Listar produtos
+ */
+export const ListarProdutosQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
+});
+
+export const ListarProdutosResponseItem = zod.object({
+  id: zod.number(),
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number(),
+  estoque: zod.number(),
+  estoque_min: zod.number(),
+  unidade: zod.string(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean(),
+  criado_em: zod.string(),
+});
+export const ListarProdutosResponse = zod.array(ListarProdutosResponseItem);
+
+/**
+ * @summary Criar produto
+ */
+export const criarProdutoBodyCustoDefault = 0;
+export const criarProdutoBodyEstoqueDefault = 0;
+export const criarProdutoBodyEstoqueMinDefault = 5;
+export const criarProdutoBodyUnidadeDefault = `un`;
+
+export const CriarProdutoBody = zod.object({
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number().default(criarProdutoBodyCustoDefault),
+  estoque: zod.number().default(criarProdutoBodyEstoqueDefault),
+  estoque_min: zod.number().default(criarProdutoBodyEstoqueMinDefault),
+  unidade: zod.string().default(criarProdutoBodyUnidadeDefault),
+  validade: zod.string().nullish(),
+});
+
+/**
+ * @summary Buscar produto por código ou nome
+ */
+export const BuscarProdutoQueryParams = zod.object({
+  codigo: zod.coerce.string().optional(),
+  nome: zod.coerce.string().optional(),
+  q: zod.coerce.string().optional(),
+});
+
+export const BuscarProdutoResponseItem = zod.object({
+  id: zod.number(),
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number(),
+  estoque: zod.number(),
+  estoque_min: zod.number(),
+  unidade: zod.string(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean(),
+  criado_em: zod.string(),
+});
+export const BuscarProdutoResponse = zod.array(BuscarProdutoResponseItem);
+
+/**
+ * @summary Produtos com estoque baixo ou vencendo
+ */
+export const AlertasEstoqueResponse = zod.object({
+  estoque_baixo: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
+      ncm: zod.string().nullish(),
+      cst: zod.string().nullish(),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  vencendo: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
+      ncm: zod.string().nullish(),
+      cst: zod.string().nullish(),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  vencidos: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
+      ncm: zod.string().nullish(),
+      cst: zod.string().nullish(),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  total_alertas: zod.number(),
+});
+
+/**
+ * @summary Editar produto
+ */
+export const EditarProdutoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const EditarProdutoBody = zod.object({
+  codigo: zod.string().nullish(),
+  nome: zod.string().optional(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number().optional(),
+  custo: zod.number().optional(),
+  estoque: zod.number().optional(),
+  estoque_min: zod.number().optional(),
+  unidade: zod.string().optional(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean().optional(),
+});
+
+export const EditarProdutoResponse = zod.object({
+  id: zod.number(),
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number(),
+  estoque: zod.number(),
+  estoque_min: zod.number(),
+  unidade: zod.string(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean(),
+  criado_em: zod.string(),
+});
+
+/**
+ * @summary Soft delete produto
+ */
+export const DeletarProdutoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeletarProdutoResponse = zod.object({
+  ok: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Listar vendas
+ */
+export const listarVendasQueryLimitDefault = 50;
+
+export const ListarVendasQueryParams = zod.object({
+  data: zod.coerce.string().optional(),
+  data_inicio: zod.coerce.string().optional(),
+  data_fim: zod.coerce.string().optional(),
+  categoria: zod.coerce.string().optional(),
+  limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
+});
+
+export const ListarVendasResponseItem = zod.object({
+  id: zod.number(),
+  sessao_id: zod.number().nullish(),
+  categoria: zod.string(),
+  total: zod.number(),
+  desconto: zod.number(),
+  pagamento: zod.string(),
+  cliente_id: zod.number().nullish(),
+  cliente_nome: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarVendasResponse = zod.array(ListarVendasResponseItem);
+
+/**
+ * @summary Registrar venda
+ */
+export const registrarVendaBodyDescontoDefault = 0;
+
+export const RegistrarVendaBody = zod.object({
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  desconto: zod.number().default(registrarVendaBodyDescontoDefault),
+  pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
+  cliente_id: zod.number().nullish(),
+  observacao: zod.string().nullish(),
+  cnpj_credenciadora: zod.string().nullish(),
+  codigo_autorizacao: zod.string().nullish(),
+  bandeira_cartao: zod.string().nullish(),
+  tipo_pagamento: zod.string().nullish(),
+  itens: zod.array(
+    zod.object({
+      produto_id: zod.number(),
+      quantidade: zod.number(),
+      preco_unit: zod.number(),
+      unidades: zod.number().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Resumo das vendas de hoje
+ */
+export const ResumoHojeResponse = zod.object({
+  total: zod.number(),
+  total_dinheiro: zod.number(),
+  total_pix: zod.number(),
+  total_cartao: zod.number(),
+  total_fiado: zod.number(),
+  num_vendas: zod.number(),
+  mercado: zod.number(),
+  cozinha: zod.number(),
+  feira: zod.number().optional(),
+});
+
+/**
+ * @summary Itens de uma venda
+ */
+export const ItensDaVendaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ItensDaVendaResponseItem = zod.object({
+  id: zod.number(),
+  venda_id: zod.number(),
+  produto_id: zod.number(),
+  nome_snap: zod.string(),
+  quantidade: zod.number(),
+  unidades: zod.number().nullish(),
+  preco_unit: zod.number(),
+  subtotal: zod.number(),
+});
+export const ItensDaVendaResponse = zod.array(ItensDaVendaResponseItem);
+
+/**
+ * @summary Registrar movimento de estoque
+ */
+export const MovimentarEstoqueBody = zod.object({
+  produto_id: zod.number(),
+  tipo: zod.enum(["entrada", "saida", "ajuste"]),
+  quantidade: zod.number(),
+  motivo: zod.string().nullish(),
+});
+
+/**
+ * @summary Histórico de movimentos de estoque
+ */
+export const listarMovimentosQueryLimitDefault = 100;
+
+export const ListarMovimentosQueryParams = zod.object({
+  produto_id: zod.coerce.number().optional(),
+  limit: zod.coerce.number().default(listarMovimentosQueryLimitDefault),
+});
+
+export const ListarMovimentosResponseItem = zod.object({
+  id: zod.number(),
+  produto_id: zod.number(),
+  produto_nome: zod.string().nullish(),
+  tipo: zod.string(),
+  quantidade: zod.number(),
+  motivo: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarMovimentosResponse = zod.array(ListarMovimentosResponseItem);
+
+/**
+ * @summary Listar clientes
+ */
+export const ListarClientesQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+});
+
+export const ListarClientesResponseItem = zod.object({
+  id: zod.number(),
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarClientesResponse = zod.array(ListarClientesResponseItem);
+
+/**
+ * @summary Criar cliente
+ */
+export const CriarClienteBody = zod.object({
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+});
+
+/**
+ * @summary Editar cliente
+ */
+export const EditarClienteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const EditarClienteBody = zod.object({
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+});
+
+export const EditarClienteResponse = zod.object({
+  id: zod.number(),
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+
+/**
+ * @summary Extrato do cliente
+ */
+export const ExtratoClienteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ExtratoClienteResponse = zod.object({
+  cliente: zod.object({
+    id: zod.number(),
+    nome: zod.string(),
+    apelido: zod.string().nullish(),
+    telefone: zod.string().nullish(),
+    cpf: zod.string().nullish(),
+    observacao: zod.string().nullish(),
+    criado_em: zod.string(),
+  }),
+  fiados: zod.array(
+    zod.object({
+      id: zod.number(),
+      venda_id: zod.number().nullish(),
+      valor: zod.number(),
+      pago: zod.boolean(),
+      pago_em: zod.string().nullish(),
+      criado_em: zod.string(),
+    }),
+  ),
+  total_aberto: zod.number(),
+});
+
+/**
+ * @summary Registrar pagamento de fiado
+ */
+export const PagarFiadoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PagarFiadoBody = zod.object({
+  valor: zod.number(),
+});
+
+export const PagarFiadoResponse = zod.object({
+  ok: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Clientes com dívida em aberto
+ */
+export const ResumoFiadoResponseItem = zod.object({
+  cliente: zod.object({
+    id: zod.number(),
+    nome: zod.string(),
+    apelido: zod.string().nullish(),
+    telefone: zod.string().nullish(),
+    cpf: zod.string().nullish(),
+    observacao: zod.string().nullish(),
+    criado_em: zod.string(),
+  }),
+  total_aberto: zod.number(),
+});
+export const ResumoFiadoResponse = zod.array(ResumoFiadoResponseItem);
+
+/**
+ * @summary Status atual do caixa
+ */
+export const StatusCaixaResponse = zod.object({
+  aberto: zod.boolean(),
+  sessao: zod
+    .object({
+      id: zod.number(),
+      aberto_em: zod.string(),
+      fechado_em: zod.string().nullish(),
+      fundo_inicial: zod.number(),
+      total_dinheiro: zod.number(),
+      total_pix: zod.number(),
+      total_cartao: zod.number(),
+      total_fiado: zod.number(),
+      total_sangria: zod.number(),
+      status: zod.enum(["aberto", "fechado"]),
+    })
+    .nullish(),
+});
+
+/**
+ * @summary Abrir sessão de caixa
+ */
+export const abrirCaixaBodyFundoInicialDefault = 300;
+
+export const AbrirCaixaBody = zod.object({
+  fundo_inicial: zod.number().default(abrirCaixaBodyFundoInicialDefault),
+});
+
+/**
+ * @summary Fechar sessão de caixa
+ */
+export const FecharCaixaResponse = zod.object({
+  id: zod.number(),
+  aberto_em: zod.string(),
+  fechado_em: zod.string().nullish(),
+  fundo_inicial: zod.number(),
+  total_dinheiro: zod.number(),
+  total_pix: zod.number(),
+  total_cartao: zod.number(),
+  total_fiado: zod.number(),
+  total_sangria: zod.number(),
+  status: zod.enum(["aberto", "fechado"]),
+});
+
+/**
+ * @summary Registrar sangria
+ */
+export const RegistrarSangriaBody = zod.object({
+  valor: zod.number(),
+  motivo: zod.string().nullish(),
+});
+
+/**
+ * @summary Listar sangrias
+ */
+export const ListarSangriasQueryParams = zod.object({
+  sessao_id: zod.coerce.number().optional(),
+});
+
+export const ListarSangriasResponseItem = zod.object({
+  id: zod.number(),
+  sessao_id: zod.number(),
+  valor: zod.number(),
+  motivo: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarSangriasResponse = zod.array(ListarSangriasResponseItem);
+
+/**
+ * @summary Histórico de sessões
+ */
+export const HistoricoCaixaResponseItem = zod.object({
+  id: zod.number(),
+  aberto_em: zod.string(),
+  fechado_em: zod.string().nullish(),
+  fundo_inicial: zod.number(),
+  total_dinheiro: zod.number(),
+  total_pix: zod.number(),
+  total_cartao: zod.number(),
+  total_fiado: zod.number(),
+  total_sangria: zod.number(),
+  status: zod.enum(["aberto", "fechado"]),
+});
+export const HistoricoCaixaResponse = zod.array(HistoricoCaixaResponseItem);
+
+/**
+ * @summary Imprimir cupom de venda
+ */
+export const ImprimirCupomBody = zod.object({
+  venda_id: zod.number(),
+});
+
+export const ImprimirCupomResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+
+/**
+ * @summary Imprimir relatório de sangria/vendas por período
+ */
+export const ImprimirSangriaBody = zod.object({
+  data_inicio: zod.string(),
+  data_fim: zod.string(),
+  sessao_id: zod.number().nullish(),
+});
+
+export const ImprimirSangriaResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+
+/**
+ * @summary Testar impressora
+ */
+export const TestImpressoraResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+</file>
+
+<file path="lib/db/src/schema/produtos.ts">
+import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
+
+export const produtosTable = pgTable(
+  "produtos",
+  {
+    id: serial("id").primaryKey(),
+    codigo: text("codigo"),
+    nome: text("nome").notNull(),
+    marca: text("marca"),
+    categoria: categoriaEnum("categoria").notNull().default("mercado"),
+    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
+    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
+    cest: text("cest"), // Código Especificador da Substituição Tributária
+    cst: text("cst"),
+    preco: real("preco").notNull(),
+    custo: real("custo").notNull().default(0),
+    estoque: real("estoque").notNull().default(0),
+    estoque_min: real("estoque_min").notNull().default(5),
+    unidade: text("unidade").notNull().default("un"),
+    validade: text("validade"),
+    ativo: boolean("ativo").notNull().default(true),
+    criado_em: timestamp("criado_em").notNull().defaultNow(),
+  },
+  (table) => ({
+    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
+  })
+);
+
+export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
+export type InsertProduto = z.infer<typeof insertProdutoSchema>;
+export type Produto = typeof produtosTable.$inferSelect;
+</file>
+
+<file path="artifacts/api-server/package.json">
+{
+  "name": "@workspace/api-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "node ./build.mjs",
+    "start": "node --enable-source-maps ./dist/index.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/api-zod": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "catalog:",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-usb": "3.0.0-alpha.4",
+    "express": "^5",
+    "fast-xml-parser": "^5.3.0",
+    "pino": "^9",
+    "pino-http": "^10",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.27.3",
+    "esbuild-plugin-pino": "^2.3.3",
+    "pino-pretty": "^13",
+    "thread-stream": "3.1.0",
+    "tsx": "^4.21.0"
+  }
+}
+</file>
+
 <file path="lib/api-client-react/src/generated/api.schemas.ts">
 /**
  * Generated by orval v8.5.3 🍺
@@ -19368,6 +19543,10 @@ export interface RegistrarVendaInput {
   pagamento: RegistrarVendaInputPagamento;
   cliente_id?: number | null;
   observacao?: string | null;
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
   itens: ItemVendaInput[];
 }
 
@@ -19576,86 +19755,6 @@ export type ListarSangriasParams = {
 };
 </file>
 
-<file path="lib/db/src/schema/produtos.ts">
-import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-
-export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
-
-export const produtosTable = pgTable(
-  "produtos",
-  {
-    id: serial("id").primaryKey(),
-    codigo: text("codigo"),
-    nome: text("nome").notNull(),
-    marca: text("marca"),
-    categoria: categoriaEnum("categoria").notNull().default("mercado"),
-    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
-    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
-    cest: text("cest"), // Código Especificador da Substituição Tributária
-    cst: text("cst"),
-    preco: real("preco").notNull(),
-    custo: real("custo").notNull().default(0),
-    estoque: real("estoque").notNull().default(0),
-    estoque_min: real("estoque_min").notNull().default(5),
-    unidade: text("unidade").notNull().default("un"),
-    validade: text("validade"),
-    ativo: boolean("ativo").notNull().default(true),
-    criado_em: timestamp("criado_em").notNull().defaultNow(),
-  },
-  (table) => ({
-    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
-  })
-);
-
-export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
-export type InsertProduto = z.infer<typeof insertProdutoSchema>;
-export type Produto = typeof produtosTable.$inferSelect;
-</file>
-
-<file path="artifacts/api-server/package.json">
-{
-  "name": "@workspace/api-server",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@workspace/api-zod": "workspace:*",
-    "@workspace/db": "workspace:*",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2",
-    "dotenv": "^16.3.1",
-    "drizzle-orm": "catalog:",
-    "escpos": "3.0.0-alpha.6",
-    "escpos-usb": "3.0.0-alpha.4",
-    "express": "^5",
-    "fast-xml-parser": "^5.3.0",
-    "pino": "^9",
-    "pino-http": "^10",
-    "qrcode": "^1.5.4"
-  },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "catalog:",
-    "@types/qrcode": "^1.5.6",
-    "esbuild": "^0.27.3",
-    "esbuild-plugin-pino": "^2.3.3",
-    "pino-pretty": "^13",
-    "thread-stream": "3.1.0",
-    "tsx": "^4.21.0"
-  }
-}
-</file>
-
 <file path="artifacts/api-server/src/routes/vendas.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -19781,7 +19880,11 @@ router.post("/", async (req, res) => {
       pagamento: data.pagamento,
       cliente_id: data.cliente_id ?? null,
       observacao: data.observacao ?? null,
-    })
+      cnpj_credenciadora: (data as any).cnpj_credenciadora ?? null,
+      codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
+      bandeira_cartao: (data as any).bandeira_cartao ?? null,
+      tipo_pagamento: (data as any).tipo_pagamento ?? null,
+    } as any)
     .returning();
 
   const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
@@ -20139,8 +20242,15 @@ async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso
   return "";
 }
 
+type VendaComCartao = Venda & {
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+};
+
 export async function emitirNfce(
-  venda: Venda,
+  venda: VendaComCartao,
   itens: ItemVenda[],
   produtos: Produto[],
   cliente?: Cliente | null,
@@ -20272,6 +20382,7 @@ export async function emitirNfce(
               vDesc: venda.desconto.toFixed(2), vII: "0.00", vIPI: "0.00",
               vIPIDevol: "0.00", vPIS: "0.00", vCOFINS: "0.00", vOutro: "0.00",
               vNF: (venda.total - venda.desconto).toFixed(2),
+              vTotTrib: "0.00",
             },
           },
           transp: {
@@ -20279,9 +20390,41 @@ export async function emitirNfce(
           },
           pag: {
             detPag: [{
-              tPag: venda.pagamento === "dinheiro" ? "01" : venda.pagamento === "pix" ? "17" : (venda.pagamento === "cartao" ? "03" : "99"),
+              tPag: venda.pagamento === "dinheiro"
+                ? "01"
+                : venda.pagamento === "pix"
+                  ? "17"
+                  : venda.pagamento === "cartao"
+                    ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
+                        ? (venda.tipo_pagamento || "03")
+                        : "99")
+                    : "99",
               vPag: (venda.total - venda.desconto).toFixed(2),
-              ...(venda.pagamento === "cartao" ? { card: { tpIntegra: "2" } } : {}),
+              ...((() => {
+                const tPag = venda.pagamento === "dinheiro"
+                  ? "01"
+                  : venda.pagamento === "pix"
+                    ? "17"
+                    : venda.pagamento === "cartao"
+                      ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
+                          ? (venda.tipo_pagamento || "03")
+                          : "99")
+                      : "99";
+                const result: any = {};
+                // SEFAZ requires xPag (description) when tPag is 99
+                if (tPag === "99") {
+                  result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
+                }
+                if (venda.pagamento === "cartao" && (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao)) {
+                  result.card = {
+                    tpIntegra: "1",
+                    CNPJ: venda.cnpj_credenciadora || "00000000000000",
+                    tBand: venda.bandeira_cartao || "99",
+                    cAut: venda.codigo_autorizacao || "000000",
+                  };
+                }
+                return result;
+              })()),
             }],
           },
         },
@@ -21322,7 +21465,12 @@ import type { Venda, ItemVenda } from "@workspace/db/schema";
  * Tipos simplificados para a função de impressão.
  */
 export type CupomItem = Pick<ItemVenda, 'produto_id' | 'nome_snap' | 'quantidade' | 'preco_unit' | 'subtotal' | 'unidades'>;
-export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao'>;
+export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao' | 'pagamento'> & {
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+};
 export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
 export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
 export type SangriaItem = { valor: number; };
@@ -21444,6 +21592,7 @@ export async function buildCupomText(
   clienteNome?: string,
   chaveAcesso?: string,
   qrCodeUrl?: string,
+  nfeDados?: { nProt?: string; dhRecbto?: string; vTotTrib?: number },
 ) {
   const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
@@ -21477,10 +21626,41 @@ export async function buildCupomText(
     rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`.slice(0, W));
   }
   rows.push(drawLine(W));
+
+  if (venda.pagamento === "cartao") {
+    rows.push(centerText("FORMA DE PAGAMENTO: CARTAO", W));
+    if (venda.bandeira_cartao) rows.push(`Bandeira: ${venda.bandeira_cartao}`.slice(0, W));
+    if (venda.cnpj_credenciadora) rows.push(`CNPJ Credenciadora: ${venda.cnpj_credenciadora}`.slice(0, W));
+    if (venda.codigo_autorizacao) rows.push(`Cod. Autorizacao: ${venda.codigo_autorizacao}`.slice(0, W));
+  } else {
+    rows.push(centerText(`FORMA DE PAGAMENTO: ${String(venda.pagamento).toUpperCase()}`, W));
+  }
+
+  rows.push(drawLine(W));
+  rows.push(`NFC-e Nº ${venda.id}  Serie 1`.slice(0, W));
+  if (nfeDados?.nProt) {
+    rows.push(`Protocolo: ${nfeDados.nProt}`.slice(0, W));
+    if (nfeDados.dhRecbto) rows.push(`Autorizacao: ${formatarHorarioBrasil(nfeDados.dhRecbto)}`.slice(0, W));
+  } else {
+    rows.push(`Data: ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
+  }
+
   if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
   if (venda.observacao) {
      for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
   }
+
+  const tributosBase = nfeDados?.vTotTrib || (venda.total * 0.12);
+  const tribFederal = (tributosBase * 0.42).toFixed(2);
+  const tribEstadual = (tributosBase * 0.58).toFixed(2);
+  rows.push(drawLine(W));
+  rows.push(centerText("Tributos Totais Incidentes (Lei 12.741/2012)", W));
+  rows.push(centerText(`Aprox: R$ ${tributosBase.toFixed(2)} (Fed R$ ${tribFederal} | Est R$ ${tribEstadual} | Mun R$ 0,00)`, W));
+  rows.push(drawLine(W));
+  for (const ln of wrapText("DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL; NAO GERA DIREITO A CREDITO FISCAL DE IPI", W)) {
+      rows.push(centerText(ln, W));
+  }
+  rows.push(drawLine(W));
   rows.push(`NFC-e ref. venda #${venda.id}  ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
   
   if (chaveAcesso) {
@@ -21838,6 +22018,13 @@ export default function Pdv() {
           : "mercado";
     const tipoMaquininha = method === 'debito' || method === 'credito' || method === 'pix';
 
+    let dadosCartao: {
+      cnpj_credenciadora?: string | null;
+      codigo_autorizacao?: string | null;
+      bandeira_cartao?: string | null;
+      tipo_pagamento?: string | null;
+    } | null = null;
+
     if (tipoMaquininha) {
       try {
         const resposta = await enviarMaquininha.mutateAsync({
@@ -21858,6 +22045,9 @@ export default function Pdv() {
           description: resposta.mensagem,
           className: "bg-blue-600 text-white",
         });
+        if (resposta?.dados_cartao) {
+          dadosCartao = resposta.dados_cartao;
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Falha ao enviar para maquininha";
         console.warn("[maquininha] falhou mas venda continua:", error);
@@ -21900,6 +22090,7 @@ export default function Pdv() {
         cliente_id: clienteId,
         observacao: observacaoComCpf,
         itens: cart.getPayloadItens(),
+        ...dadosCartao,
       }
     }, {
       onSuccess: (venda) => {
@@ -22445,6 +22636,9 @@ type DanfeData = {
   pagamentos: Array<{ meio: string; valor: number }>;
   qrCodeUrl: string;
   chaveAcesso: string;
+  nProt?: string;
+  dhRecbto?: string;
+  vTotTrib?: number;
 };
 
 function toNumber(value: unknown): number {
@@ -22550,6 +22744,9 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
     })),
     qrCodeUrl: finalQrCode,
     chaveAcesso: chave || "CHAVE_NAO_ENCONTRADA",
+    nProt: prot?.nProt || "",
+    dhRecbto: prot?.dhRecbto || "",
+    vTotTrib: toNumber(total?.vTotTrib),
   };
 }
 
@@ -22613,14 +22810,25 @@ export async function imprimirDanfeSimplificado(
   qrCodeUrl: string,
   chaveAcesso: string,
   xmlAutorizado: string,
-  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
+  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string; nProt?: string; dhRecbto?: string; vTotTrib?: number },
 ) {
   const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
   
   // Usar dados reais da venda quando disponíveis, senão fallback para XML
   let text: string;
   if (vendaDados) {
-    text = await buildCupomText(vendaDados.venda, vendaDados.itens, vendaDados.clienteNome, data.chaveAcesso, data.qrCodeUrl);
+    text = await buildCupomText(
+      vendaDados.venda,
+      vendaDados.itens,
+      vendaDados.clienteNome,
+      data.chaveAcesso,
+      data.qrCodeUrl,
+      {
+        nProt: vendaDados.nProt ?? data.nProt,
+        dhRecbto: vendaDados.dhRecbto ?? data.dhRecbto,
+        vTotTrib: vendaDados.vTotTrib ?? data.vTotTrib,
+      },
+    );
   } else {
     text = renderDanfeSimplificadoText(data);
   }

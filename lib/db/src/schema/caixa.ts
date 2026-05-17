@@ -6,8 +6,8 @@ export const statusCaixaEnum = pgEnum("status_caixa", ["aberto", "fechado"]);
 
 export const sessoesCaixaTable = pgTable("sessoes_caixa", {
   id: serial("id").primaryKey(),
-  aberto_em: timestamp("aberto_em").notNull().defaultNow(),
-  fechado_em: timestamp("fechado_em"),
+  aberto_em: timestamp("aberto_em", { withTimezone: true }).notNull().defaultNow(),
+  fechado_em: timestamp("fechado_em", { withTimezone: true }),
   fundo_inicial: real("fundo_inicial").notNull().default(0),
   total_dinheiro: real("total_dinheiro").notNull().default(0),
   total_pix: real("total_pix").notNull().default(0),
@@ -22,7 +22,7 @@ export const sangriasTable = pgTable("sangrias", {
   sessao_id: serial("sessao_id").references(() => sessoesCaixaTable.id),
   valor: real("valor").notNull(),
   motivo: text("motivo"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertSessaoCaixaSchema = createInsertSchema(sessoesCaixaTable).omit({ id: true, aberto_em: true });
