@@ -19,6 +19,7 @@ function gerarCodigoNumerico(venda: Venda, dataEmi: Date) {
   if (cNF === nNF8) {
     cNF = String((Number(cNF) + 1) % 100_000_000).padStart(8, "0");
   }
+  console.log(`[SEFAZ] Código numérico gerado para venda ${venda.id}: cNF=${cNF}, nNF=${nNF9}`);
   return cNF;
 }
 
@@ -42,7 +43,10 @@ function gerarChaveAcesso(config: any, venda: Venda, dataEmi: Date) {
   }
   const resto = soma % 11;
   const dv = resto === 0 || resto === 1 ? 0 : 11 - resto;
-  return `${chaveSemDV}${dv}`;
+  const chaveCompleta = `${chaveSemDV}${dv}`;
+  console.log(`[SEFAZ] Chave de acesso gerada: ${chaveCompleta}`);
+  console.log(`[SEFAZ] Componentes: cUF=${cUF}, AAMM=${AAMM}, CNPJ=${CNPJ}, mod=${mod}, serie=${serie}, nNF=${nNF}, tpEmis=${tpEmis}, cNF=${cNF}, DV=${dv}`);
+  return chaveCompleta;
 }
 
 function resolveUniNFeBaseDir(cnpjNumerico: string) {
@@ -171,6 +175,26 @@ async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso
       return "";
     }
     
+    // PRIMEIRO: Tentar encontrar o arquivo específico pela chave de acesso
+    const arquivoEspecifico = procArquivos.find(nome => nome.includes(chaveAcesso));
+    if (arquivoEspecifico) {
+      console.log(`[SEFAZ] Arquivo específico encontrado pela chave: ${arquivoEspecifico}`);
+      const caminhoEspecifico = path.join(pastaRetorno, arquivoEspecifico);
+      const conteudoEspecifico = await fs.readFile(caminhoEspecifico, "utf8");
+      
+      if (conteudoEspecifico.includes("<infNFeSupl>") && conteudoEspecifico.includes("<qrCode>")) {
+        console.log(`[SEFAZ] QR Code encontrado no arquivo específico`);
+        return conteudoEspecifico;
+      } else {
+        console.log(`[SEFAZ] Arquivo específico não contém QR Code, buscando alternativas...`);
+      }
+    } else {
+      console.log(`[SEFAZ] Arquivo específico não encontrado para chave: ${chaveAcesso}`);
+    }
+    
+    // SEGUNDO: Se não encontrou o específico ou não tem QR Code, buscar o mais recente
+    console.log(`[SEFAZ] Buscando arquivo mais recente como fallback...`);
+    
     // Obter arquivos com datas de modificação para encontrar o mais recente
     const arquivosComData = await Promise.all(
       procArquivos.map(async (nome) => {
@@ -255,6 +279,7 @@ export async function emitirNfce(
 
     const dataEmi = new Date();
     const chaveAcesso = gerarChaveAcesso(config, venda, dataEmi);
+    console.log(`[SEFAZ] Chave de acesso gerada para venda ${venda.id}: ${chaveAcesso}`);
     const cpfMatch = (venda.observacao || "").match(/CPF_NA_NOTA:(\d{11})/);
     const cpfDestinatario = cpfMatch?.[1] || cliente?.cpf;
 
@@ -411,7 +436,10 @@ export async function emitirNfce(
     const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(nfeObj)}`;
 
     const nomeArquivo = `${chaveAcesso}-nfe.xml`;
-    await fs.writeFile(path.join(pastaEnvio, nomeArquivo), xmlContent, "utf8");
+    const caminhoEnvio = path.join(pastaEnvio, nomeArquivo);
+    await fs.writeFile(caminhoEnvio, xmlContent, "utf8");
+    console.log(`[SEFAZ] XML enviado para UniNFe: ${caminhoEnvio}`);
+    console.log(`[SEFAZ] Tamanho do XML: ${xmlContent.length} bytes`);
 
     // Polling configurável para aguardar retorno do UniNFe.
     // Em algumas instalações o retorno pode passar de 15s.
@@ -423,31 +451,66 @@ export async function emitirNfce(
     let retries = Number.isFinite(tentativas) && tentativas > 0 ? tentativas : 120;
     let autorizadoXML = "";
     let erroTXT = "";
+    let chaveEncontradaNoXML = "";
+
+    console.log(`[SEFAZ] Iniciando polling por arquivo: ${arquivoAutorizado}`);
+    console.log(`[SEFAZ] Tentativas máximas: ${tentativas}, intervalo: ${intervaloMs}ms`);
 
     while (retries > 0) {
       await new Promise((r) => setTimeout(r, intervaloMs));
       try {
         if (existsSync(arquivoAutorizado)) {
           autorizadoXML = await fs.readFile(arquivoAutorizado, "utf8");
+          console.log(`[SEFAZ] Arquivo específico encontrado em Retorno: ${arquivoAutorizado}`);
           break;
         }
         if (existsSync(arquivoErro)) {
           erroTXT = await fs.readFile(arquivoErro, "utf8");
+          console.log(`[SEFAZ] Arquivo de erro encontrado: ${arquivoErro}`);
+          console.log(`[SEFAZ] Conteúdo do erro: ${erroTXT}`);
           break;
         }
         const resultadoProRec = await buscarResultadoEmProRec(pastaRetorno, chaveAcesso);
         if (resultadoProRec?.autorizada && resultadoProRec.xml) {
           autorizadoXML = resultadoProRec.xml;
+          console.log(`[SEFAZ] XML encontrado em pro-rec.xml`);
           break;
         }
         if (resultadoProRec?.rejeitada) {
           erroTXT = resultadoProRec.mensagem || "Rejeicao retornada em arquivo pro-rec.xml";
           break;
         }
+        
+        // Verificar arquivos na pasta Retorno para debug
+        if (retries % 10 === 0) { // A cada 10 tentativas, listar arquivos
+          try {
+            const arquivosRetorno = await fs.readdir(pastaRetorno);
+            const arquivosRelevantes = arquivosRetorno.filter(f => f.includes(chaveAcesso) || f.endsWith(".err"));
+            if (arquivosRelevantes.length > 0) {
+              console.log(`[SEFAZ] Arquivos relevantes em Retorno (tentativa ${tentativas - retries}):`, arquivosRelevantes);
+            }
+          } catch (e) {
+            // Ignorar erro de leitura
+          }
+        }
+        
         // Tenta buscar na pasta Retorno primeiro
         const xmlGenerico = await buscarArquivoAutorizadoPorChave(pastaRetorno, chaveAcesso);
         if (xmlGenerico) {
           autorizadoXML = xmlGenerico;
+          // Extrair chave do XML para verificar se corresponde
+          const chaveMatch = xmlGenerico.match(/<chNFe>(\d+)<\/chNFe>/);
+          if (chaveMatch) {
+            chaveEncontradaNoXML = chaveMatch[1];
+            console.log(`[SEFAZ] Chave encontrada no XML: ${chaveEncontradaNoXML}`);
+            if (chaveEncontradaNoXML !== chaveAcesso) {
+              console.log(`[SEFAZ] ALERTA: Chave do XML (${chaveEncontradaNoXML}) difere da chave gerada (${chaveAcesso})`);
+              // Se a chave for diferente, NÃO usar este XML
+              console.log(`[SEFAZ] XML ignorado por chave incorreta, continuando polling...`);
+              autorizadoXML = ""; // Limpar para continuar buscando
+              continue; // Continuar o loop
+            }
+          }
           break;
         }
         
@@ -475,6 +538,19 @@ export async function emitirNfce(
           const xmlAutorizados = await buscarArquivoAutorizadoPorChave(pastaAutorizados, chaveAcesso);
           if (xmlAutorizados) {
             autorizadoXML = xmlAutorizados;
+            // Extrair chave do XML para verificar se corresponde
+            const chaveMatch = xmlAutorizados.match(/<chNFe>(\d+)<\/chNFe>/);
+            if (chaveMatch) {
+              chaveEncontradaNoXML = chaveMatch[1];
+              console.log(`[SEFAZ] Chave encontrada no XML (Autorizados): ${chaveEncontradaNoXML}`);
+              if (chaveEncontradaNoXML !== chaveAcesso) {
+                console.log(`[SEFAZ] ALERTA: Chave do XML (${chaveEncontradaNoXML}) difere da chave gerada (${chaveAcesso})`);
+                // Se a chave for diferente, NÃO usar este XML
+                console.log(`[SEFAZ] XML ignorado por chave incorreta, continuando polling...`);
+                autorizadoXML = ""; // Limpar para continuar buscando
+                continue; // Continuar o loop
+              }
+            }
             break;
           }
         } catch (e) {
