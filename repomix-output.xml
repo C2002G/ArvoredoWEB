@@ -7365,221 +7365,6 @@ CREATE DATABASE arvoredo
 -- e usar o script de configuracao do sistema.
 </file>
 
-<file path="guia.md">
-# Guia de Atualizacao e Operacao Fiscal (UniNFe)
-
-Este guia cobre:
-- como atualizar via `git pull` em **desenvolvimento**, **PC de teste** e **estabelecimento (producao)**;
-- o que configurar para emissao NFC-e via **UniNFe**;
-- onde alterar **homologacao x producao**;
-- checklist de validacao;
-- melhorias futuras (docker, escalabilidade e robustez).
-
-## 1) O que mudou no sistema
-
-- A emissao fiscal passou a usar o padrao de pastas do UniNFe:
-  - grava XML em `.../<CNPJ>/Envio`
-  - aguarda resposta em `.../<CNPJ>/Retorno`
-- O servico fiscal agora gera a chave de acesso, monta XML e processa retorno do UniNFe.
-- Dependencia `node-dfe` foi removida do `api-server`.
-
-## 2) Procedimento padrao apos `git pull` (qualquer ambiente)
-
-No diretorio raiz do projeto:
-
-1. Atualizar codigo:
-   - `git pull`
-2. Atualizar dependencias:
-   - `pnpm install`
-3. Validar compilacao:
-   - `pnpm --filter @workspace/api-server run typecheck`
-   - `pnpm --filter @workspace/api-server run build`
-4. Reiniciar servicos do sistema (backend/frontend e UniNFe se aplicavel).
-
-Se houver mudanca de schema/migration no futuro, incluir tambem o comando de migration antes de subir.
-
-## 3) Pre-requisitos por maquina
-
-## 3.1 Desenvolvimento (seu PC)
-
-- Node e pnpm instalados (versoes compativeis com o projeto).
-- Banco Postgres acessivel pela `DATABASE_URL`.
-- UniNFe instalado e funcionando.
-- Certificado A1 valido.
-- Impressora termica instalada (se for testar impressao local).
-
-## 3.2 PC de teste
-
-- Mesmo checklist do desenvolvimento.
-- Preferencia: certificado e dados dedicados de homologacao.
-- Confirmar que o caminho do UniNFe existe e permite escrita.
-
-## 3.3 Estabelecimento (producao)
-
-- UniNFe instalado como servico/processo estavel.
-- Certificado A1 oficial da empresa.
-- CSC de producao correto.
-- Backup de banco e plano de rollback antes de atualizar.
-
-## 4) Configuracoes obrigatorias
-
-## 4.1 Variaveis de ambiente (`.env`)
-
-Minimo necessario:
-
-- `DATABASE_URL`
-- `PORT`
-- `UNINFE_DIR` (recomendado definir explicitamente)
-  - Exemplo: `UNINFE_DIR=C:\\UniNFe`
-- Impressao (opcional/necessario conforme ambiente):
-  - `PRINTER_NAME` ou `PRINTER_VID`/`PRINTER_PID`
-
-Observacao:
-- O codigo usa por padrao `C:\\UniNFe` caso `UNINFE_DIR` nao esteja definido.
-- Evite versionar senha/caminho de certificado no `.env` do repositorio.
-
-## 4.2 Configuracao fiscal no banco (`config_fiscal`)
-
-A emissao depende dos campos em `config_fiscal`, principalmente:
-
-- dados do emitente (`razao_social`, `cnpj`, `ie`, endereco);
-- `crt`, `cod_municipio`;
-- `csc_id` e `csc_token`;
-- `caminho_certificado` e `senha_certificado`;
-- `ambiente` (`homologacao` ou `producao`).
-
-## 4.3 UniNFe
-
-No UniNFe, garantir:
-
-- empresa/CNPJ configurado corretamente;
-- certificado A1 associado;
-- ambiente correspondente ao desejado;
-- monitoramento das pastas `Envio` e `Retorno` para o CNPJ;
-- permissao de leitura/escrita nas pastas.
-
-## 5) Onde trocar Homologacao x Producao
-
-Trocar em **todos** os pontos abaixo:
-
-1. **Sistema (banco / config fiscal)**  
-   Campo `config_fiscal.ambiente`:
-   - `homologacao` => SEFAZ ambiente 2
-   - `producao` => SEFAZ ambiente 1
-
-2. **UniNFe**  
-   Ambiente da empresa no UniNFe deve coincidir com o ambiente acima.
-
-3. **Credenciais fiscais**
-   - CSC ID/TOKEN corretos para o ambiente.
-   - Certificado valido para o CNPJ emissor.
-
-4. **Dados operacionais**
-   - Em homologacao, usar fluxo de testes.
-   - Em producao, validar numeracao, serie, regras fiscais e contingencia.
-
-Importante:
-- Nao basta trocar so `.env`.
-- O ponto principal do ambiente no codigo atual e `config_fiscal.ambiente` + configuracao equivalente no UniNFe.
-
-## 6) Checklist rapido por ambiente
-
-## 6.1 Desenvolvimento
-
-- [ ] `git pull`
-- [ ] `pnpm install`
-- [ ] `pnpm --filter @workspace/api-server run typecheck`
-- [ ] `pnpm --filter @workspace/api-server run build`
-- [ ] confirmar `UNINFE_DIR`
-- [ ] confirmar CNPJ/pastas `Envio` e `Retorno`
-- [ ] emitir 1 venda de teste
-- [ ] verificar `nfce_logs` com status `autorizada` e XML salvo
-- [ ] validar impressao DANFE simplificado
-
-## 6.2 PC de teste
-
-- [ ] repetir checklist de desenvolvimento
-- [ ] validar ambiente `homologacao` em `config_fiscal`
-- [ ] validar ambiente de homologacao no UniNFe
-- [ ] testar erro controlado (ex: dado invalido) para confirmar retorno de rejeicao
-
-## 6.3 Estabelecimento (producao)
-
-- [ ] backup antes da atualizacao
-- [ ] `git pull`
-- [ ] `pnpm install`
-- [ ] build/typecheck
-- [ ] validar `config_fiscal.ambiente = producao`
-- [ ] validar UniNFe em producao
-- [ ] validar CSC/certificado de producao
-- [ ] emitir venda real de baixo risco
-- [ ] conferir autorizacao e impressao no caixa
-
-## 7) Sobre a impressao (ponto que falta fechar)
-
-O fluxo atual ja retorna:
-- XML autorizado;
-- chave de acesso;
-- URL do QR Code extraida do XML de retorno.
-
-Para estabilizar impressao no RS:
-
-- garantir que a impressora USB esteja correta (`PRINTER_VID`/`PRINTER_PID`);
-- validar layout de DANFE simplificado em bobina real;
-- incluir fallback de reimpressao a partir do `xml_autorizado` salvo;
-- registrar falhas de impressao separadas das falhas de autorizacao.
-
-## 8) Melhorias futuras recomendadas
-
-## 8.1 Infraestrutura e deploy
-
-- **Dockerizar** backend + frontend + banco (ou banco gerenciado) para padronizar ambientes.
-- Criar `docker-compose` para ambiente de teste local.
-- Padronizar script de deploy (pull, install, build, restart, health-check).
-
-## 8.2 Confiabilidade fiscal
-
-- Worker/fila para emissao fiscal (evita bloquear fluxo de venda).
-- Retentativas com backoff no polling de retorno do UniNFe.
-- Job de reconciliacao para notas "processando" pendentes.
-- Alertas para notas com erro/rejeicao.
-
-## 8.3 Observabilidade
-
-- Dashboard de `nfce_logs` (status por periodo, taxa de erro, tempo medio).
-- Correlation ID por venda/emissao.
-- Logs estruturados com motivo de rejeicao e contexto.
-
-## 8.4 Seguranca
-
-- Remover segredos de `.env` versionado.
-- Usar cofre de segredos/variaveis protegidas por ambiente.
-- Rotacionar senha/certificado quando necessario.
-
-## 8.5 Escalabilidade
-
-- Separar servico fiscal em modulo/processo dedicado.
-- Cache de configuracao fiscal com invalidacao controlada.
-- Preparar multiponto de venda (mais de um caixa simultaneo) com controle de concorrencia.
-
-## 9) Plano de validacao final (recomendado)
-
-1. Validar ponta a ponta em desenvolvimento (homologacao).
-2. Repetir no PC de teste com checklist completo.
-3. Executar virada assistida para producao no estabelecimento.
-4. Monitorar primeiras emissões e impressões com log aberto.
-
-Se quiser, o proximo passo pode ser criar um script unico de atualizacao (ex: `update-and-validate.bat`) para reduzir erro operacional nos 3 ambientes.
-
-
-<contexto>
-   Voce é um especialista em pdv digital e nas linguagens que tem nesse sistema, typescript e javascript e outras tecnologias.
-</contexto>
-<fazer>
-   peguei emprestado uma maquininha stone e ja conectei no mesmo wifi do pc e peguei o ip (192.168.0.66), não vou colocar a maquina para ser uma simulador de vendas ou algonp 
-</fazer>
-</file>
-
 <file path="lib/api-client-react/src/custom-fetch.ts">
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
@@ -8220,90 +8005,6 @@ export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
-</file>
-
-<file path="lib/db/src/schema/caixa.ts">
-import { pgTable, serial, real, timestamp, pgEnum, text } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-
-export const statusCaixaEnum = pgEnum("status_caixa", ["aberto", "fechado"]);
-
-export const sessoesCaixaTable = pgTable("sessoes_caixa", {
-  id: serial("id").primaryKey(),
-  aberto_em: timestamp("aberto_em").notNull().defaultNow(),
-  fechado_em: timestamp("fechado_em"),
-  fundo_inicial: real("fundo_inicial").notNull().default(0),
-  total_dinheiro: real("total_dinheiro").notNull().default(0),
-  total_pix: real("total_pix").notNull().default(0),
-  total_cartao: real("total_cartao").notNull().default(0),
-  total_fiado: real("total_fiado").notNull().default(0),
-  total_sangria: real("total_sangria").notNull().default(0),
-  status: statusCaixaEnum("status").notNull().default("aberto"),
-});
-
-export const sangriasTable = pgTable("sangrias", {
-  id: serial("id").primaryKey(),
-  sessao_id: serial("sessao_id").references(() => sessoesCaixaTable.id),
-  valor: real("valor").notNull(),
-  motivo: text("motivo"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
-
-export const insertSessaoCaixaSchema = createInsertSchema(sessoesCaixaTable).omit({ id: true, aberto_em: true });
-export const insertSangriaSchema = createInsertSchema(sangriasTable).omit({ id: true, criado_em: true });
-
-export type SessaoCaixa = typeof sessoesCaixaTable.$inferSelect;
-export type Sangria = typeof sangriasTable.$inferSelect;
-export type InsertSangria = z.infer<typeof insertSangriaSchema>;
-</file>
-
-<file path="lib/db/src/schema/fiscal.ts">
-import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
-import { vendasTable } from "./vendas";
-
-export const ambienteSefazEnum = pgEnum("ambiente_sefaz", ["producao", "homologacao"]);
-export const statusNfceEnum = pgEnum("status_nfce", ["processando", "autorizada", "rejeitada", "erro"]);
-
-// Tabela para guardar a configuração fiscal da empresa
-export const configFiscalTable = pgTable("config_fiscal", {
-  id: serial("id").primaryKey(),
-  razao_social: text("razao_social").notNull(),
-  nome_fantasia: text("nome_fantasia").notNull(),
-  cnpj: text("cnpj").notNull(),
-  ie: text("ie").notNull(),
-  crt: text("crt").notNull(), // Código de Regime Tributário (ex: "1" para Simples Nacional)
-  endereco: text("endereco").notNull(),
-  numero: text("numero").notNull(),
-  bairro: text("bairro").notNull(),
-  cidade: text("cidade").notNull(),
-  uf: text("uf").notNull(),
-  cep: text("cep").notNull(),
-  cod_municipio: text("cod_municipio").notNull(),
-  telefone: text("telefone"),
-  csc_id: text("csc_id").notNull(),
-  csc_token: text("csc_token").notNull(),
-  caminho_certificado: text("caminho_certificado").notNull(),
-  senha_certificado: text("senha_certificado").notNull(),
-  ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
-
-// Tabela para logar todas as tentativas de emissão de NFC-e
-export const nfceLogsTable = pgTable("nfce_logs", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  status: statusNfceEnum("status").notNull().default("processando"),
-  ambiente: ambienteSefazEnum("ambiente").notNull(),
-  chave_acesso: text("chave_acesso"),
-  protocolo: text("protocolo"),
-  codigo_status_sefaz: integer("codigo_status_sefaz"),
-  mensagem_status_sefaz: text("mensagem_status_sefaz"),
-  xml_enviado: text("xml_enviado"),
-  xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
-  json_retorno_sefaz: jsonb("json_retorno_sefaz"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
 </file>
 
 <file path="lib/db/tsconfig.json">
@@ -10423,6 +10124,221 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 </file>
 
+<file path="guia.md">
+# Guia de Atualizacao e Operacao Fiscal (UniNFe)
+
+Este guia cobre:
+- como atualizar via `git pull` em **desenvolvimento**, **PC de teste** e **estabelecimento (producao)**;
+- o que configurar para emissao NFC-e via **UniNFe**;
+- onde alterar **homologacao x producao**;
+- checklist de validacao;
+- melhorias futuras (docker, escalabilidade e robustez).
+
+## 1) O que mudou no sistema
+
+- A emissao fiscal passou a usar o padrao de pastas do UniNFe:
+  - grava XML em `.../<CNPJ>/Envio`
+  - aguarda resposta em `.../<CNPJ>/Retorno`
+- O servico fiscal agora gera a chave de acesso, monta XML e processa retorno do UniNFe.
+- Dependencia `node-dfe` foi removida do `api-server`.
+
+## 2) Procedimento padrao apos `git pull` (qualquer ambiente)
+
+No diretorio raiz do projeto:
+
+1. Atualizar codigo:
+   - `git pull`
+2. Atualizar dependencias:
+   - `pnpm install`
+3. Validar compilacao:
+   - `pnpm --filter @workspace/api-server run typecheck`
+   - `pnpm --filter @workspace/api-server run build`
+4. Reiniciar servicos do sistema (backend/frontend e UniNFe se aplicavel).
+
+Se houver mudanca de schema/migration no futuro, incluir tambem o comando de migration antes de subir.
+
+## 3) Pre-requisitos por maquina
+
+## 3.1 Desenvolvimento (seu PC)
+
+- Node e pnpm instalados (versoes compativeis com o projeto).
+- Banco Postgres acessivel pela `DATABASE_URL`.
+- UniNFe instalado e funcionando.
+- Certificado A1 valido.
+- Impressora termica instalada (se for testar impressao local).
+
+## 3.2 PC de teste
+
+- Mesmo checklist do desenvolvimento.
+- Preferencia: certificado e dados dedicados de homologacao.
+- Confirmar que o caminho do UniNFe existe e permite escrita.
+
+## 3.3 Estabelecimento (producao)
+
+- UniNFe instalado como servico/processo estavel.
+- Certificado A1 oficial da empresa.
+- CSC de producao correto.
+- Backup de banco e plano de rollback antes de atualizar.
+
+## 4) Configuracoes obrigatorias
+
+## 4.1 Variaveis de ambiente (`.env`)
+
+Minimo necessario:
+
+- `DATABASE_URL`
+- `PORT`
+- `UNINFE_DIR` (recomendado definir explicitamente)
+  - Exemplo: `UNINFE_DIR=C:\\UniNFe`
+- Impressao (opcional/necessario conforme ambiente):
+  - `PRINTER_NAME` ou `PRINTER_VID`/`PRINTER_PID`
+
+Observacao:
+- O codigo usa por padrao `C:\\UniNFe` caso `UNINFE_DIR` nao esteja definido.
+- Evite versionar senha/caminho de certificado no `.env` do repositorio.
+
+## 4.2 Configuracao fiscal no banco (`config_fiscal`)
+
+A emissao depende dos campos em `config_fiscal`, principalmente:
+
+- dados do emitente (`razao_social`, `cnpj`, `ie`, endereco);
+- `crt`, `cod_municipio`;
+- `csc_id` e `csc_token`;
+- `caminho_certificado` e `senha_certificado`;
+- `ambiente` (`homologacao` ou `producao`).
+
+## 4.3 UniNFe
+
+No UniNFe, garantir:
+
+- empresa/CNPJ configurado corretamente;
+- certificado A1 associado;
+- ambiente correspondente ao desejado;
+- monitoramento das pastas `Envio` e `Retorno` para o CNPJ;
+- permissao de leitura/escrita nas pastas.
+
+## 5) Onde trocar Homologacao x Producao
+
+Trocar em **todos** os pontos abaixo:
+
+1. **Sistema (banco / config fiscal)**  
+   Campo `config_fiscal.ambiente`:
+   - `homologacao` => SEFAZ ambiente 2
+   - `producao` => SEFAZ ambiente 1
+
+2. **UniNFe**  
+   Ambiente da empresa no UniNFe deve coincidir com o ambiente acima.
+
+3. **Credenciais fiscais**
+   - CSC ID/TOKEN corretos para o ambiente.
+   - Certificado valido para o CNPJ emissor.
+
+4. **Dados operacionais**
+   - Em homologacao, usar fluxo de testes.
+   - Em producao, validar numeracao, serie, regras fiscais e contingencia.
+
+Importante:
+- Nao basta trocar so `.env`.
+- O ponto principal do ambiente no codigo atual e `config_fiscal.ambiente` + configuracao equivalente no UniNFe.
+
+## 6) Checklist rapido por ambiente
+
+## 6.1 Desenvolvimento
+
+- [ ] `git pull`
+- [ ] `pnpm install`
+- [ ] `pnpm --filter @workspace/api-server run typecheck`
+- [ ] `pnpm --filter @workspace/api-server run build`
+- [ ] confirmar `UNINFE_DIR`
+- [ ] confirmar CNPJ/pastas `Envio` e `Retorno`
+- [ ] emitir 1 venda de teste
+- [ ] verificar `nfce_logs` com status `autorizada` e XML salvo
+- [ ] validar impressao DANFE simplificado
+
+## 6.2 PC de teste
+
+- [ ] repetir checklist de desenvolvimento
+- [ ] validar ambiente `homologacao` em `config_fiscal`
+- [ ] validar ambiente de homologacao no UniNFe
+- [ ] testar erro controlado (ex: dado invalido) para confirmar retorno de rejeicao
+
+## 6.3 Estabelecimento (producao)
+
+- [ ] backup antes da atualizacao
+- [ ] `git pull`
+- [ ] `pnpm install`
+- [ ] build/typecheck
+- [ ] validar `config_fiscal.ambiente = producao`
+- [ ] validar UniNFe em producao
+- [ ] validar CSC/certificado de producao
+- [ ] emitir venda real de baixo risco
+- [ ] conferir autorizacao e impressao no caixa
+
+## 7) Sobre a impressao (ponto que falta fechar)
+
+O fluxo atual ja retorna:
+- XML autorizado;
+- chave de acesso;
+- URL do QR Code extraida do XML de retorno.
+
+Para estabilizar impressao no RS:
+
+- garantir que a impressora USB esteja correta (`PRINTER_VID`/`PRINTER_PID`);
+- validar layout de DANFE simplificado em bobina real;
+- incluir fallback de reimpressao a partir do `xml_autorizado` salvo;
+- registrar falhas de impressao separadas das falhas de autorizacao.
+
+## 8) Melhorias futuras recomendadas
+
+## 8.1 Infraestrutura e deploy
+
+- **Dockerizar** backend + frontend + banco (ou banco gerenciado) para padronizar ambientes.
+- Criar `docker-compose` para ambiente de teste local.
+- Padronizar script de deploy (pull, install, build, restart, health-check).
+
+## 8.2 Confiabilidade fiscal
+
+- Worker/fila para emissao fiscal (evita bloquear fluxo de venda).
+- Retentativas com backoff no polling de retorno do UniNFe.
+- Job de reconciliacao para notas "processando" pendentes.
+- Alertas para notas com erro/rejeicao.
+
+## 8.3 Observabilidade
+
+- Dashboard de `nfce_logs` (status por periodo, taxa de erro, tempo medio).
+- Correlation ID por venda/emissao.
+- Logs estruturados com motivo de rejeicao e contexto.
+
+## 8.4 Seguranca
+
+- Remover segredos de `.env` versionado.
+- Usar cofre de segredos/variaveis protegidas por ambiente.
+- Rotacionar senha/certificado quando necessario.
+
+## 8.5 Escalabilidade
+
+- Separar servico fiscal em modulo/processo dedicado.
+- Cache de configuracao fiscal com invalidacao controlada.
+- Preparar multiponto de venda (mais de um caixa simultaneo) com controle de concorrencia.
+
+## 9) Plano de validacao final (recomendado)
+
+1. Validar ponta a ponta em desenvolvimento (homologacao).
+2. Repetir no PC de teste com checklist completo.
+3. Executar virada assistida para producao no estabelecimento.
+4. Monitorar primeiras emissões e impressões com log aberto.
+
+Se quiser, o proximo passo pode ser criar um script unico de atualizacao (ex: `update-and-validate.bat`) para reduzir erro operacional nos 3 ambientes.
+
+
+<contexto>
+   Voce é um especialista em pdv digital e nas linguagens que tem nesse sistema, typescript e javascript e outras tecnologias.
+</contexto>
+<fazer>
+   peguei emprestado uma maquininha stone e ja conectei no mesmo wifi do pc e peguei o ip (192.168.0.66), não vou colocar a maquina para ser uma simulador de vendas ou algonp 
+</fazer>
+</file>
+
 <file path="lib/api-client-react/package.json">
 {
   "name": "@workspace/api-client-react",
@@ -10967,83 +10883,88 @@ module.exports = defineConfig({
 });
 </file>
 
-<file path="lib/db/src/schema/clientes.ts">
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+<file path="lib/db/src/schema/caixa.ts">
+import { pgTable, serial, real, timestamp, pgEnum, text } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const clientesTable = pgTable("clientes", {
+export const statusCaixaEnum = pgEnum("status_caixa", ["aberto", "fechado"]);
+
+export const sessoesCaixaTable = pgTable("sessoes_caixa", {
   id: serial("id").primaryKey(),
-  nome: text("nome").notNull(),
-  cpf: text("cpf"),
-  telefone: text("telefone"),
-  observacao: text("observacao"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
+  aberto_em: timestamp("aberto_em", { withTimezone: true }).notNull().defaultNow(),
+  fechado_em: timestamp("fechado_em", { withTimezone: true }),
+  fundo_inicial: real("fundo_inicial").notNull().default(0),
+  total_dinheiro: real("total_dinheiro").notNull().default(0),
+  total_pix: real("total_pix").notNull().default(0),
+  total_cartao: real("total_cartao").notNull().default(0),
+  total_fiado: real("total_fiado").notNull().default(0),
+  total_sangria: real("total_sangria").notNull().default(0),
+  status: statusCaixaEnum("status").notNull().default("aberto"),
 });
 
-export const insertClienteSchema = createInsertSchema(clientesTable).omit({ id: true, criado_em: true });
-export type InsertCliente = z.infer<typeof insertClienteSchema>;
-export type Cliente = typeof clientesTable.$inferSelect;
+export const sangriasTable = pgTable("sangrias", {
+  id: serial("id").primaryKey(),
+  sessao_id: serial("sessao_id").references(() => sessoesCaixaTable.id),
+  valor: real("valor").notNull(),
+  motivo: text("motivo"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertSessaoCaixaSchema = createInsertSchema(sessoesCaixaTable).omit({ id: true, aberto_em: true });
+export const insertSangriaSchema = createInsertSchema(sangriasTable).omit({ id: true, criado_em: true });
+
+export type SessaoCaixa = typeof sessoesCaixaTable.$inferSelect;
+export type Sangria = typeof sangriasTable.$inferSelect;
+export type InsertSangria = z.infer<typeof insertSangriaSchema>;
 </file>
 
-<file path=".gitignore">
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+<file path="lib/db/src/schema/fiscal.ts">
+import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { vendasTable } from "./vendas";
 
-# compiled output
-dist
-tmp
-out-tsc
-*.tsbuildinfo
-.expo
-.expo-shared
+export const ambienteSefazEnum = pgEnum("ambiente_sefaz", ["producao", "homologacao"]);
+export const statusNfceEnum = pgEnum("status_nfce", ["processando", "autorizada", "rejeitada", "erro"]);
 
-# dependencies
-node_modules
-.pnpm-store
+// Tabela para guardar a configuração fiscal da empresa
+export const configFiscalTable = pgTable("config_fiscal", {
+  id: serial("id").primaryKey(),
+  razao_social: text("razao_social").notNull(),
+  nome_fantasia: text("nome_fantasia").notNull(),
+  cnpj: text("cnpj").notNull(),
+  ie: text("ie").notNull(),
+  crt: text("crt").notNull(), // Código de Regime Tributário (ex: "1" para Simples Nacional)
+  endereco: text("endereco").notNull(),
+  numero: text("numero").notNull(),
+  bairro: text("bairro").notNull(),
+  cidade: text("cidade").notNull(),
+  uf: text("uf").notNull(),
+  cep: text("cep").notNull(),
+  cod_municipio: text("cod_municipio").notNull(),
+  telefone: text("telefone"),
+  csc_id: text("csc_id").notNull(),
+  csc_token: text("csc_token").notNull(),
+  caminho_certificado: text("caminho_certificado").notNull(),
+  senha_certificado: text("senha_certificado").notNull(),
+  ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-
-# System Files
-.DS_Store
-Thumbs.db
-
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
-
-# Replit
-.cache/
-.local/
-.replit-artifact/
-
-# Runtime / Local env
-.env
-.env.*
-!.env.example
-Logs/
+// Tabela para logar todas as tentativas de emissão de NFC-e
+export const nfceLogsTable = pgTable("nfce_logs", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  status: statusNfceEnum("status").notNull().default("processando"),
+  ambiente: ambienteSefazEnum("ambiente").notNull(),
+  chave_acesso: text("chave_acesso"),
+  protocolo: text("protocolo"),
+  codigo_status_sefaz: integer("codigo_status_sefaz"),
+  mensagem_status_sefaz: text("mensagem_status_sefaz"),
+  xml_enviado: text("xml_enviado"),
+  xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
+  json_retorno_sefaz: jsonb("json_retorno_sefaz"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
 </file>
 
 <file path="artifacts/api-server/src/routes/maquininha.ts">
@@ -14389,6 +14310,25 @@ export interface Venda {
 }
 </file>
 
+<file path="lib/db/src/schema/clientes.ts">
+import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const clientesTable = pgTable("clientes", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  cpf: text("cpf"),
+  telefone: text("telefone"),
+  observacao: text("observacao"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertClienteSchema = createInsertSchema(clientesTable).omit({ id: true, criado_em: true });
+export type InsertCliente = z.infer<typeof insertClienteSchema>;
+export type Cliente = typeof clientesTable.$inferSelect;
+</file>
+
 <file path="lib/db/src/schema/index.ts">
 export * from "./produtos";
 export * from "./caixa";
@@ -14397,75 +14337,65 @@ export * from "./vendas";
 export * from "./fiscal";
 </file>
 
-<file path="lib/db/src/schema/vendas.ts">
-import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-import { sessoesCaixaTable } from "./caixa";
-import { clientesTable } from "./clientes";
-import { produtosTable } from "./produtos";
+<file path=".gitignore">
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
-export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
-export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
 
-export const vendasTable = pgTable("vendas", {
-  id: serial("id").primaryKey(),
-  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
-  categoria: text("categoria").notNull(),
-  total: real("total").notNull(),
-  desconto: real("desconto").notNull().default(0),
-  pagamento: pagamentoEnum("pagamento").notNull(),
-  cliente_id: integer("cliente_id").references(() => clientesTable.id),
-  observacao: text("observacao"),
-  cnpj_credenciadora: text("cnpj_credenciadora"),
-  codigo_autorizacao: text("codigo_autorizacao"),
-  bandeira_cartao: text("bandeira_cartao"),
-  tipo_pagamento: text("tipo_pagamento"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
+# dependencies
+node_modules
+.pnpm-store
 
-export const itensVendaTable = pgTable("itens_venda", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  nome_snap: text("nome_snap").notNull(),
-  quantidade: real("quantidade").notNull(),
-  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
-  unidades: real("unidades"),
-  preco_unit: real("preco_unit").notNull(),
-  subtotal: real("subtotal").notNull(),
-});
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
 
-export const fiadosTable = pgTable("fiados", {
-  id: serial("id").primaryKey(),
-  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
-  venda_id: integer("venda_id").references(() => vendasTable.id),
-  valor: real("valor").notNull(),
-  pago: boolean("pago").notNull().default(false),
-  pago_em: timestamp("pago_em"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
-export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
-  id: serial("id").primaryKey(),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  tipo: tipoMovimentoEnum("tipo").notNull(),
-  quantidade: real("quantidade").notNull(),
-  motivo: text("motivo"),
-  criado_em: timestamp("criado_em").notNull().defaultNow(),
-});
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
 
-export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
-export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
-export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
-export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
+# System Files
+.DS_Store
+Thumbs.db
 
-export type Venda = typeof vendasTable.$inferSelect;
-export type ItemVenda = typeof itensVendaTable.$inferSelect;
-export type Fiado = typeof fiadosTable.$inferSelect;
-export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
-export type InsertVenda = z.infer<typeof insertVendaSchema>;
-export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+.replit-artifact/
+
+# Runtime / Local env
+.env
+.env.*
+!.env.example
+Logs/
+repomix-output.xml
 </file>
 
 <file path="artifacts/api-server/src/index.ts">
@@ -17074,6 +17004,77 @@ components:
         - ok
 </file>
 
+<file path="lib/db/src/schema/vendas.ts">
+import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { sessoesCaixaTable } from "./caixa";
+import { clientesTable } from "./clientes";
+import { produtosTable } from "./produtos";
+
+export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
+export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
+
+export const vendasTable = pgTable("vendas", {
+  id: serial("id").primaryKey(),
+  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
+  categoria: text("categoria").notNull(),
+  total: real("total").notNull(),
+  desconto: real("desconto").notNull().default(0),
+  pagamento: pagamentoEnum("pagamento").notNull(),
+  cliente_id: integer("cliente_id").references(() => clientesTable.id),
+  observacao: text("observacao"),
+  cnpj_credenciadora: text("cnpj_credenciadora"),
+  codigo_autorizacao: text("codigo_autorizacao"),
+  bandeira_cartao: text("bandeira_cartao"),
+  tipo_pagamento: text("tipo_pagamento"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const itensVendaTable = pgTable("itens_venda", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  nome_snap: text("nome_snap").notNull(),
+  quantidade: real("quantidade").notNull(),
+  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
+  unidades: real("unidades"),
+  preco_unit: real("preco_unit").notNull(),
+  subtotal: real("subtotal").notNull(),
+});
+
+export const fiadosTable = pgTable("fiados", {
+  id: serial("id").primaryKey(),
+  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
+  venda_id: integer("venda_id").references(() => vendasTable.id),
+  valor: real("valor").notNull(),
+  pago: boolean("pago").notNull().default(false),
+  pago_em: timestamp("pago_em", { withTimezone: true }),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
+  id: serial("id").primaryKey(),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  tipo: tipoMovimentoEnum("tipo").notNull(),
+  quantidade: real("quantidade").notNull(),
+  motivo: text("motivo"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
+export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
+export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
+export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
+
+export type Venda = typeof vendasTable.$inferSelect;
+export type ItemVenda = typeof itensVendaTable.$inferSelect;
+export type Fiado = typeof fiadosTable.$inferSelect;
+export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
+export type InsertVenda = z.infer<typeof insertVendaSchema>;
+export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
+</file>
+
 <file path="pnpm-workspace.yaml">
 packages:
   - artifacts/*
@@ -19330,44 +19331,6 @@ export const TestImpressoraResponse = zod.object({
 });
 </file>
 
-<file path="lib/db/src/schema/produtos.ts">
-import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-
-export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
-
-export const produtosTable = pgTable(
-  "produtos",
-  {
-    id: serial("id").primaryKey(),
-    codigo: text("codigo"),
-    nome: text("nome").notNull(),
-    marca: text("marca"),
-    categoria: categoriaEnum("categoria").notNull().default("mercado"),
-    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
-    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
-    cest: text("cest"), // Código Especificador da Substituição Tributária
-    cst: text("cst"),
-    preco: real("preco").notNull(),
-    custo: real("custo").notNull().default(0),
-    estoque: real("estoque").notNull().default(0),
-    estoque_min: real("estoque_min").notNull().default(5),
-    unidade: text("unidade").notNull().default("un"),
-    validade: text("validade"),
-    ativo: boolean("ativo").notNull().default(true),
-    criado_em: timestamp("criado_em").notNull().defaultNow(),
-  },
-  (table) => ({
-    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
-  })
-);
-
-export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
-export type InsertProduto = z.infer<typeof insertProdutoSchema>;
-export type Produto = typeof produtosTable.$inferSelect;
-</file>
-
 <file path="artifacts/api-server/package.json">
 {
   "name": "@workspace/api-server",
@@ -19755,6 +19718,44 @@ export type ListarSangriasParams = {
 };
 </file>
 
+<file path="lib/db/src/schema/produtos.ts">
+import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
+
+export const produtosTable = pgTable(
+  "produtos",
+  {
+    id: serial("id").primaryKey(),
+    codigo: text("codigo"),
+    nome: text("nome").notNull(),
+    marca: text("marca"),
+    categoria: categoriaEnum("categoria").notNull().default("mercado"),
+    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
+    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
+    cest: text("cest"), // Código Especificador da Substituição Tributária
+    cst: text("cst"),
+    preco: real("preco").notNull(),
+    custo: real("custo").notNull().default(0),
+    estoque: real("estoque").notNull().default(0),
+    estoque_min: real("estoque_min").notNull().default(5),
+    unidade: text("unidade").notNull().default("un"),
+    validade: text("validade"),
+    ativo: boolean("ativo").notNull().default(true),
+    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
+  })
+);
+
+export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
+export type InsertProduto = z.infer<typeof insertProdutoSchema>;
+export type Produto = typeof produtosTable.$inferSelect;
+</file>
+
 <file path="artifacts/api-server/src/routes/vendas.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -20019,555 +20020,6 @@ router.put("/:id", async (req, res) => {
 });
 
 export default router;
-</file>
-
-<file path="artifacts/api-server/src/services/sefaz.service.ts">
-import { db } from "@workspace/db";
-import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
-import { existsSync, promises as fs } from "node:fs";
-import path from "node:path";
-import { XMLBuilder } from "fast-xml-parser";
-
-async function getFiscalConfig() {
-  const [config] = await db.select().from(configFiscalTable).limit(1);
-  if (!config) throw new Error("Configuração fiscal não encontrada no banco de dados.");
-  return config;
-}
-
-function gerarCodigoNumerico(venda: Venda, dataEmi: Date) {
-  const nNF9 = String(venda.id).padStart(9, "0");
-  const nNF8 = nNF9.slice(-8);
-  const seed = Number(`${venda.id}${dataEmi.getTime()}`.slice(-12));
-  let cNF = String(seed % 100_000_000).padStart(8, "0");
-  if (cNF === nNF8) {
-    cNF = String((Number(cNF) + 1) % 100_000_000).padStart(8, "0");
-  }
-  return cNF;
-}
-
-// Gera o DV Modulo 11 e a Chave de 44 digitos
-function gerarChaveAcesso(config: any, venda: Venda, dataEmi: Date) {
-  const cUF = "43"; // 43 = RS
-  const AAMM = dataEmi.toISOString().substring(2, 7).replace("-", "");
-  const CNPJ = config.cnpj.replace(/\D/g, "").padStart(14, "0");
-  const mod = "65"; // NFC-e
-  const serie = "001";
-  const nNF = String(venda.id).padStart(9, "0");
-  const tpEmis = "1"; // Normal
-  const cNF = gerarCodigoNumerico(venda, dataEmi);
-  const chaveSemDV = `${cUF}${AAMM}${CNPJ}${mod}${serie}${nNF}${tpEmis}${cNF}`;
-
-  let soma = 0;
-  let peso = 2;
-  for (let i = 42; i >= 0; i--) {
-    soma += parseInt(chaveSemDV[i]) * peso;
-    peso = peso === 9 ? 2 : peso + 1;
-  }
-  const resto = soma % 11;
-  const dv = resto === 0 || resto === 1 ? 0 : 11 - resto;
-  return `${chaveSemDV}${dv}`;
-}
-
-function resolveUniNFeBaseDir(cnpjNumerico: string) {
-  const configuredDir = process.env.UNINFE_DIR;
-  const candidates = [
-    configuredDir,
-    "C:\\Unimake\\UniNFe",
-    "C:\\UniNFe",
-  ].filter((v): v is string => Boolean(v && v.trim()));
-
-  for (const baseDir of candidates) {
-    const pastaEnvio = path.join(baseDir, cnpjNumerico, "Envio");
-    if (existsSync(pastaEnvio)) {
-      return baseDir;
-    }
-  }
-
-  return configuredDir || "C:\\UniNFe";
-}
-
-function formatarDhEmi(data: Date) {
-  const options = { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false } as const;
-  const parts = new Intl.DateTimeFormat("pt-BR", options).formatToParts(data);
-  const getP = (type: string) => parts.find((p) => p.type === type)?.value;
-  return `${getP("year")}-${getP("month")}-${getP("day")}T${getP("hour")}:${getP("minute")}:${getP("second")}-03:00`;
-}
-
-/**
- * Converte qualquer CST/CSOSN de entrada para um CSOSN válido para
- * empresas do Simples Nacional (CRT=1). Valores aceitos pelo SEFAZ: 102, 103, 300, 400.
- *
- * Tabela de conversão:
- * - CST 00 (tributado integralmente)         → CSOSN 102 (sem retenção ST)
- * - CST 10 (com ST)                          → CSOSN 103 (com ICMSST retido)
- * - CST 20 (com redução de BC)               → CSOSN 102
- * - CST 30 (isento com ST)                   → CSOSN 300 (imune/isento)
- * - CST 40/41/50 (isento/não tributado)      → CSOSN 300
- * - CST 51 (diferimento)                     → CSOSN 102 (mais próximo para SN)
- * - CST 60 (cobrado anteriormente por ST)    → CSOSN 400 (ST cobrada anteriormente)
- * - CST 70 (redução de BC e ST)              → CSOSN 103
- * - CST 90 (outros)                          → CSOSN 102
- * - CSOSN 101 (com crédito de ICMS)          → CSOSN 102 (SN sem crédito genérico)
- * - CSOSN 102 (sem permissão de crédito)     → 102 (mantém)
- * - CSOSN 103 (isenção do ICMS no Simples)   → 103 (mantém)
- * - CSOSN 201 (com ST e crédito)             → 103
- * - CSOSN 202/203 (sem crédito com ST)       → 103
- * - CSOSN 300 (imune)                        → 300 (mantém)
- * - CSOSN 400 (não contribuinte)             → 400 (mantém)
- * - CSOSN 500 (ST cobrada anteriormente)     → CSOSN 400
- * - CSOSN 900 (outros)                       → CSOSN 102
- * - Qualquer outro valor desconhecido        → CSOSN 102 (default seguro)
- */
-function normalizarCSOSN(cstRaw: string | null | undefined): string {
-  const cst = String(cstRaw || "").replace(/\D/g, "").replace(/^0+/, "") || "0";
-  
-  const map: Record<string, string> = {
-    // CST regime normal → CSOSN Simples Nacional equivalente
-    "0": "102",   // CST 00 — tributado integralmente
-    "10": "103",  // CST 10 — com substituição tributária
-    "20": "102",  // CST 20 — com redução de base de cálculo
-    "30": "300",  // CST 30 — isento ou não tributado com ST
-    "40": "300",  // CST 40 — isento
-    "41": "300",  // CST 41 — não tributado
-    "50": "102",  // CST 50 — suspensão
-    "51": "102",  // CST 51 — diferimento
-    "60": "400",  // CST 60 — cobrado anteriormente por ST
-    "70": "103",  // CST 70 — redução de BC e ST
-    "90": "102",  // CST 90 — outros
-    // CSOSN Simples Nacional
-    "101": "102", // com direito a crédito → normaliza para 102
-    "102": "102", // sem permissão de crédito → mantém
-    "103": "103", // isenção do ICMS → mantém
-    "201": "103", // com ST e crédito
-    "202": "103", // sem crédito e com ST
-    "203": "103", // com cobrança de ST
-    "300": "300", // imune → mantém
-    "400": "400", // não contribuinte → mantém
-    "500": "400", // cobrada anteriormente por ST → 400
-    "900": "102", // outros → 102
-  };
-  
-  return map[cst] ?? "102"; // default seguro para Simples Nacional
-}
-
-async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string) {
-  try {
-    const arquivos = await fs.readdir(pastaRetorno);
-    const candidatos = arquivos.filter((nome) => nome.endsWith("-pro-rec.xml"));
-    for (const nome of candidatos) {
-      const conteudo = await fs.readFile(path.join(pastaRetorno, nome), "utf8");
-      if (!conteudo.includes(chaveAcesso)) continue;
-      const stats = [...conteudo.matchAll(/<cStat>(\d+)<\/cStat>/g)].map((m) => m[1]);
-      const motivos = [...conteudo.matchAll(/<xMotivo>([^<]+)<\/xMotivo>/g)].map((m) => m[1]);
-      const stat = stats.at(-1);
-      const motivo = motivos.at(-1);
-      if (stat === "100") {
-        return { autorizada: true, xml: conteudo };
-      }
-      if (stat) {
-        return { rejeitada: true, mensagem: `[${stat}] ${motivo || "Rejeicao sem motivo detalhado"}` };
-      }
-      return { rejeitada: false };
-    }
-  } catch {
-    // Ignora erro de leitura temporario de arquivos em processamento.
-  }
-  return null;
-}
-
-async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso: string) {
-  try {
-    console.log(`[SEFAZ] Buscando XML autorizado em: ${pastaRetorno}`);
-    console.log(`[SEFAZ] Chave de acesso: ${chaveAcesso}`);
-    
-    const arquivos = await fs.readdir(pastaRetorno);
-    console.log(`[SEFAZ] Arquivos encontrados:`, arquivos);
-    
-    // Filtrar apenas arquivos procNFe.xml
-    const procArquivos = arquivos.filter(
-      (nome) => nome.toLowerCase().endsWith("-procnfe.xml")
-    );
-    console.log(`[SEFAZ] Arquivos procNFe encontrados:`, procArquivos);
-    
-    if (procArquivos.length === 0) {
-      console.log(`[SEFAZ] Nenhum arquivo procNFe.xml encontrado`);
-      return "";
-    }
-    
-    // Obter arquivos com datas de modificação para encontrar o mais recente
-    const arquivosComData = await Promise.all(
-      procArquivos.map(async (nome) => {
-        const filePath = path.join(pastaRetorno, nome);
-        const stats = await fs.stat(filePath);
-        return {
-          nome,
-          dataModificacao: stats.mtime,
-          caminho: filePath
-        };
-      })
-    );
-    
-    // Ordenar por data de modificação (mais recente primeiro)
-    arquivosComData.sort((a, b) => b.dataModificacao.getTime() - a.dataModificacao.getTime());
-    
-    console.log(`[SEFAZ] Arquivo mais recente: ${arquivosComData[0].nome}`);
-    
-    // Ler o arquivo mais recente
-    const conteudo = await fs.readFile(arquivosComData[0].caminho, "utf8");
-    console.log(`[SEFAZ] Conteúdo do arquivo mais recente (primeiros 500 chars):`, conteudo.substring(0, 500));
-    
-    // Verificar se tem QR Code
-    if (conteudo.includes("<infNFeSupl>") && conteudo.includes("<qrCode>")) {
-      console.log(`[SEFAZ] QR Code encontrado no arquivo mais recente`);
-      return conteudo;
-    } else {
-      console.log(`[SEFAZ] Arquivo mais recente não contém QR Code`);
-      
-      // Se o mais recente não tiver QR Code, tentar os próximos
-      for (let i = 1; i < arquivosComData.length; i++) {
-        console.log(`[SEFAZ] Tentando próximo arquivo: ${arquivosComData[i].nome}`);
-        const proximoConteudo = await fs.readFile(arquivosComData[i].caminho, "utf8");
-        if (proximoConteudo.includes("<infNFeSupl>") && proximoConteudo.includes("<qrCode>")) {
-          console.log(`[SEFAZ] QR Code encontrado no arquivo: ${arquivosComData[i].nome}`);
-          return proximoConteudo;
-        }
-      }
-    }
-    
-    console.log(`[SEFAZ] Nenhum arquivo com QR Code encontrado`);
-  } catch (error) {
-    console.log(`[SEFAZ] Erro ao buscar arquivo:`, error);
-  }
-  return "";
-}
-
-type VendaComCartao = Venda & {
-  cnpj_credenciadora?: string | null;
-  codigo_autorizacao?: string | null;
-  bandeira_cartao?: string | null;
-  tipo_pagamento?: string | null;
-};
-
-export async function emitirNfce(
-  venda: VendaComCartao,
-  itens: ItemVenda[],
-  produtos: Produto[],
-  cliente?: Cliente | null,
-) {
-  const config = await getFiscalConfig();
-  const [log] = await db.insert(nfceLogsTable).values({
-    venda_id: venda.id,
-    ambiente: config.ambiente,
-    status: "processando",
-  }).returning();
-
-  try {
-    const cnpjNumerico = config.cnpj.replace(/\D/g, "");
-    if (cnpjNumerico.length !== 14 || /^0+$/.test(cnpjNumerico)) {
-      throw new Error(
-        `CNPJ fiscal invalido em config_fiscal (${config.cnpj}). Corrija o cadastro fiscal antes de emitir NFC-e.`,
-      );
-    }
-    const uninfeDir = resolveUniNFeBaseDir(cnpjNumerico);
-    const pastaEnvio = path.join(uninfeDir, cnpjNumerico, "Envio");
-    const pastaRetorno = path.join(uninfeDir, cnpjNumerico, "Retorno");
-
-    if (!existsSync(pastaEnvio)) {
-      throw new Error(`Pasta de envio do UniNFe não encontrada em ${pastaEnvio}. Venda salva localmente.`);
-    }
-
-    const dataEmi = new Date();
-    const chaveAcesso = gerarChaveAcesso(config, venda, dataEmi);
-    const cpfMatch = (venda.observacao || "").match(/CPF_NA_NOTA:(\d{11})/);
-    const cpfDestinatario = cpfMatch?.[1] || cliente?.cpf;
-
-    const nfeObj = {
-      NFe: {
-        "@_xmlns": "http://www.portalfiscal.inf.br/nfe",
-        infNFe: {
-          "@_versao": "4.00",
-          "@_Id": `NFe${chaveAcesso}`,
-          ide: {
-            cUF: "43",
-            cNF: chaveAcesso.substring(35, 43),
-            natOp: "VENDA PRESENCIAL",
-            mod: "65",
-            serie: "1",
-            nNF: String(venda.id),
-            dhEmi: formatarDhEmi(dataEmi),
-            tpNF: "1",
-            idDest: "1",
-            cMunFG: config.cod_municipio,
-            tpImp: "4",
-            tpEmis: "1",
-            cDV: chaveAcesso.substring(43, 44),
-            tpAmb: config.ambiente === "homologacao" ? "2" : "1",
-            finNFe: "1",
-            indFinal: "1",
-            indPres: "1",
-            procEmi: "0",
-            verProc: "ArvoredoPDV 1.0",
-          },
-          emit: {
-            CNPJ: config.cnpj.replace(/\D/g, ""),
-            xNome: config.razao_social,
-            xFant: config.nome_fantasia,
-            enderEmit: {
-              xLgr: config.endereco,
-              nro: config.numero,
-              xBairro: config.bairro,
-              cMun: config.cod_municipio,
-              xMun: config.cidade,
-              UF: config.uf,
-              CEP: config.cep.replace(/\D/g, ""),
-              cPais: "1058",
-              xPais: "Brasil",
-            },
-            IE: config.ie.replace(/\D/g, ""),
-            CRT: config.crt,
-          },
-          ...(cpfDestinatario ? {
-            dest: {
-              CPF: cpfDestinatario.replace(/\D/g, ""),
-              xNome: config.ambiente === "homologacao"
-                ? "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
-                : (cliente?.nome || "CONSUMIDOR").toUpperCase().slice(0, 60),
-              indIEDest: "9",
-            },
-          } : {}),
-          det: itens.map((item, index) => {
-            const p = produtos.find((x) => x.id === item.produto_id);
-            return {
-              "@_nItem": String(index + 1),
-              prod: {
-                cProd: String(item.produto_id),
-                cEAN: p?.codigo || "SEM GTIN",
-                xProd:
-                  config.ambiente === "homologacao" && index === 0
-                    ? "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
-                    : item.nome_snap,
-                NCM: p?.ncm || "00000000",
-                CFOP: p?.cfop || "5102",
-                uCom: p?.unidade || "UN",
-                qCom: item.quantidade.toFixed(4),
-                vUnCom: item.preco_unit.toFixed(4),
-                vProd: item.subtotal.toFixed(2),
-                cEANTrib: p?.codigo || "SEM GTIN",
-                uTrib: p?.unidade || "UN",
-                qTrib: item.quantidade.toFixed(4),
-                vUnTrib: item.preco_unit.toFixed(4),
-                indTot: "1",
-              },
-              imposto: {
-                ICMS: (() => {
-                  const csosn = normalizarCSOSN(p?.cst);
-                  // A tag ICMS muda conforme o CSOSN: 102/103 → ICMSSN102, 300 → ICMSSN300, 400 → ICMSSN400
-                  const icmsTag =
-                    csosn === "300" ? "ICMSSN300"
-                    : csosn === "400" ? "ICMSSN400"
-                    : "ICMSSN102";
-                  return { [icmsTag]: { orig: "0", CSOSN: csosn } };
-                })(),
-                PIS: { PISOutr: { CST: "99", vBC: "0.00", pPIS: "0.00", vPIS: "0.00" } },
-                COFINS: { COFINSOutr: { CST: "99", vBC: "0.00", pCOFINS: "0.00", vCOFINS: "0.00" } },
-              },
-            };
-          }),
-          total: {
-            ICMSTot: {
-              vBC: "0.00", vICMS: "0.00", vICMSDeson: "0.00", vFCP: "0.00",
-              vBCST: "0.00", vST: "0.00", vFCPST: "0.00", vFCPSTRet: "0.00",
-              vProd: venda.total.toFixed(2), vFrete: "0.00", vSeg: "0.00",
-              vDesc: venda.desconto.toFixed(2), vII: "0.00", vIPI: "0.00",
-              vIPIDevol: "0.00", vPIS: "0.00", vCOFINS: "0.00", vOutro: "0.00",
-              vNF: (venda.total - venda.desconto).toFixed(2),
-              vTotTrib: "0.00",
-            },
-          },
-          transp: {
-            modFrete: "9",
-          },
-          pag: {
-            detPag: [{
-              tPag: venda.pagamento === "dinheiro"
-                ? "01"
-                : venda.pagamento === "pix"
-                  ? "17"
-                  : venda.pagamento === "cartao"
-                    ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
-                        ? (venda.tipo_pagamento || "03")
-                        : "99")
-                    : "99",
-              vPag: (venda.total - venda.desconto).toFixed(2),
-              ...((() => {
-                const tPag = venda.pagamento === "dinheiro"
-                  ? "01"
-                  : venda.pagamento === "pix"
-                    ? "17"
-                    : venda.pagamento === "cartao"
-                      ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
-                          ? (venda.tipo_pagamento || "03")
-                          : "99")
-                      : "99";
-                const result: any = {};
-                // SEFAZ requires xPag (description) when tPag is 99
-                if (tPag === "99") {
-                  result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
-                }
-                if (venda.pagamento === "cartao" && (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao)) {
-                  result.card = {
-                    tpIntegra: "1",
-                    CNPJ: venda.cnpj_credenciadora || "00000000000000",
-                    tBand: venda.bandeira_cartao || "99",
-                    cAut: venda.codigo_autorizacao || "000000",
-                  };
-                }
-                return result;
-              })()),
-            }],
-          },
-        },
-      },
-    };
-
-    const builder = new XMLBuilder({ ignoreAttributes: false, format: true, attributeNamePrefix: "@_" });
-    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(nfeObj)}`;
-
-    const nomeArquivo = `${chaveAcesso}-nfe.xml`;
-    await fs.writeFile(path.join(pastaEnvio, nomeArquivo), xmlContent, "utf8");
-
-    // Polling configurável para aguardar retorno do UniNFe.
-    // Em algumas instalações o retorno pode passar de 15s.
-    const arquivoAutorizado = path.join(pastaRetorno, `${chaveAcesso}-procNFe.xml`);
-    const arquivoErro = path.join(pastaRetorno, `${chaveAcesso}-nfe.err`);
-    const intervaloMs = Number(process.env.NFCE_POLL_INTERVAL_MS || "1000");
-    const tentativas = Number(process.env.NFCE_POLL_RETRIES || "120");
-
-    let retries = Number.isFinite(tentativas) && tentativas > 0 ? tentativas : 120;
-    let autorizadoXML = "";
-    let erroTXT = "";
-
-    while (retries > 0) {
-      await new Promise((r) => setTimeout(r, intervaloMs));
-      try {
-        if (existsSync(arquivoAutorizado)) {
-          autorizadoXML = await fs.readFile(arquivoAutorizado, "utf8");
-          break;
-        }
-        if (existsSync(arquivoErro)) {
-          erroTXT = await fs.readFile(arquivoErro, "utf8");
-          break;
-        }
-        const resultadoProRec = await buscarResultadoEmProRec(pastaRetorno, chaveAcesso);
-        if (resultadoProRec?.autorizada && resultadoProRec.xml) {
-          autorizadoXML = resultadoProRec.xml;
-          break;
-        }
-        if (resultadoProRec?.rejeitada) {
-          erroTXT = resultadoProRec.mensagem || "Rejeicao retornada em arquivo pro-rec.xml";
-          break;
-        }
-        // Tenta buscar na pasta Retorno primeiro
-        const xmlGenerico = await buscarArquivoAutorizadoPorChave(pastaRetorno, chaveAcesso);
-        if (xmlGenerico) {
-          autorizadoXML = xmlGenerico;
-          break;
-        }
-        
-        // Se não encontrou, tenta na pasta correta dos XML autorizados
-        const pastaAutorizados = path.join(pastaRetorno, "..", "Enviado", "Autorizados", new Date().toISOString().slice(0, 7).replace("-", ""));
-        try {
-          console.log(`[SEFAZ] Tentando buscar em: ${pastaAutorizados}`);
-          
-          // Verificar se a pasta existe e listar arquivos
-          try {
-            const arquivosAutorizados = await fs.readdir(pastaAutorizados);
-            console.log(`[SEFAZ] Arquivos encontrados em Autorizados:`, arquivosAutorizados.slice(0, 20)); // Mostra só os 20 primeiros
-            
-            // Procurar especificamente pelo arquivo da chave
-            const arquivoEspecifico = arquivosAutorizados.find(nome => nome.includes(chaveAcesso));
-            if (arquivoEspecifico) {
-              console.log(`[SEFAZ] Arquivo específico encontrado: ${arquivoEspecifico}`);
-            } else {
-              console.log(`[SEFAZ] Arquivo específico não encontrado para chave: ${chaveAcesso}`);
-            }
-          } catch (dirError) {
-            console.log(`[SEFAZ] Erro ao ler pasta Autorizados:`, dirError);
-          }
-          
-          const xmlAutorizados = await buscarArquivoAutorizadoPorChave(pastaAutorizados, chaveAcesso);
-          if (xmlAutorizados) {
-            autorizadoXML = xmlAutorizados;
-            break;
-          }
-        } catch (e) {
-          console.log("[SEFAZ] Pasta Enviado/Autorizados não encontrada ou sem acesso:", e);
-        }
-      } catch (e) { }
-      retries--;
-    }
-
-    if (erroTXT) throw new Error(`Rejeição da Sefaz: ${erroTXT}`);
-    if (!autorizadoXML) {
-      const tempoTotalSeg = Math.round((tentativas * intervaloMs) / 1000);
-      throw new Error(`UniNFe não respondeu a tempo (${tempoTotalSeg}s).`);
-    }
-
-    await db.update(nfceLogsTable).set({
-      status: "autorizada",
-      chave_acesso: chaveAcesso,
-      xml_autorizado: autorizadoXML,
-    }).where(eq(nfceLogsTable.id, log.id));
-
-    // Para impressão, extraímos o QR Code retornado pelo XML processado
-    console.log("[SEFAZ] XML completo para análise (primeiros 1500 chars):", autorizadoXML.substring(0, 1500));
-    
-    // Verificar especificamente pela tag infNFeSupl
-    const infNFeSuplMatch = autorizadoXML.match(/<infNFeSupl>[\s\S]*?<\/infNFeSupl>/i);
-    if (infNFeSuplMatch) {
-      console.log("[SEFAZ] infNFeSupl encontrado:", infNFeSuplMatch[0]);
-    } else {
-      console.log("[SEFAZ] infNFeSupl NÃO encontrado no XML");
-    }
-    
-    // Padrões corrigidos para encontrar o QR Code correto no XML
-    const regexPatterns = [
-      // Padrão específico para QR Code em infNFeSupl (formato real do XML)
-      /<infNFeSupl>[\s\S]*?<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/www\.sefaz\.rs\.gov\.br\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
-      // Padrão geral para qrCode (qualquer URL)
-      /<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
-      // Padrão sem CDATA
-      /<qrCode>(https?:\/\/[^<]*)<\/qrCode>/i,
-      // Padrão alternativo
-      /QR-Code[^>]*>(https?:\/\/[^<]*)<\/QR-Code>/i
-    ];
-    
-    let matchQr = null;
-    for (let i = 0; i < regexPatterns.length; i++) {
-      matchQr = autorizadoXML.match(regexPatterns[i]);
-      if (matchQr) {
-        console.log(`[SEFAZ] QR Code encontrado com padrão ${i + 1}:`, matchQr[1].substring(0, 100) + "...");
-        break;
-      }
-    }
-    
-    const qrCodeUrl = matchQr ? matchQr[1].trim() : "";
-    
-    if (!qrCodeUrl) {
-      console.log("[SEFAZ] AVISO: QR Code não encontrado no XML autorizado");
-    }
-
-    return { success: true, status: "autorizada", xmlAutorizado: autorizadoXML, chaveAcesso, qrCodeUrl };
-  } catch (error: any) {
-    await db.update(nfceLogsTable).set({
-      status: "erro",
-      mensagem_status_sefaz: error.message,
-    }).where(eq(nfceLogsTable.id, log.id));
-
-    return { success: false, status: "erro", mensagem: error.message };
-  }
-}
 </file>
 
 <file path="artifacts/arvoredo/src/pages/produtos.tsx">
@@ -21455,6 +20907,631 @@ export default function Produtos() {
       </Modal>
     </div>
   );
+}
+</file>
+
+<file path="artifacts/api-server/src/services/sefaz.service.ts">
+import { db } from "@workspace/db";
+import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+import { existsSync, promises as fs } from "node:fs";
+import path from "node:path";
+import { XMLBuilder } from "fast-xml-parser";
+
+async function getFiscalConfig() {
+  const [config] = await db.select().from(configFiscalTable).limit(1);
+  if (!config) throw new Error("Configuração fiscal não encontrada no banco de dados.");
+  return config;
+}
+
+function gerarCodigoNumerico(venda: Venda, dataEmi: Date) {
+  const nNF9 = String(venda.id).padStart(9, "0");
+  const nNF8 = nNF9.slice(-8);
+  const seed = Number(`${venda.id}${dataEmi.getTime()}`.slice(-12));
+  let cNF = String(seed % 100_000_000).padStart(8, "0");
+  if (cNF === nNF8) {
+    cNF = String((Number(cNF) + 1) % 100_000_000).padStart(8, "0");
+  }
+  console.log(`[SEFAZ] Código numérico gerado para venda ${venda.id}: cNF=${cNF}, nNF=${nNF9}`);
+  return cNF;
+}
+
+// Gera o DV Modulo 11 e a Chave de 44 digitos
+function gerarChaveAcesso(config: any, venda: Venda, dataEmi: Date) {
+  const cUF = "43"; // 43 = RS
+  const AAMM = dataEmi.toISOString().substring(2, 7).replace("-", "");
+  const CNPJ = config.cnpj.replace(/\D/g, "").padStart(14, "0");
+  const mod = "65"; // NFC-e
+  const serie = "001";
+  const nNF = String(venda.id).padStart(9, "0");
+  const tpEmis = "1"; // Normal
+  const cNF = gerarCodigoNumerico(venda, dataEmi);
+  const chaveSemDV = `${cUF}${AAMM}${CNPJ}${mod}${serie}${nNF}${tpEmis}${cNF}`;
+
+  let soma = 0;
+  let peso = 2;
+  for (let i = 42; i >= 0; i--) {
+    soma += parseInt(chaveSemDV[i]) * peso;
+    peso = peso === 9 ? 2 : peso + 1;
+  }
+  const resto = soma % 11;
+  const dv = resto === 0 || resto === 1 ? 0 : 11 - resto;
+  const chaveCompleta = `${chaveSemDV}${dv}`;
+  console.log(`[SEFAZ] Chave de acesso gerada: ${chaveCompleta}`);
+  console.log(`[SEFAZ] Componentes: cUF=${cUF}, AAMM=${AAMM}, CNPJ=${CNPJ}, mod=${mod}, serie=${serie}, nNF=${nNF}, tpEmis=${tpEmis}, cNF=${cNF}, DV=${dv}`);
+  return chaveCompleta;
+}
+
+function resolveUniNFeBaseDir(cnpjNumerico: string) {
+  const configuredDir = process.env.UNINFE_DIR;
+  const candidates = [
+    configuredDir,
+    "C:\\Unimake\\UniNFe",
+    "C:\\UniNFe",
+  ].filter((v): v is string => Boolean(v && v.trim()));
+
+  for (const baseDir of candidates) {
+    const pastaEnvio = path.join(baseDir, cnpjNumerico, "Envio");
+    if (existsSync(pastaEnvio)) {
+      return baseDir;
+    }
+  }
+
+  return configuredDir || "C:\\UniNFe";
+}
+
+function formatarDhEmi(data: Date) {
+  const options = { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false } as const;
+  const parts = new Intl.DateTimeFormat("pt-BR", options).formatToParts(data);
+  const getP = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${getP("year")}-${getP("month")}-${getP("day")}T${getP("hour")}:${getP("minute")}:${getP("second")}-03:00`;
+}
+
+/**
+ * Converte qualquer CST/CSOSN de entrada para um CSOSN válido para
+ * empresas do Simples Nacional (CRT=1). Valores aceitos pelo SEFAZ: 102, 103, 300, 400.
+ *
+ * Tabela de conversão:
+ * - CST 00 (tributado integralmente)         → CSOSN 102 (sem retenção ST)
+ * - CST 10 (com ST)                          → CSOSN 103 (com ICMSST retido)
+ * - CST 20 (com redução de BC)               → CSOSN 102
+ * - CST 30 (isento com ST)                   → CSOSN 300 (imune/isento)
+ * - CST 40/41/50 (isento/não tributado)      → CSOSN 300
+ * - CST 51 (diferimento)                     → CSOSN 102 (mais próximo para SN)
+ * - CST 60 (cobrado anteriormente por ST)    → CSOSN 400 (ST cobrada anteriormente)
+ * - CST 70 (redução de BC e ST)              → CSOSN 103
+ * - CST 90 (outros)                          → CSOSN 102
+ * - CSOSN 101 (com crédito de ICMS)          → CSOSN 102 (SN sem crédito genérico)
+ * - CSOSN 102 (sem permissão de crédito)     → 102 (mantém)
+ * - CSOSN 103 (isenção do ICMS no Simples)   → 103 (mantém)
+ * - CSOSN 201 (com ST e crédito)             → 103
+ * - CSOSN 202/203 (sem crédito com ST)       → 103
+ * - CSOSN 300 (imune)                        → 300 (mantém)
+ * - CSOSN 400 (não contribuinte)             → 400 (mantém)
+ * - CSOSN 500 (ST cobrada anteriormente)     → CSOSN 400
+ * - CSOSN 900 (outros)                       → CSOSN 102
+ * - Qualquer outro valor desconhecido        → CSOSN 102 (default seguro)
+ */
+function normalizarCSOSN(cstRaw: string | null | undefined): string {
+  const cst = String(cstRaw || "").replace(/\D/g, "").replace(/^0+/, "") || "0";
+  
+  const map: Record<string, string> = {
+    // CST regime normal → CSOSN Simples Nacional equivalente
+    "0": "102",   // CST 00 — tributado integralmente
+    "10": "103",  // CST 10 — com substituição tributária
+    "20": "102",  // CST 20 — com redução de base de cálculo
+    "30": "300",  // CST 30 — isento ou não tributado com ST
+    "40": "300",  // CST 40 — isento
+    "41": "300",  // CST 41 — não tributado
+    "50": "102",  // CST 50 — suspensão
+    "51": "102",  // CST 51 — diferimento
+    "60": "400",  // CST 60 — cobrado anteriormente por ST
+    "70": "103",  // CST 70 — redução de BC e ST
+    "90": "102",  // CST 90 — outros
+    // CSOSN Simples Nacional
+    "101": "102", // com direito a crédito → normaliza para 102
+    "102": "102", // sem permissão de crédito → mantém
+    "103": "103", // isenção do ICMS → mantém
+    "201": "103", // com ST e crédito
+    "202": "103", // sem crédito e com ST
+    "203": "103", // com cobrança de ST
+    "300": "300", // imune → mantém
+    "400": "400", // não contribuinte → mantém
+    "500": "400", // cobrada anteriormente por ST → 400
+    "900": "102", // outros → 102
+  };
+  
+  return map[cst] ?? "102"; // default seguro para Simples Nacional
+}
+
+async function buscarResultadoEmProRec(pastaRetorno: string, chaveAcesso: string) {
+  try {
+    const arquivos = await fs.readdir(pastaRetorno);
+    const candidatos = arquivos.filter((nome) => nome.endsWith("-pro-rec.xml"));
+    for (const nome of candidatos) {
+      const conteudo = await fs.readFile(path.join(pastaRetorno, nome), "utf8");
+      if (!conteudo.includes(chaveAcesso)) continue;
+      const stats = [...conteudo.matchAll(/<cStat>(\d+)<\/cStat>/g)].map((m) => m[1]);
+      const motivos = [...conteudo.matchAll(/<xMotivo>([^<]+)<\/xMotivo>/g)].map((m) => m[1]);
+      const stat = stats.at(-1);
+      const motivo = motivos.at(-1);
+      if (stat === "100") {
+        return { autorizada: true, xml: conteudo };
+      }
+      if (stat) {
+        return { rejeitada: true, mensagem: `[${stat}] ${motivo || "Rejeicao sem motivo detalhado"}` };
+      }
+      return { rejeitada: false };
+    }
+  } catch {
+    // Ignora erro de leitura temporario de arquivos em processamento.
+  }
+  return null;
+}
+
+async function buscarArquivoAutorizadoPorChave(pastaRetorno: string, chaveAcesso: string) {
+  try {
+    console.log(`[SEFAZ] Buscando XML autorizado em: ${pastaRetorno}`);
+    console.log(`[SEFAZ] Chave de acesso: ${chaveAcesso}`);
+    
+    const arquivos = await fs.readdir(pastaRetorno);
+    console.log(`[SEFAZ] Arquivos encontrados:`, arquivos);
+    
+    // Filtrar apenas arquivos procNFe.xml
+    const procArquivos = arquivos.filter(
+      (nome) => nome.toLowerCase().endsWith("-procnfe.xml")
+    );
+    console.log(`[SEFAZ] Arquivos procNFe encontrados:`, procArquivos);
+    
+    if (procArquivos.length === 0) {
+      console.log(`[SEFAZ] Nenhum arquivo procNFe.xml encontrado`);
+      return "";
+    }
+    
+    // PRIMEIRO: Tentar encontrar o arquivo específico pela chave de acesso
+    const arquivoEspecifico = procArquivos.find(nome => nome.includes(chaveAcesso));
+    if (arquivoEspecifico) {
+      console.log(`[SEFAZ] Arquivo específico encontrado pela chave: ${arquivoEspecifico}`);
+      const caminhoEspecifico = path.join(pastaRetorno, arquivoEspecifico);
+      const conteudoEspecifico = await fs.readFile(caminhoEspecifico, "utf8");
+      
+      if (conteudoEspecifico.includes("<infNFeSupl>") && conteudoEspecifico.includes("<qrCode>")) {
+        console.log(`[SEFAZ] QR Code encontrado no arquivo específico`);
+        return conteudoEspecifico;
+      } else {
+        console.log(`[SEFAZ] Arquivo específico não contém QR Code, buscando alternativas...`);
+      }
+    } else {
+      console.log(`[SEFAZ] Arquivo específico não encontrado para chave: ${chaveAcesso}`);
+    }
+    
+    // SEGUNDO: Se não encontrou o específico ou não tem QR Code, buscar o mais recente
+    console.log(`[SEFAZ] Buscando arquivo mais recente como fallback...`);
+    
+    // Obter arquivos com datas de modificação para encontrar o mais recente
+    const arquivosComData = await Promise.all(
+      procArquivos.map(async (nome) => {
+        const filePath = path.join(pastaRetorno, nome);
+        const stats = await fs.stat(filePath);
+        return {
+          nome,
+          dataModificacao: stats.mtime,
+          caminho: filePath
+        };
+      })
+    );
+    
+    // Ordenar por data de modificação (mais recente primeiro)
+    arquivosComData.sort((a, b) => b.dataModificacao.getTime() - a.dataModificacao.getTime());
+    
+    console.log(`[SEFAZ] Arquivo mais recente: ${arquivosComData[0].nome}`);
+    
+    // Ler o arquivo mais recente
+    const conteudo = await fs.readFile(arquivosComData[0].caminho, "utf8");
+    console.log(`[SEFAZ] Conteúdo do arquivo mais recente (primeiros 500 chars):`, conteudo.substring(0, 500));
+    
+    // Verificar se tem QR Code
+    if (conteudo.includes("<infNFeSupl>") && conteudo.includes("<qrCode>")) {
+      console.log(`[SEFAZ] QR Code encontrado no arquivo mais recente`);
+      return conteudo;
+    } else {
+      console.log(`[SEFAZ] Arquivo mais recente não contém QR Code`);
+      
+      // Se o mais recente não tiver QR Code, tentar os próximos
+      for (let i = 1; i < arquivosComData.length; i++) {
+        console.log(`[SEFAZ] Tentando próximo arquivo: ${arquivosComData[i].nome}`);
+        const proximoConteudo = await fs.readFile(arquivosComData[i].caminho, "utf8");
+        if (proximoConteudo.includes("<infNFeSupl>") && proximoConteudo.includes("<qrCode>")) {
+          console.log(`[SEFAZ] QR Code encontrado no arquivo: ${arquivosComData[i].nome}`);
+          return proximoConteudo;
+        }
+      }
+    }
+    
+    console.log(`[SEFAZ] Nenhum arquivo com QR Code encontrado`);
+  } catch (error) {
+    console.log(`[SEFAZ] Erro ao buscar arquivo:`, error);
+  }
+  return "";
+}
+
+type VendaComCartao = Venda & {
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+};
+
+export async function emitirNfce(
+  venda: VendaComCartao,
+  itens: ItemVenda[],
+  produtos: Produto[],
+  cliente?: Cliente | null,
+) {
+  const config = await getFiscalConfig();
+  const [log] = await db.insert(nfceLogsTable).values({
+    venda_id: venda.id,
+    ambiente: config.ambiente,
+    status: "processando",
+  }).returning();
+
+  try {
+    const cnpjNumerico = config.cnpj.replace(/\D/g, "");
+    if (cnpjNumerico.length !== 14 || /^0+$/.test(cnpjNumerico)) {
+      throw new Error(
+        `CNPJ fiscal invalido em config_fiscal (${config.cnpj}). Corrija o cadastro fiscal antes de emitir NFC-e.`,
+      );
+    }
+    const uninfeDir = resolveUniNFeBaseDir(cnpjNumerico);
+    const pastaEnvio = path.join(uninfeDir, cnpjNumerico, "Envio");
+    const pastaRetorno = path.join(uninfeDir, cnpjNumerico, "Retorno");
+
+    if (!existsSync(pastaEnvio)) {
+      throw new Error(`Pasta de envio do UniNFe não encontrada em ${pastaEnvio}. Venda salva localmente.`);
+    }
+
+    const dataEmi = new Date();
+    const chaveAcesso = gerarChaveAcesso(config, venda, dataEmi);
+    console.log(`[SEFAZ] Chave de acesso gerada para venda ${venda.id}: ${chaveAcesso}`);
+    const cpfMatch = (venda.observacao || "").match(/CPF_NA_NOTA:(\d{11})/);
+    const cpfDestinatario = cpfMatch?.[1] || cliente?.cpf;
+
+    const nfeObj = {
+      NFe: {
+        "@_xmlns": "http://www.portalfiscal.inf.br/nfe",
+        infNFe: {
+          "@_versao": "4.00",
+          "@_Id": `NFe${chaveAcesso}`,
+          ide: {
+            cUF: "43",
+            cNF: chaveAcesso.substring(35, 43),
+            natOp: "VENDA PRESENCIAL",
+            mod: "65",
+            serie: "1",
+            nNF: String(venda.id),
+            dhEmi: formatarDhEmi(dataEmi),
+            tpNF: "1",
+            idDest: "1",
+            cMunFG: config.cod_municipio,
+            tpImp: "4",
+            tpEmis: "1",
+            cDV: chaveAcesso.substring(43, 44),
+            tpAmb: config.ambiente === "homologacao" ? "2" : "1",
+            finNFe: "1",
+            indFinal: "1",
+            indPres: "1",
+            procEmi: "0",
+            verProc: "ArvoredoPDV 1.0",
+          },
+          emit: {
+            CNPJ: config.cnpj.replace(/\D/g, ""),
+            xNome: config.razao_social,
+            xFant: config.nome_fantasia,
+            enderEmit: {
+              xLgr: config.endereco,
+              nro: config.numero,
+              xBairro: config.bairro,
+              cMun: config.cod_municipio,
+              xMun: config.cidade,
+              UF: config.uf,
+              CEP: config.cep.replace(/\D/g, ""),
+              cPais: "1058",
+              xPais: "Brasil",
+            },
+            IE: config.ie.replace(/\D/g, ""),
+            CRT: config.crt,
+          },
+          ...(cpfDestinatario ? {
+            dest: {
+              CPF: cpfDestinatario.replace(/\D/g, ""),
+              xNome: config.ambiente === "homologacao"
+                ? "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
+                : (cliente?.nome || "CONSUMIDOR").toUpperCase().slice(0, 60),
+              indIEDest: "9",
+            },
+          } : {}),
+          det: itens.map((item, index) => {
+            const p = produtos.find((x) => x.id === item.produto_id);
+            return {
+              "@_nItem": String(index + 1),
+              prod: {
+                cProd: String(item.produto_id),
+                cEAN: p?.codigo || "SEM GTIN",
+                xProd:
+                  config.ambiente === "homologacao" && index === 0
+                    ? "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
+                    : item.nome_snap,
+                NCM: p?.ncm || "00000000",
+                CFOP: p?.cfop || "5102",
+                uCom: p?.unidade || "UN",
+                qCom: item.quantidade.toFixed(4),
+                vUnCom: item.preco_unit.toFixed(4),
+                vProd: item.subtotal.toFixed(2),
+                cEANTrib: p?.codigo || "SEM GTIN",
+                uTrib: p?.unidade || "UN",
+                qTrib: item.quantidade.toFixed(4),
+                vUnTrib: item.preco_unit.toFixed(4),
+                indTot: "1",
+              },
+              imposto: {
+                ICMS: (() => {
+                  const csosn = normalizarCSOSN(p?.cst);
+                  // A tag ICMS muda conforme o CSOSN: 102/103 → ICMSSN102, 300 → ICMSSN300, 400 → ICMSSN400
+                  const icmsTag =
+                    csosn === "300" ? "ICMSSN300"
+                    : csosn === "400" ? "ICMSSN400"
+                    : "ICMSSN102";
+                  return { [icmsTag]: { orig: "0", CSOSN: csosn } };
+                })(),
+                PIS: { PISOutr: { CST: "99", vBC: "0.00", pPIS: "0.00", vPIS: "0.00" } },
+                COFINS: { COFINSOutr: { CST: "99", vBC: "0.00", pCOFINS: "0.00", vCOFINS: "0.00" } },
+              },
+            };
+          }),
+          total: {
+            ICMSTot: {
+              vBC: "0.00", vICMS: "0.00", vICMSDeson: "0.00", vFCP: "0.00",
+              vBCST: "0.00", vST: "0.00", vFCPST: "0.00", vFCPSTRet: "0.00",
+              vProd: venda.total.toFixed(2), vFrete: "0.00", vSeg: "0.00",
+              vDesc: venda.desconto.toFixed(2), vII: "0.00", vIPI: "0.00",
+              vIPIDevol: "0.00", vPIS: "0.00", vCOFINS: "0.00", vOutro: "0.00",
+              vNF: (venda.total - venda.desconto).toFixed(2),
+              vTotTrib: "0.00",
+            },
+          },
+          transp: {
+            modFrete: "9",
+          },
+          pag: {
+            detPag: [{
+              tPag: venda.pagamento === "dinheiro"
+                ? "01"
+                : venda.pagamento === "pix"
+                  ? "17"
+                  : venda.pagamento === "cartao"
+                    ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
+                        ? (venda.tipo_pagamento || "03")
+                        : "99")
+                    : "99",
+              vPag: (venda.total - venda.desconto).toFixed(2),
+              ...((() => {
+                const tPag = venda.pagamento === "dinheiro"
+                  ? "01"
+                  : venda.pagamento === "pix"
+                    ? "17"
+                    : venda.pagamento === "cartao"
+                      ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
+                          ? (venda.tipo_pagamento || "03")
+                          : "99")
+                      : "99";
+                const result: any = {};
+                // SEFAZ requires xPag (description) when tPag is 99
+                if (tPag === "99") {
+                  result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
+                }
+                if (venda.pagamento === "cartao" && (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao)) {
+                  result.card = {
+                    tpIntegra: "1",
+                    CNPJ: venda.cnpj_credenciadora || "00000000000000",
+                    tBand: venda.bandeira_cartao || "99",
+                    cAut: venda.codigo_autorizacao || "000000",
+                  };
+                }
+                return result;
+              })()),
+            }],
+          },
+        },
+      },
+    };
+
+    const builder = new XMLBuilder({ ignoreAttributes: false, format: true, attributeNamePrefix: "@_" });
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n${builder.build(nfeObj)}`;
+
+    const nomeArquivo = `${chaveAcesso}-nfe.xml`;
+    const caminhoEnvio = path.join(pastaEnvio, nomeArquivo);
+    await fs.writeFile(caminhoEnvio, xmlContent, "utf8");
+    console.log(`[SEFAZ] XML enviado para UniNFe: ${caminhoEnvio}`);
+    console.log(`[SEFAZ] Tamanho do XML: ${xmlContent.length} bytes`);
+
+    // Polling configurável para aguardar retorno do UniNFe.
+    // Em algumas instalações o retorno pode passar de 15s.
+    const arquivoAutorizado = path.join(pastaRetorno, `${chaveAcesso}-procNFe.xml`);
+    const arquivoErro = path.join(pastaRetorno, `${chaveAcesso}-nfe.err`);
+    const intervaloMs = Number(process.env.NFCE_POLL_INTERVAL_MS || "1000");
+    const tentativas = Number(process.env.NFCE_POLL_RETRIES || "120");
+
+    let retries = Number.isFinite(tentativas) && tentativas > 0 ? tentativas : 120;
+    let autorizadoXML = "";
+    let erroTXT = "";
+    let chaveEncontradaNoXML = "";
+
+    console.log(`[SEFAZ] Iniciando polling por arquivo: ${arquivoAutorizado}`);
+    console.log(`[SEFAZ] Tentativas máximas: ${tentativas}, intervalo: ${intervaloMs}ms`);
+
+    while (retries > 0) {
+      await new Promise((r) => setTimeout(r, intervaloMs));
+      try {
+        if (existsSync(arquivoAutorizado)) {
+          autorizadoXML = await fs.readFile(arquivoAutorizado, "utf8");
+          console.log(`[SEFAZ] Arquivo específico encontrado em Retorno: ${arquivoAutorizado}`);
+          break;
+        }
+        if (existsSync(arquivoErro)) {
+          erroTXT = await fs.readFile(arquivoErro, "utf8");
+          console.log(`[SEFAZ] Arquivo de erro encontrado: ${arquivoErro}`);
+          console.log(`[SEFAZ] Conteúdo do erro: ${erroTXT}`);
+          break;
+        }
+        const resultadoProRec = await buscarResultadoEmProRec(pastaRetorno, chaveAcesso);
+        if (resultadoProRec?.autorizada && resultadoProRec.xml) {
+          autorizadoXML = resultadoProRec.xml;
+          console.log(`[SEFAZ] XML encontrado em pro-rec.xml`);
+          break;
+        }
+        if (resultadoProRec?.rejeitada) {
+          erroTXT = resultadoProRec.mensagem || "Rejeicao retornada em arquivo pro-rec.xml";
+          break;
+        }
+        
+        // Verificar arquivos na pasta Retorno para debug
+        if (retries % 10 === 0) { // A cada 10 tentativas, listar arquivos
+          try {
+            const arquivosRetorno = await fs.readdir(pastaRetorno);
+            const arquivosRelevantes = arquivosRetorno.filter(f => f.includes(chaveAcesso) || f.endsWith(".err"));
+            if (arquivosRelevantes.length > 0) {
+              console.log(`[SEFAZ] Arquivos relevantes em Retorno (tentativa ${tentativas - retries}):`, arquivosRelevantes);
+            }
+          } catch (e) {
+            // Ignorar erro de leitura
+          }
+        }
+        
+        // Tenta buscar na pasta Retorno primeiro
+        const xmlGenerico = await buscarArquivoAutorizadoPorChave(pastaRetorno, chaveAcesso);
+        if (xmlGenerico) {
+          autorizadoXML = xmlGenerico;
+          // Extrair chave do XML para verificar se corresponde
+          const chaveMatch = xmlGenerico.match(/<chNFe>(\d+)<\/chNFe>/);
+          if (chaveMatch) {
+            chaveEncontradaNoXML = chaveMatch[1];
+            console.log(`[SEFAZ] Chave encontrada no XML: ${chaveEncontradaNoXML}`);
+            if (chaveEncontradaNoXML !== chaveAcesso) {
+              console.log(`[SEFAZ] ALERTA: Chave do XML (${chaveEncontradaNoXML}) difere da chave gerada (${chaveAcesso})`);
+              // Se a chave for diferente, NÃO usar este XML
+              console.log(`[SEFAZ] XML ignorado por chave incorreta, continuando polling...`);
+              autorizadoXML = ""; // Limpar para continuar buscando
+              continue; // Continuar o loop
+            }
+          }
+          break;
+        }
+        
+        // Se não encontrou, tenta na pasta correta dos XML autorizados
+        const pastaAutorizados = path.join(pastaRetorno, "..", "Enviado", "Autorizados", new Date().toISOString().slice(0, 7).replace("-", ""));
+        try {
+          console.log(`[SEFAZ] Tentando buscar em: ${pastaAutorizados}`);
+          
+          // Verificar se a pasta existe e listar arquivos
+          try {
+            const arquivosAutorizados = await fs.readdir(pastaAutorizados);
+            console.log(`[SEFAZ] Arquivos encontrados em Autorizados:`, arquivosAutorizados.slice(0, 20)); // Mostra só os 20 primeiros
+            
+            // Procurar especificamente pelo arquivo da chave
+            const arquivoEspecifico = arquivosAutorizados.find(nome => nome.includes(chaveAcesso));
+            if (arquivoEspecifico) {
+              console.log(`[SEFAZ] Arquivo específico encontrado: ${arquivoEspecifico}`);
+            } else {
+              console.log(`[SEFAZ] Arquivo específico não encontrado para chave: ${chaveAcesso}`);
+            }
+          } catch (dirError) {
+            console.log(`[SEFAZ] Erro ao ler pasta Autorizados:`, dirError);
+          }
+          
+          const xmlAutorizados = await buscarArquivoAutorizadoPorChave(pastaAutorizados, chaveAcesso);
+          if (xmlAutorizados) {
+            autorizadoXML = xmlAutorizados;
+            // Extrair chave do XML para verificar se corresponde
+            const chaveMatch = xmlAutorizados.match(/<chNFe>(\d+)<\/chNFe>/);
+            if (chaveMatch) {
+              chaveEncontradaNoXML = chaveMatch[1];
+              console.log(`[SEFAZ] Chave encontrada no XML (Autorizados): ${chaveEncontradaNoXML}`);
+              if (chaveEncontradaNoXML !== chaveAcesso) {
+                console.log(`[SEFAZ] ALERTA: Chave do XML (${chaveEncontradaNoXML}) difere da chave gerada (${chaveAcesso})`);
+                // Se a chave for diferente, NÃO usar este XML
+                console.log(`[SEFAZ] XML ignorado por chave incorreta, continuando polling...`);
+                autorizadoXML = ""; // Limpar para continuar buscando
+                continue; // Continuar o loop
+              }
+            }
+            break;
+          }
+        } catch (e) {
+          console.log("[SEFAZ] Pasta Enviado/Autorizados não encontrada ou sem acesso:", e);
+        }
+      } catch (e) { }
+      retries--;
+    }
+
+    if (erroTXT) throw new Error(`Rejeição da Sefaz: ${erroTXT}`);
+    if (!autorizadoXML) {
+      const tempoTotalSeg = Math.round((tentativas * intervaloMs) / 1000);
+      throw new Error(`UniNFe não respondeu a tempo (${tempoTotalSeg}s).`);
+    }
+
+    await db.update(nfceLogsTable).set({
+      status: "autorizada",
+      chave_acesso: chaveAcesso,
+      xml_autorizado: autorizadoXML,
+    }).where(eq(nfceLogsTable.id, log.id));
+
+    // Para impressão, extraímos o QR Code retornado pelo XML processado
+    console.log("[SEFAZ] XML completo para análise (primeiros 1500 chars):", autorizadoXML.substring(0, 1500));
+    
+    // Verificar especificamente pela tag infNFeSupl
+    const infNFeSuplMatch = autorizadoXML.match(/<infNFeSupl>[\s\S]*?<\/infNFeSupl>/i);
+    if (infNFeSuplMatch) {
+      console.log("[SEFAZ] infNFeSupl encontrado:", infNFeSuplMatch[0]);
+    } else {
+      console.log("[SEFAZ] infNFeSupl NÃO encontrado no XML");
+    }
+    
+    // Padrões corrigidos para encontrar o QR Code correto no XML
+    const regexPatterns = [
+      // Padrão específico para QR Code em infNFeSupl (formato real do XML)
+      /<infNFeSupl>[\s\S]*?<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/www\.sefaz\.rs\.gov\.br\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
+      // Padrão geral para qrCode (qualquer URL)
+      /<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i,
+      // Padrão sem CDATA
+      /<qrCode>(https?:\/\/[^<]*)<\/qrCode>/i,
+      // Padrão alternativo
+      /QR-Code[^>]*>(https?:\/\/[^<]*)<\/QR-Code>/i
+    ];
+    
+    let matchQr = null;
+    for (let i = 0; i < regexPatterns.length; i++) {
+      matchQr = autorizadoXML.match(regexPatterns[i]);
+      if (matchQr) {
+        console.log(`[SEFAZ] QR Code encontrado com padrão ${i + 1}:`, matchQr[1].substring(0, 100) + "...");
+        break;
+      }
+    }
+    
+    const qrCodeUrl = matchQr ? matchQr[1].trim() : "";
+    
+    if (!qrCodeUrl) {
+      console.log("[SEFAZ] AVISO: QR Code não encontrado no XML autorizado");
+    }
+
+    return { success: true, status: "autorizada", xmlAutorizado: autorizadoXML, chaveAcesso, qrCodeUrl };
+  } catch (error: any) {
+    await db.update(nfceLogsTable).set({
+      status: "erro",
+      mensagem_status_sefaz: error.message,
+    }).where(eq(nfceLogsTable.id, log.id));
+
+    return { success: false, status: "erro", mensagem: error.message };
+  }
 }
 </file>
 

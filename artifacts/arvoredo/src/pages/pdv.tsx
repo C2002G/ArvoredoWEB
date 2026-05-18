@@ -392,7 +392,16 @@ export default function Pdv() {
   const totalPago = pagamentosParciais.reduce((acc, p) => acc + p.amount, 0);
   const restante = Math.max(0, totalVenda - totalPago);
   const valorPagamentoNum = Number(String(valorPagamentoStr).replace(",", ".")) || 0;
-  const pagamentoValido = valorPagamentoNum > 0 && valorPagamentoNum <= restante + 1e-9;
+  const isDinheiro = paymentModal.method === "dinheiro";
+
+  // Se for dinheiro, pode ser maior que o restante. Se não for, bloqueia.
+  const pagamentoValido = valorPagamentoNum > 0 && (isDinheiro ? true : valorPagamentoNum <= restante + 1e-9);
+
+  // Calcula o troco
+  const troco = isDinheiro && valorPagamentoNum > restante ? valorPagamentoNum - restante : 0;
+
+  // O valor que de fato vai abater da dívida do sistema
+  const valorAAbater = isDinheiro ? Math.min(valorPagamentoNum, restante) : valorPagamentoNum;
 
   const confirmarParcelaPagamento = () => {
     if (!paymentModal.method) return;
@@ -405,7 +414,7 @@ export default function Pdv() {
       return;
     }
 
-    const novosPagamentos = [...pagamentosParciais, { method: paymentModal.method, amount: Number(valorPagamentoNum.toFixed(2)) }];
+    const novosPagamentos = [...pagamentosParciais, { method: paymentModal.method, amount: Number(valorAAbater.toFixed(2)) }];
     const novoPago = novosPagamentos.reduce((acc, p) => acc + p.amount, 0);
     const novoRestante = Math.max(0, totalVenda - novoPago);
 
@@ -417,7 +426,7 @@ export default function Pdv() {
       const ultimoMetodo = paymentModal.method === "debito" || paymentModal.method === "credito" ? paymentModal.method : paymentModal.method;
       const obsDinheiro =
         paymentModal.method === "dinheiro"
-          ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ 0,00`
+          ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ ${troco.toFixed(2).replace('.', ',')}`
           : undefined;
       setPendingVenda({
         method: ultimoMetodo,
@@ -729,11 +738,19 @@ export default function Pdv() {
           </div>
           <div className={`p-4 rounded-xl border ${pagamentoValido ? "bg-muted/50 border-border" : "bg-destructive/10 border-destructive/30"}`}>
             <p className="text-sm text-muted-foreground mb-1">Restante após confirmar</p>
-            <p className="text-2xl font-black font-mono">{formatMoney(Math.max(0, restante - valorPagamentoNum))}</p>
+            <p className="text-2xl font-black font-mono">{formatMoney(Math.max(0, restante - valorAAbater))}</p>
             {!pagamentoValido && valorPagamentoStr !== "" && (
               <p className="text-sm text-destructive mt-2">Valor deve ser maior que zero e menor ou igual ao restante.</p>
             )}
           </div>
+
+          {/* ADICIONAR ISSO: Mostra o troco se for dinheiro e o valor recebido for maior */}
+          {isDinheiro && troco > 0 && (
+            <div className="p-4 rounded-xl border bg-green-100 border-green-300 mt-2">
+              <p className="text-sm text-green-800 font-semibold mb-1">Troco a devolver ao cliente</p>
+              <p className="text-3xl font-black font-mono text-green-700">{formatMoney(troco)}</p>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}>
               Cancelar
