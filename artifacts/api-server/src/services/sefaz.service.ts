@@ -5,6 +5,40 @@ import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { XMLBuilder } from "fast-xml-parser";
 
+/**
+ * MODO TESTE: Mapeia bandeiras de cartão para códigos aceitos pela SEFAZ
+ * Quando um serviço TEF real for integrado, esses dados virão corretamente do terminal
+ * Você pode remover esta função quando contratar um serviço TEF
+ */
+function normalizarBandeira(bandeira?: string | null): string {
+  if (!bandeira) return "99"; // código genérico
+  
+  const normalized = bandeira.toUpperCase().trim();
+  
+  // Mapping de nomes para códigos SEFAZ
+  const bandeiraMap: Record<string, string> = {
+    "VISA": "01",
+    "MASTERCARD": "02",
+    "AMEX": "03",
+    "AMERICAN EXPRESS": "03",
+    "ELO": "04",
+    "DINERS": "05",
+    "AURA": "06",
+    "DISCOVER": "07",
+    "JCB": "08",
+    "01": "01",
+    "02": "02",
+    "03": "03",
+    "04": "04",
+    "05": "05",
+    "06": "06",
+    "07": "07",
+    "08": "08",
+  };
+  
+  return bandeiraMap[normalized] || normalized;
+}
+
 async function getFiscalConfig() {
   const [config] = await db.select().from(configFiscalTable).limit(1);
   if (!config) throw new Error("Configuração fiscal não encontrada no banco de dados.");
@@ -396,9 +430,7 @@ export async function emitirNfce(
                 : venda.pagamento === "pix"
                   ? "17"
                   : venda.pagamento === "cartao"
-                    ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
-                        ? (venda.tipo_pagamento || "03")
-                        : "99")
+                    ? (venda.tipo_pagamento || "03")
                     : "99",
               vPag: (venda.total - venda.desconto).toFixed(2),
               ...((() => {
@@ -407,23 +439,27 @@ export async function emitirNfce(
                   : venda.pagamento === "pix"
                     ? "17"
                     : venda.pagamento === "cartao"
-                      ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
-                          ? (venda.tipo_pagamento || "03")
-                          : "99")
+                      ? (venda.tipo_pagamento || "03")
                       : "99";
                 const result: any = {};
+
                 // SEFAZ requires xPag (description) when tPag is 99
                 if (tPag === "99") {
                   result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
                 }
-                if (venda.pagamento === "cartao" && (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao)) {
+
+                // Incluir dados de cartão sempre que houver informações válidas.
+                // Isso permite pagamento em débito/crédito funcionar com o simulador Stone.
+                const temDadosCartao = venda.cnpj_credenciadora && venda.codigo_autorizacao;
+                if (venda.pagamento === "cartao" && temDadosCartao) {
                   result.card = {
                     tpIntegra: "1",
-                    CNPJ: venda.cnpj_credenciadora || "00000000000000",
-                    tBand: venda.bandeira_cartao || "99",
-                    cAut: venda.codigo_autorizacao || "000000",
+                    CNPJ: String(venda.cnpj_credenciadora || "").replace(/\D/g, ""),
+                    tBand: normalizarBandeira(venda.bandeira_cartao || "99"),
+                    cAut: venda.codigo_autorizacao,
                   };
                 }
+
                 return result;
               })()),
             }],

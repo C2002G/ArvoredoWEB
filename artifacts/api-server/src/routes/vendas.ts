@@ -9,7 +9,7 @@ import {
   clientesTable,
   nfceLogsTable,
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, sql, desc, inArray, ilike, or } from "drizzle-orm";
 import { RegistrarVendaBody } from "@workspace/api-zod";
 import { emitirNfce } from "../services/sefaz.service";
 import { imprimirDanfeSimplificado } from "../services/danfe.service";
@@ -17,15 +17,20 @@ import { imprimirDanfeSimplificado } from "../services/danfe.service";
 const router: IRouter = Router();
 
 router.get("/", async (req, res) => {
-  const { data, data_inicio, data_fim, categoria, limit } = req.query as {
+  const { data, data_inicio, data_fim, categoria, limit, page, q } = req.query as {
     data?: string;
     data_inicio?: string;
     data_fim?: string;
     categoria?: string;
     limit?: string;
+    page?: string;
+    q?: string;
   };
 
   const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
+  const pageNumber = Math.max(1, parseInt(page ?? "1") || 1);
+  const offset = (pageNumber - 1) * lim;
+
   const conditions = [];
   if (data) {
     const start = new Date(data);
@@ -46,6 +51,16 @@ router.get("/", async (req, res) => {
     conditions.push(lte(vendasTable.criado_em, end));
   }
   if (categoria) conditions.push(eq(vendasTable.categoria, categoria));
+  if (q?.trim()) {
+    const search = q.trim();
+    conditions.push(
+      or(
+        eq(vendasTable.id, Number(search)),
+        ilike(clientesTable.nome, `%${search}%`),
+        ilike(vendasTable.observacao, `%${search}%`),
+      ),
+    );
+  }
 
   const vendas = await db
     .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
@@ -53,7 +68,8 @@ router.get("/", async (req, res) => {
     .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(vendasTable.criado_em))
-    .limit(lim);
+    .limit(lim)
+    .offset(offset);
 
   res.json(
     vendas.map(({ venda, cliente_nome }) => ({

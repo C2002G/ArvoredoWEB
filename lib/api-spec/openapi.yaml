@@ -182,11 +182,21 @@ paths:
           in: query
           schema:
             type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
         - name: limit
           in: query
           schema:
             type: integer
             default: 50
+        - name: q
+          in: query
+          schema:
+            type: string
+            description: Busca por id, cliente ou observação
       responses:
         "200":
           description: Lista de vendas

@@ -220,6 +220,8 @@ export const ListarVendasQueryParams = zod.object({
   data_fim: zod.coerce.string().optional(),
   categoria: zod.coerce.string().optional(),
   limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
+  page: zod.coerce.number().default(1),
+  q: zod.coerce.string().optional(),
 });
 
 export const ListarVendasResponseItem = zod.object({

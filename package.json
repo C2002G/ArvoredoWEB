@@ -1,6 +1,7 @@
 {
   "name": "workspace",
   "version": "0.0.0",
+  "type": "module",
   "license": "MIT",
   "scripts": {
     "preinstall": "node -e \"const fs=require('fs');if(fs.existsSync('package-lock.json'))fs.unlinkSync('package-lock.json');if(fs.existsSync('yarn.lock'))fs.unlinkSync('yarn.lock');\"",

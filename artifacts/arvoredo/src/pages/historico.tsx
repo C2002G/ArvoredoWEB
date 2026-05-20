@@ -22,28 +22,28 @@ export default function Historico() {
   const [dataFim, setDataFim] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState("10");
   
+  const pageLimit = pageSize === "all" ? 1000 : Number(pageSize);
+  const requestedLimit = pageLimit === 1000 ? pageLimit : pageLimit + 1;
+
   const { data: resumo } = useVendasResumoHoje();
   const { data: vendas = [], isLoading } = useVendasList({
     data: dataFilter || undefined,
     data_inicio: dataInicio || undefined,
     data_fim: dataFim || undefined,
     categoria: catFilter || undefined,
-    limit: 1000,
+    q: q || undefined,
+    limit: requestedLimit,
+    page,
   });
   
   const [selectedVendaId, setSelectedVendaId] = useState<number | null>(null);
   const [menuVendaId, setMenuVendaId] = useState<number | null>(null);
   const [editVenda, setEditVenda] = useState<{ id: number; observacao: string; pagamento: string } | null>(null);
-  const vendasFiltradas = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return vendas;
-    return vendas.filter((v) =>
-      String(v.id).includes(term) ||
-      (v.cliente_nome || "").toLowerCase().includes(term) ||
-      (v.observacao || "").toLowerCase().includes(term),
-    );
-  }, [q, vendas]);
+  const vendasFiltradas = vendas.slice(0, pageLimit);
+  const hasNextPage = vendas.length > pageLimit;
 
   const [statusMap, setStatusMap] = useState<StatusMap>({});
   const [nfceDetailMap, setNfceDetailMap] = useState<NfceDetailMap>({});
@@ -51,6 +51,10 @@ export default function Historico() {
   const [errorVendaId, setErrorVendaId] = useState<number | null>(null);
   const { toast } = useToast();
   const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dataFilter, dataInicio, dataFim, catFilter, pageSize, q]);
 
   useEffect(() => {
     let active = true;
@@ -215,7 +219,45 @@ export default function Historico() {
             </div>
           </div>
         </div>
-        
+
+        <div className="p-4 border-b border-border bg-background flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>Itens por página:</span>
+            <Select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(e.target.value);
+                setPage(1);
+              }}
+              className="w-28"
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="100">100</option>
+              <option value="all">Todos</option>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page <= 1 || isLoading}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">Página {page}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isLoading || !hasNextPage}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Carregando vendas...</div>

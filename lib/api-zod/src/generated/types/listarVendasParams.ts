@@ -12,4 +12,6 @@ export type ListarVendasParams = {
   data_fim?: string;
   categoria?: string;
   limit?: number;
+  page?: number;
+  q?: string;
 };
