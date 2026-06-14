@@ -267,196 +267,6 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="MODO_TESTE_CARTAO.md">
-# 🧪 MODO TESTE - Débito/Crédito/PIX sem TEF Real
-
-## O Problema
-Quando você tenta pagar com débito, crédito ou PIX, o sistema tenta enviar dados de cartão para a SEFAZ (`detPag > card`). Como você não tem um serviço TEF (Transferência Eletrônica de Fundos) real integrado, os dados estavam incompletos ou inválidos, causando erro:
-
-```
-O elemento 'detPag' apresenta elemento filho 'xPag' inválido. 
-Lista de possíveis elementos esperados: 'dPag, CNPJPag, card'
-```
-
-## A Solução
-Foi implementado um **MODO TESTE** que permite testar pagamentos com cartão usando dados padrão válidos, **mantendo toda a lógica TEF intacta para uso futuro**.
-
-## Como Funciona
-
-### Dados Padrão Usados (quando não há dados reais):
-```
-CNPJ: 16088083000155      (CNPJ do simulador Stone - substituirá quando TEF real for contratado)
-Bandeira: VISA ou MASTERCARD (mapeado para códigos "01" ou "02")
-Código Auth: 000000       (será preenchido pelo terminal TEF real)
-Tipo: "03" (crédito) ou "04" (débito)
-```
-
-### Fluxo de Funcionamento:
-
-1. **Frontend (arvoredo)**: Usuário clica em "Débito" ou "Crédito"
-2. **API maquininha.ts**: Envia requisição ao Simulador Stone ou Terminal TEF real
-3. **Simulador Stone (simulador-stone.js)**: Retorna dados de pagamento
-4. **API vendas.ts**: Salva dados no banco (cnpj_credenciadora, bandeira_cartao, etc.)
-5. **SEFAZ Service**: Ao gerar NF-e:
-   - Se houver dados reais → usa os dados do terminal
-   - Se não houver → usa dados padrão (MODO TESTE)
-   - Valida bandeira (VISA → "01", MASTERCARD → "02", etc.)
-
-## Arquivo: Função `normalizarBandeira()`
-
-Localizada em `sefaz.service.ts`, essa função mapeia:
-- Nome completo (VISA) → Código (01)
-- Códigos já recebidos → passa direto
-- Bandeiras não mapeadas → 99 (genérico)
-
-**Quando contratar TEF real**: Esta função ainda será usada para garantir que bandeiras estejam no formato correto para a SEFAZ.
-
-## Testando
-
-### Option 1: Usar o Simulador Stone (Recomendado)
-```bash
-node simulador-stone.js
-```
-
-No PDV:
-1. Adicione um produto
-2. Clique em "Débito" ou "Crédito"
-3. Aguarde ~3 segundos (simula digitação de senha)
-4. Pagamento será aprovado com dados simulados
-
-### Option 2: Modo Manual (sem simulador)
-Sem o simulador, o sistema usará dados padrão diretamente, sem chamar nenhuma máquina externa.
-
-## Dados Salvos na Venda
-
-```typescript
-{
-  pagamento: "cartao",
-  tipo_pagamento: "03" (crédito) ou "04" (débito),
-  cnpj_credenciadora: "16088083000155", // padrão
-  bandeira_cartao: "MASTERCARD" ou "VISA",
-  codigo_autorizacao: "000000" ou valor real do simulador,
-}
-```
-
-## Imprimindo Débito/Crédito
-
-O recibo impresso mostrará:
-```
-DÉBITO/CRÉDITO
-NSUA: [número da autorização]
-Bandeira: VISA/MASTERCARD
-Código Auth: 000000
-```
-
-## Quando Contratar um Serviço TEF Real
-
-Você precisará:
-
-1. **Instalar o cliente do TEF** (ex: Stone, cielo, getnet)
-2. **Atualizar `maquininha.ts`**:
-   - Mudar endpoint de `127.0.0.1:4000` para o IP real do terminal
-   - Adicionar autenticação real se necessário
-   - Remover/comentar verificação de `useStoneEmulator`
-
-3. **Os dados reais virão preenchidos** e sobrescreverão os padrão:
-   ```typescript
-   cnpj_credenciadora: resultado_real_da_maquina,
-   bandeira_cartao: resultado_real_da_maquina,
-   codigo_autorizacao: resultado_real_da_maquina,
-   ```
-
-4. **Nenhuma mudança em `sefaz.service.ts`** será necessária:
-   - A função `normalizarBandeira()` continuará validando
-   - Os dados reais serão usados no lugar dos padrão
-
-## Limpando o Modo Teste (Futura Integração Real)
-
-Quando integrar TEF real, você pode remover:
-
-### Em `sefaz.service.ts`:
-1. A função `normalizarBandeira()` (ou deixe, ela continua útil)
-2. Os comentários "MODO TESTE"
-3. As linhas com dados padrão (CNPJ "16088083000155", bandeiras genéricas)
-
-O código então ficará:
-```typescript
-if (venda.pagamento === "cartao") {
-  result.card = {
-    tpIntegra: "1",
-    CNPJ: venda.cnpj_credenciadora, // agora sempre terá valor real
-    tBand: normalizarBandeira(venda.bandeira_cartao),
-    cAut: venda.codigo_autorizacao,
-  };
-}
-```
-
-## Próximos Passos
-
-- ✅ Débito/Crédito/PIX com dados padrão funcionando
-- ⏳ Testar impressão de comprovante
-- ⏳ Quando integrar TEF real: apenas atualizar os endpoints e autenticação
-
----
-
-**Status**: MODO TESTE ativo | TEF real: não integrado | Data: 2026-05-20
-</file>
-
-<file path="simulador-stone.js">
-import http from 'http';
-
-const PORT = 4000;
-
-const server = http.createServer((req, res) => {
-  // Ignora o CORS para testes
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    return res.end();
-  }
-
-  if (req.method === 'POST' && req.url === '/api/v1/pagamentos') {
-    let body = '';
-    req.on('data', chunk => { body += chunk.toString(); });
-    
-    req.on('end', () => {
-      const payload = JSON.parse(body);
-      console.log('💳 [SIMULADOR STONE] Recebido pedido de pagamento:');
-      console.log(`   Valor: R$ ${payload.valor}`);
-      console.log(`   Tipo: ${payload.tipo}`);
-      
-      // Simula o tempo que a pessoa demora para digitar a senha (3 segundos)
-      console.log('   Aguardando digitação da senha...');
-      
-      setTimeout(() => {
-        const respostaAprovada = {
-          status: "aprovado",
-          cnpj_credenciadora: "16.088.083/0001-55",
-          codigo_autorizacao: Math.floor(100000 + Math.random() * 900000).toString(),
-          bandeira_cartao: payload.tipo === 'credito' ? "MASTERCARD" : "VISA",
-          tipo_pagamento: payload.tipo === 'credito' ? "03" : "04"
-        };
-        
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(respostaAprovada));
-        console.log('✅ [SIMULADOR STONE] Pagamento Aprovado retornado ao PDV!\n');
-      }, 3000);
-    });
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
-});
-
-server.listen(PORT, () => {
-  console.log(`📠 Simulador da Maquininha Stone rodando em http://127.0.0.1:${PORT}`);
-  console.log('Vá no PDV Arvoredo, adicione um produto e clique em Débito ou Crédito!');
-});
-</file>
-
 <file path=".npmrc">
 auto-install-peers=false
 strict-peer-dependencies=false
@@ -8214,6 +8024,141 @@ export * from "./schema";
 }
 </file>
 
+<file path="MODO_TESTE_CARTAO.md">
+"# 🧪 MODO TESTE - Débito/Crédito/PIX sem TEF Real
+
+## O Problema
+Quando você tenta pagar com débito, crédito ou PIX, o sistema tenta enviar dados de cartão para a SEFAZ (`detPag > card`). Como você não tem um serviço TEF (Transferência Eletrônica de Fundos) real integrado, os dados estavam incompletos ou inválidos, causando erro:
+
+```
+O elemento 'detPag' apresenta elemento filho 'xPag' inválido. 
+Lista de possíveis elementos esperados: 'dPag, CNPJPag, card'
+```
+
+## A Solução
+Foi implementado um **MODO TESTE** que permite testar pagamentos com cartão usando dados padrão válidos, **mantendo toda a lógica TEF intacta para uso futuro**.
+
+## Como Funciona
+
+### Dados Padrão Usados (quando não há dados reais):
+```
+CNPJ: 16088083000155      (CNPJ do simulador Stone - substituirá quando TEF real for contratado)
+Bandeira: VISA ou MASTERCARD (mapeado para códigos "01" ou "02")
+Código Auth: 000000       (será preenchido pelo terminal TEF real)
+Tipo: "03" (crédito) ou "04" (débito)
+```
+
+### Fluxo de Funcionamento:
+
+1. **Frontend (arvoredo)**: Usuário clica em "Débito" ou "Crédito"
+2. **API maquininha.ts**: Envia requisição ao Simulador Stone ou Terminal TEF real
+3. **Simulador Stone (simulador-stone.js)**: Retorna dados de pagamento
+4. **API vendas.ts**: Salva dados no banco (cnpj_credenciadora, bandeira_cartao, etc.)
+5. **SEFAZ Service**: Ao gerar NF-e:
+   - Se houver dados reais → usa os dados do terminal
+   - Se não houver → usa dados padrão (MODO TESTE)
+   - Valida bandeira (VISA → "01", MASTERCARD → "02", etc.)
+
+## Arquivo: Função `normalizarBandeira()`
+
+Localizada em `sefaz.service.ts`, essa função mapeia:
+- Nome completo (VISA) → Código (01)
+- Códigos já recebidos → passa direto
+- Bandeiras não mapeadas → 99 (genérico)
+
+**Quando contratar TEF real**: Esta função ainda será usada para garantir que bandeiras estejam no formato correto para a SEFAZ.
+
+## Testando
+
+### Option 1: Usar o Simulador Stone (Recomendado)
+```bash
+node simulador-stone.js
+```
+
+No PDV:
+1. Adicione um produto
+2. Clique em "Débito" ou "Crédito"
+3. Aguarde ~3 segundos (simula digitação de senha)
+4. Pagamento será aprovado com dados simulados
+
+### Option 2: Modo Manual (sem simulador)
+Sem o simulador, o sistema usará dados padrão diretamente, sem chamar nenhuma máquina externa.
+
+## Dados Salvos na Venda
+
+```typescript
+{
+  pagamento: "cartao",
+  tipo_pagamento: "03" (crédito) ou "04" (débito),
+  cnpj_credenciadora: "16088083000155", // padrão
+  bandeira_cartao: "MASTERCARD" ou "VISA",
+  codigo_autorizacao: "000000" ou valor real do simulador,
+}
+```
+
+## Imprimindo Débito/Crédito
+
+O recibo impresso mostrará:
+```
+DÉBITO/CRÉDITO
+NSUA: [número da autorização]
+Bandeira: VISA/MASTERCARD
+Código Auth: 000000
+```
+
+## Quando Contratar um Serviço TEF Real
+
+Você precisará:
+
+1. **Instalar o cliente do TEF** (ex: Stone, cielo, getnet)
+2. **Atualizar `maquininha.ts`**:
+   - Mudar endpoint de `127.0.0.1:4000` para o IP real do terminal
+   - Adicionar autenticação real se necessário
+   - Remover/comentar verificação de `useStoneEmulator`
+
+3. **Os dados reais virão preenchidos** e sobrescreverão os padrão:
+   ```typescript
+   cnpj_credenciadora: resultado_real_da_maquina,
+   bandeira_cartao: resultado_real_da_maquina,
+   codigo_autorizacao: resultado_real_da_maquina,
+   ```
+
+4. **Nenhuma mudança em `sefaz.service.ts`** será necessária:
+   - A função `normalizarBandeira()` continuará validando
+   - Os dados reais serão usados no lugar dos padrão
+
+## Limpando o Modo Teste (Futura Integração Real)
+
+Quando integrar TEF real, você pode remover:
+
+### Em `sefaz.service.ts`:
+1. A função `normalizarBandeira()` (ou deixe, ela continua útil)
+2. Os comentários "MODO TESTE"
+3. As linhas com dados padrão (CNPJ "16088083000155", bandeiras genéricas)
+
+O código então ficará:
+```typescript
+if (venda.pagamento === "cartao") {
+  result.card = {
+    tpIntegra: "1",
+    CNPJ: venda.cnpj_credenciadora, // agora sempre terá valor real
+    tBand: normalizarBandeira(venda.bandeira_cartao),
+    cAut: venda.codigo_autorizacao,
+  };
+}
+```
+
+## Próximos Passos
+
+- ✅ Débito/Crédito/PIX com dados padrão funcionando
+- ⏳ Testar impressão de comprovante
+- ⏳ Quando integrar TEF real: apenas atualizar os endpoints e autenticação
+
+---
+
+**Status**: MODO TESTE ativo | TEF real: não integrado | Data: 2026-05-20
+</file>
+
 <file path="ngc">
 arrumar[m
   balanca[m
@@ -8229,6 +8174,61 @@ arrumar[m
   nfc[m
   nota[m
   replit-agent[m
+</file>
+
+<file path="simulador-stone.js">
+import http from 'http';
+
+const PORT = 4000;
+
+const server = http.createServer((req, res) => {
+  // Ignora o CORS para testes
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    return res.end();
+  }
+
+  if (req.method === 'POST' && req.url === '/api/v1/pagamentos') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    
+    req.on('end', () => {
+      const payload = JSON.parse(body);
+      console.log('💳 [SIMULADOR STONE] Recebido pedido de pagamento:');
+      console.log(`   Valor: R$ ${payload.valor}`);
+      console.log(`   Tipo: ${payload.tipo}`);
+      
+      // Simula o tempo que a pessoa demora para digitar a senha (3 segundos)
+      console.log('   Aguardando digitação da senha...');
+      
+      setTimeout(() => {
+        const respostaAprovada = {
+          status: "aprovado",
+          cnpj_credenciadora: "16.088.083/0001-55",
+          codigo_autorizacao: Math.floor(100000 + Math.random() * 900000).toString(),
+          bandeira_cartao: payload.tipo === 'credito' ? "MASTERCARD" : "VISA",
+          tipo_pagamento: payload.tipo === 'credito' ? "03" : "04"
+        };
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(respostaAprovada));
+        console.log('✅ [SIMULADOR STONE] Pagamento Aprovado retornado ao PDV!\n');
+      }, 3000);
+    });
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`📠 Simulador da Maquininha Stone rodando em http://127.0.0.1:${PORT}`);
+  console.log('Vá no PDV Arvoredo, adicione um produto e clique em Débito ou Crédito!');
+});
 </file>
 
 <file path="start_arvoredo.bat">
@@ -10761,24 +10761,6 @@ export type ListarProdutosParams = {
 
 export type ListarSangriasParams = {
   sessao_id?: number;
-};
-</file>
-
-<file path="lib/api-zod/src/generated/types/listarVendasParams.ts">
-/**
- * Generated by orval v8.5.3 🍺
- * Do not edit manually.
- * Api
- * Arvoredo PDV API
- * OpenAPI spec version: 0.2.0
- */
-
-export type ListarVendasParams = {
-  data?: string;
-  data_inicio?: string;
-  data_fim?: string;
-  categoria?: string;
-  limit?: number;
 };
 </file>
 
@@ -14389,6 +14371,26 @@ export const ListarProdutosCategoria = {
 } as const;
 </file>
 
+<file path="lib/api-zod/src/generated/types/listarVendasParams.ts">
+/**
+ * Generated by orval v8.5.3 🍺
+ * Do not edit manually.
+ * Api
+ * Arvoredo PDV API
+ * OpenAPI spec version: 0.2.0
+ */
+
+export type ListarVendasParams = {
+  data?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  categoria?: string;
+  limit?: number;
+  page?: number;
+  q?: string;
+};
+</file>
+
 <file path="lib/api-zod/src/generated/types/produtoCategoria.ts">
 /**
  * Generated by orval v8.5.3 🍺
@@ -16068,1134 +16070,6 @@ try {
 }
 </file>
 
-<file path="lib/api-spec/openapi.yaml">
-openapi: 3.1.0
-info:
-  title: Api
-  version: 0.2.0
-  description: Arvoredo PDV API
-servers:
-  - url: /api
-    description: Base API path
-tags:
-  - name: health
-    description: Health operations
-  - name: produtos
-    description: Produtos operations
-  - name: vendas
-    description: Vendas operations
-  - name: estoque
-    description: Estoque operations
-  - name: fiado
-    description: Fiado operations
-  - name: caixa
-    description: Caixa operations
-  - name: impressora
-    description: Impressora operations
-paths:
-  /healthz:
-    get:
-      operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      responses:
-        "200":
-          description: Healthy
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
-
-  /produtos:
-    get:
-      operationId: listarProdutos
-      tags: [produtos]
-      summary: Listar produtos
-      parameters:
-        - name: q
-          in: query
-          schema:
-            type: string
-        - name: categoria
-          in: query
-          schema:
-            type: string
-            enum: [mercado, cozinha, feira]
-      responses:
-        "200":
-          description: Lista de produtos
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Produto"
-    post:
-      operationId: criarProduto
-      tags: [produtos]
-      summary: Criar produto
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CriarProdutoInput"
-      responses:
-        "201":
-          description: Produto criado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Produto"
-
-  /produtos/busca:
-    get:
-      operationId: buscarProduto
-      tags: [produtos]
-      summary: Buscar produto por código ou nome
-      parameters:
-        - name: codigo
-          in: query
-          schema:
-            type: string
-        - name: nome
-          in: query
-          schema:
-            type: string
-        - name: q
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Produtos encontrados
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Produto"
-
-  /produtos/alertas:
-    get:
-      operationId: alertasEstoque
-      tags: [produtos]
-      summary: Produtos com estoque baixo ou vencendo
-      responses:
-        "200":
-          description: Produtos com alertas
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AlertasProdutos"
-
-  /produtos/{id}:
-    put:
-      operationId: editarProduto
-      tags: [produtos]
-      summary: Editar produto
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EditarProdutoInput"
-      responses:
-        "200":
-          description: Produto editado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Produto"
-    delete:
-      operationId: deletarProduto
-      tags: [produtos]
-      summary: Soft delete produto
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Produto desativado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessResponse"
-
-  /vendas:
-    get:
-      operationId: listarVendas
-      tags: [vendas]
-      summary: Listar vendas
-      parameters:
-        - name: data
-          in: query
-          schema:
-            type: string
-        - name: data_inicio
-          in: query
-          schema:
-            type: string
-        - name: data_fim
-          in: query
-          schema:
-            type: string
-        - name: categoria
-          in: query
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-      responses:
-        "200":
-          description: Lista de vendas
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Venda"
-    post:
-      operationId: registrarVenda
-      tags: [vendas]
-      summary: Registrar venda
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegistrarVendaInput"
-      responses:
-        "201":
-          description: Venda registrada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Venda"
-
-  /vendas/resumo/hoje:
-    get:
-      operationId: resumoHoje
-      tags: [vendas]
-      summary: Resumo das vendas de hoje
-      responses:
-        "200":
-          description: Resumo
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ResumoVendas"
-
-  /vendas/{id}/itens:
-    get:
-      operationId: itensDaVenda
-      tags: [vendas]
-      summary: Itens de uma venda
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Itens da venda
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ItemVenda"
-
-  /estoque/movimento:
-    post:
-      operationId: movimentarEstoque
-      tags: [estoque]
-      summary: Registrar movimento de estoque
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MovimentoEstoqueInput"
-      responses:
-        "201":
-          description: Movimento registrado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MovimentoEstoque"
-
-  /estoque/movimentos:
-    get:
-      operationId: listarMovimentos
-      tags: [estoque]
-      summary: Histórico de movimentos de estoque
-      parameters:
-        - name: produto_id
-          in: query
-          schema:
-            type: integer
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 100
-      responses:
-        "200":
-          description: Lista de movimentos
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/MovimentoEstoque"
-
-  /fiado/clientes:
-    get:
-      operationId: listarClientes
-      tags: [fiado]
-      summary: Listar clientes
-      parameters:
-        - name: q
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Lista de clientes
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Cliente"
-    post:
-      operationId: criarCliente
-      tags: [fiado]
-      summary: Criar cliente
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CriarClienteInput"
-      responses:
-        "201":
-          description: Cliente criado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cliente"
-
-  /fiado/clientes/{id}:
-    put:
-      operationId: editarCliente
-      tags: [fiado]
-      summary: Editar cliente
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CriarClienteInput"
-      responses:
-        "200":
-          description: Cliente editado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cliente"
-
-  /fiado/clientes/{id}/extrato:
-    get:
-      operationId: extratoCliente
-      tags: [fiado]
-      summary: Extrato do cliente
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Extrato do cliente
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExtratoCliente"
-
-  /fiado/clientes/{id}/pagar:
-    post:
-      operationId: pagarFiado
-      tags: [fiado]
-      summary: Registrar pagamento de fiado
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PagarFiadoInput"
-      responses:
-        "200":
-          description: Pagamento registrado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessResponse"
-
-  /fiado/resumo:
-    get:
-      operationId: resumoFiado
-      tags: [fiado]
-      summary: Clientes com dívida em aberto
-      responses:
-        "200":
-          description: Resumo de fiado
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ResumoFiado"
-
-  /caixa/status:
-    get:
-      operationId: statusCaixa
-      tags: [caixa]
-      summary: Status atual do caixa
-      responses:
-        "200":
-          description: Status do caixa
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatusCaixa"
-
-  /caixa/abrir:
-    post:
-      operationId: abrirCaixa
-      tags: [caixa]
-      summary: Abrir sessão de caixa
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AbrirCaixaInput"
-      responses:
-        "201":
-          description: Caixa aberto
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SessaoCaixa"
-
-  /caixa/fechar:
-    post:
-      operationId: fecharCaixa
-      tags: [caixa]
-      summary: Fechar sessão de caixa
-      responses:
-        "200":
-          description: Caixa fechado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SessaoCaixa"
-
-  /caixa/sangria:
-    post:
-      operationId: registrarSangria
-      tags: [caixa]
-      summary: Registrar sangria
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SangriaInput"
-      responses:
-        "201":
-          description: Sangria registrada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Sangria"
-
-  /caixa/sangrias:
-    get:
-      operationId: listarSangrias
-      tags: [caixa]
-      summary: Listar sangrias
-      parameters:
-        - name: sessao_id
-          in: query
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Lista de sangrias
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Sangria"
-
-  /caixa/historico:
-    get:
-      operationId: historicoCaixa
-      tags: [caixa]
-      summary: Histórico de sessões
-      responses:
-        "200":
-          description: Últimas 30 sessões
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SessaoCaixa"
-
-  /impressora/cupom:
-    post:
-      operationId: imprimirCupom
-      tags: [impressora]
-      summary: Imprimir cupom de venda
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ImprimirCupomInput"
-      responses:
-        "200":
-          description: Resultado da impressão
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ImpressaoResponse"
-
-  /impressora/sangria:
-    post:
-      operationId: imprimirSangria
-      tags: [impressora]
-      summary: Imprimir relatório de sangria/vendas por período
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ImprimirSangriaInput"
-      responses:
-        "200":
-          description: Resultado da impressão
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ImpressaoResponse"
-
-  /impressora/teste:
-    post:
-      operationId: testImpressora
-      tags: [impressora]
-      summary: Testar impressora
-      responses:
-        "200":
-          description: Resultado do teste
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ImpressaoResponse"
-
-components:
-  schemas:
-    HealthStatus:
-      type: object
-      properties:
-        status:
-          type: string
-      required:
-        - status
-
-    SuccessResponse:
-      type: object
-      properties:
-        ok:
-          type: boolean
-        message:
-          type: string
-      required:
-        - ok
-
-    Produto:
-      type: object
-      properties:
-        id:
-          type: integer
-        codigo:
-          type: string
-          nullable: true
-        nome:
-          type: string
-        marca:
-          type: string
-          nullable: true
-        categoria:
-          type: string
-          enum: [mercado, cozinha, feira]
-        preco:
-          type: number
-        custo:
-          type: number
-        estoque:
-          type: number
-        estoque_min:
-          type: number
-        unidade:
-          type: string
-        validade:
-          type: string
-          nullable: true
-        ativo:
-          type: boolean
-        criado_em:
-          type: string
-      required:
-        - id
-        - nome
-        - categoria
-        - preco
-        - custo
-        - estoque
-        - estoque_min
-        - unidade
-        - ativo
-        - criado_em
-
-    AlertasProdutos:
-      type: object
-      properties:
-        estoque_baixo:
-          type: array
-          items:
-            $ref: "#/components/schemas/Produto"
-        vencendo:
-          type: array
-          items:
-            $ref: "#/components/schemas/Produto"
-        vencidos:
-          type: array
-          items:
-            $ref: "#/components/schemas/Produto"
-        total_alertas:
-          type: integer
-      required:
-        - estoque_baixo
-        - vencendo
-        - vencidos
-        - total_alertas
-
-    CriarProdutoInput:
-      type: object
-      properties:
-        codigo:
-          type: string
-          nullable: true
-        nome:
-          type: string
-        marca:
-          type: string
-          nullable: true
-        categoria:
-          type: string
-          enum: [mercado, cozinha, feira]
-        preco:
-          type: number
-        custo:
-          type: number
-          default: 0
-        estoque:
-          type: number
-          default: 0
-        estoque_min:
-          type: number
-          default: 5
-        unidade:
-          type: string
-          default: un
-        validade:
-          type: string
-          nullable: true
-      required:
-        - nome
-        - categoria
-        - preco
-
-    EditarProdutoInput:
-      type: object
-      properties:
-        codigo:
-          type: string
-          nullable: true
-        nome:
-          type: string
-        marca:
-          type: string
-          nullable: true
-        categoria:
-          type: string
-          enum: [mercado, cozinha, feira]
-        preco:
-          type: number
-        custo:
-          type: number
-        estoque:
-          type: number
-        estoque_min:
-          type: number
-        unidade:
-          type: string
-        validade:
-          type: string
-          nullable: true
-        ativo:
-          type: boolean
-
-    ItemVendaInput:
-      type: object
-      properties:
-        produto_id:
-          type: integer
-        quantidade:
-          type: number
-        preco_unit:
-          type: number
-        unidades:
-          type: number
-          description: "Feira: número de unidades (peças). A quantidade continua em kg (peso) para cálculo."
-      required:
-        - produto_id
-        - quantidade
-        - preco_unit
-
-    RegistrarVendaInput:
-      type: object
-      properties:
-        categoria:
-          type: string
-          enum: [mercado, cozinha, feira]
-        desconto:
-          type: number
-          default: 0
-        pagamento:
-          type: string
-          enum: [dinheiro, pix, cartao, fiado]
-        cliente_id:
-          type: integer
-          nullable: true
-        observacao:
-          type: string
-          nullable: true
-        itens:
-          type: array
-          items:
-            $ref: "#/components/schemas/ItemVendaInput"
-      required:
-        - categoria
-        - pagamento
-        - itens
-
-    ItemVenda:
-      type: object
-      properties:
-        id:
-          type: integer
-        venda_id:
-          type: integer
-        produto_id:
-          type: integer
-        nome_snap:
-          type: string
-        quantidade:
-          type: number
-        unidades:
-          type: number
-          nullable: true
-        preco_unit:
-          type: number
-        subtotal:
-          type: number
-      required:
-        - id
-        - venda_id
-        - produto_id
-        - nome_snap
-        - quantidade
-        - preco_unit
-        - subtotal
-
-    Venda:
-      type: object
-      properties:
-        id:
-          type: integer
-        sessao_id:
-          type: integer
-          nullable: true
-        categoria:
-          type: string
-        total:
-          type: number
-        desconto:
-          type: number
-        pagamento:
-          type: string
-        cliente_id:
-          type: integer
-          nullable: true
-        cliente_nome:
-          type: string
-          nullable: true
-        observacao:
-          type: string
-          nullable: true
-        criado_em:
-          type: string
-      required:
-        - id
-        - categoria
-        - total
-        - desconto
-        - pagamento
-        - criado_em
-
-    ResumoVendas:
-      type: object
-      properties:
-        total:
-          type: number
-        total_dinheiro:
-          type: number
-        total_pix:
-          type: number
-        total_cartao:
-          type: number
-        total_fiado:
-          type: number
-        num_vendas:
-          type: integer
-        mercado:
-          type: number
-        cozinha:
-          type: number
-        feira:
-          type: number
-      required:
-        - total
-        - total_dinheiro
-        - total_pix
-        - total_cartao
-        - total_fiado
-        - num_vendas
-        - mercado
-        - cozinha
-        - feira
-
-    MovimentoEstoqueInput:
-      type: object
-      properties:
-        produto_id:
-          type: integer
-        tipo:
-          type: string
-          enum: [entrada, saida, ajuste]
-        quantidade:
-          type: number
-        motivo:
-          type: string
-          nullable: true
-      required:
-        - produto_id
-        - tipo
-        - quantidade
-
-    MovimentoEstoque:
-      type: object
-      properties:
-        id:
-          type: integer
-        produto_id:
-          type: integer
-        produto_nome:
-          type: string
-          nullable: true
-        tipo:
-          type: string
-        quantidade:
-          type: number
-        motivo:
-          type: string
-          nullable: true
-        criado_em:
-          type: string
-      required:
-        - id
-        - produto_id
-        - tipo
-        - quantidade
-        - criado_em
-
-    Cliente:
-      type: object
-      properties:
-        id:
-          type: integer
-        nome:
-          type: string
-        apelido:
-          type: string
-          nullable: true
-        telefone:
-          type: string
-          nullable: true
-        cpf:
-          type: string
-          nullable: true
-        observacao:
-          type: string
-          nullable: true
-        criado_em:
-          type: string
-      required:
-        - id
-        - nome
-        - criado_em
-
-    CriarClienteInput:
-      type: object
-      properties:
-        nome:
-          type: string
-        apelido:
-          type: string
-          nullable: true
-        telefone:
-          type: string
-          nullable: true
-        cpf:
-          type: string
-          nullable: true
-        observacao:
-          type: string
-          nullable: true
-      required:
-        - nome
-
-    FiadoItem:
-      type: object
-      properties:
-        id:
-          type: integer
-        venda_id:
-          type: integer
-          nullable: true
-        valor:
-          type: number
-        pago:
-          type: boolean
-        pago_em:
-          type: string
-          nullable: true
-        criado_em:
-          type: string
-      required:
-        - id
-        - valor
-        - pago
-        - criado_em
-
-    ExtratoCliente:
-      type: object
-      properties:
-        cliente:
-          $ref: "#/components/schemas/Cliente"
-        fiados:
-          type: array
-          items:
-            $ref: "#/components/schemas/FiadoItem"
-        total_aberto:
-          type: number
-      required:
-        - cliente
-        - fiados
-        - total_aberto
-
-    PagarFiadoInput:
-      type: object
-      properties:
-        valor:
-          type: number
-      required:
-        - valor
-
-    ResumoFiado:
-      type: object
-      properties:
-        cliente:
-          $ref: "#/components/schemas/Cliente"
-        total_aberto:
-          type: number
-      required:
-        - cliente
-        - total_aberto
-
-    SessaoCaixa:
-      type: object
-      properties:
-        id:
-          type: integer
-        aberto_em:
-          type: string
-        fechado_em:
-          type: string
-          nullable: true
-        fundo_inicial:
-          type: number
-        total_dinheiro:
-          type: number
-        total_pix:
-          type: number
-        total_cartao:
-          type: number
-        total_fiado:
-          type: number
-        total_sangria:
-          type: number
-        status:
-          type: string
-          enum: [aberto, fechado]
-      required:
-        - id
-        - aberto_em
-        - fundo_inicial
-        - total_dinheiro
-        - total_pix
-        - total_cartao
-        - total_fiado
-        - total_sangria
-        - status
-
-    StatusCaixa:
-      type: object
-      properties:
-        aberto:
-          type: boolean
-        sessao:
-          $ref: "#/components/schemas/SessaoCaixa"
-          nullable: true
-      required:
-        - aberto
-
-    AbrirCaixaInput:
-      type: object
-      properties:
-        fundo_inicial:
-          type: number
-          default: 300
-      required: []
-
-    Sangria:
-      type: object
-      properties:
-        id:
-          type: integer
-        sessao_id:
-          type: integer
-        valor:
-          type: number
-        motivo:
-          type: string
-          nullable: true
-        criado_em:
-          type: string
-      required:
-        - id
-        - sessao_id
-        - valor
-        - criado_em
-
-    SangriaInput:
-      type: object
-      properties:
-        valor:
-          type: number
-        motivo:
-          type: string
-          nullable: true
-      required:
-        - valor
-
-    ImprimirCupomInput:
-      type: object
-      properties:
-        venda_id:
-          type: integer
-      required:
-        - venda_id
-
-    ImprimirSangriaInput:
-      type: object
-      properties:
-        data_inicio:
-          type: string
-        data_fim:
-          type: string
-        sessao_id:
-          type: integer
-          nullable: true
-      required:
-        - data_inicio
-        - data_fim
-
-    ImpressaoResponse:
-      type: object
-      properties:
-        ok:
-          type: boolean
-        erro:
-          type: string
-          nullable: true
-      required:
-        - ok
-</file>
-
 <file path="lib/db/src/schema/vendas.ts">
 import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -18406,29 +17280,1142 @@ do {
 } while ($choice -ne "0")
 </file>
 
-<file path="package.json">
-{
-  "name": "workspace",
-  "version": "0.0.0",
-  "type": "module",
-  "license": "MIT",
-  "scripts": {
-    "preinstall": "node -e \"const fs=require('fs');if(fs.existsSync('package-lock.json'))fs.unlinkSync('package-lock.json');if(fs.existsSync('yarn.lock'))fs.unlinkSync('yarn.lock');\"",
-    "build": "pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --if-present run typecheck",
-    "db:seed": "tsx lib/db/seed.ts"
-  },
-  
-  "private": true,
-  "devDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.60.1",
-    "lightningcss": "^1.32.0",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
-  },
-  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
-}
+<file path="lib/api-spec/openapi.yaml">
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.2.0
+  description: Arvoredo PDV API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: produtos
+    description: Produtos operations
+  - name: vendas
+    description: Vendas operations
+  - name: estoque
+    description: Estoque operations
+  - name: fiado
+    description: Fiado operations
+  - name: caixa
+    description: Caixa operations
+  - name: impressora
+    description: Impressora operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /produtos:
+    get:
+      operationId: listarProdutos
+      tags: [produtos]
+      summary: Listar produtos
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: categoria
+          in: query
+          schema:
+            type: string
+            enum: [mercado, cozinha, feira]
+      responses:
+        "200":
+          description: Lista de produtos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Produto"
+    post:
+      operationId: criarProduto
+      tags: [produtos]
+      summary: Criar produto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarProdutoInput"
+      responses:
+        "201":
+          description: Produto criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Produto"
+
+  /produtos/busca:
+    get:
+      operationId: buscarProduto
+      tags: [produtos]
+      summary: Buscar produto por código ou nome
+      parameters:
+        - name: codigo
+          in: query
+          schema:
+            type: string
+        - name: nome
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Produtos encontrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Produto"
+
+  /produtos/alertas:
+    get:
+      operationId: alertasEstoque
+      tags: [produtos]
+      summary: Produtos com estoque baixo ou vencendo
+      responses:
+        "200":
+          description: Produtos com alertas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertasProdutos"
+
+  /produtos/{id}:
+    put:
+      operationId: editarProduto
+      tags: [produtos]
+      summary: Editar produto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditarProdutoInput"
+      responses:
+        "200":
+          description: Produto editado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Produto"
+    delete:
+      operationId: deletarProduto
+      tags: [produtos]
+      summary: Soft delete produto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Produto desativado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /vendas:
+    get:
+      operationId: listarVendas
+      tags: [vendas]
+      summary: Listar vendas
+      parameters:
+        - name: data
+          in: query
+          schema:
+            type: string
+        - name: data_inicio
+          in: query
+          schema:
+            type: string
+        - name: data_fim
+          in: query
+          schema:
+            type: string
+        - name: categoria
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: q
+          in: query
+          schema:
+            type: string
+            description: Busca por id, cliente ou observação
+      responses:
+        "200":
+          description: Lista de vendas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Venda"
+    post:
+      operationId: registrarVenda
+      tags: [vendas]
+      summary: Registrar venda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarVendaInput"
+      responses:
+        "201":
+          description: Venda registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Venda"
+
+  /vendas/resumo/hoje:
+    get:
+      operationId: resumoHoje
+      tags: [vendas]
+      summary: Resumo das vendas de hoje
+      responses:
+        "200":
+          description: Resumo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumoVendas"
+
+  /vendas/{id}/itens:
+    get:
+      operationId: itensDaVenda
+      tags: [vendas]
+      summary: Itens de uma venda
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Itens da venda
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ItemVenda"
+
+  /estoque/movimento:
+    post:
+      operationId: movimentarEstoque
+      tags: [estoque]
+      summary: Registrar movimento de estoque
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovimentoEstoqueInput"
+      responses:
+        "201":
+          description: Movimento registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovimentoEstoque"
+
+  /estoque/movimentos:
+    get:
+      operationId: listarMovimentos
+      tags: [estoque]
+      summary: Histórico de movimentos de estoque
+      parameters:
+        - name: produto_id
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Lista de movimentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MovimentoEstoque"
+
+  /fiado/clientes:
+    get:
+      operationId: listarClientes
+      tags: [fiado]
+      summary: Listar clientes
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de clientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cliente"
+    post:
+      operationId: criarCliente
+      tags: [fiado]
+      summary: Criar cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarClienteInput"
+      responses:
+        "201":
+          description: Cliente criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cliente"
+
+  /fiado/clientes/{id}:
+    put:
+      operationId: editarCliente
+      tags: [fiado]
+      summary: Editar cliente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarClienteInput"
+      responses:
+        "200":
+          description: Cliente editado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cliente"
+
+  /fiado/clientes/{id}/extrato:
+    get:
+      operationId: extratoCliente
+      tags: [fiado]
+      summary: Extrato do cliente
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Extrato do cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtratoCliente"
+
+  /fiado/clientes/{id}/pagar:
+    post:
+      operationId: pagarFiado
+      tags: [fiado]
+      summary: Registrar pagamento de fiado
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PagarFiadoInput"
+      responses:
+        "200":
+          description: Pagamento registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /fiado/resumo:
+    get:
+      operationId: resumoFiado
+      tags: [fiado]
+      summary: Clientes com dívida em aberto
+      responses:
+        "200":
+          description: Resumo de fiado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResumoFiado"
+
+  /caixa/status:
+    get:
+      operationId: statusCaixa
+      tags: [caixa]
+      summary: Status atual do caixa
+      responses:
+        "200":
+          description: Status do caixa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusCaixa"
+
+  /caixa/abrir:
+    post:
+      operationId: abrirCaixa
+      tags: [caixa]
+      summary: Abrir sessão de caixa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AbrirCaixaInput"
+      responses:
+        "201":
+          description: Caixa aberto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessaoCaixa"
+
+  /caixa/fechar:
+    post:
+      operationId: fecharCaixa
+      tags: [caixa]
+      summary: Fechar sessão de caixa
+      responses:
+        "200":
+          description: Caixa fechado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessaoCaixa"
+
+  /caixa/sangria:
+    post:
+      operationId: registrarSangria
+      tags: [caixa]
+      summary: Registrar sangria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SangriaInput"
+      responses:
+        "201":
+          description: Sangria registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sangria"
+
+  /caixa/sangrias:
+    get:
+      operationId: listarSangrias
+      tags: [caixa]
+      summary: Listar sangrias
+      parameters:
+        - name: sessao_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lista de sangrias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sangria"
+
+  /caixa/historico:
+    get:
+      operationId: historicoCaixa
+      tags: [caixa]
+      summary: Histórico de sessões
+      responses:
+        "200":
+          description: Últimas 30 sessões
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessaoCaixa"
+
+  /impressora/cupom:
+    post:
+      operationId: imprimirCupom
+      tags: [impressora]
+      summary: Imprimir cupom de venda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImprimirCupomInput"
+      responses:
+        "200":
+          description: Resultado da impressão
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpressaoResponse"
+
+  /impressora/sangria:
+    post:
+      operationId: imprimirSangria
+      tags: [impressora]
+      summary: Imprimir relatório de sangria/vendas por período
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImprimirSangriaInput"
+      responses:
+        "200":
+          description: Resultado da impressão
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpressaoResponse"
+
+  /impressora/teste:
+    post:
+      operationId: testImpressora
+      tags: [impressora]
+      summary: Testar impressora
+      responses:
+        "200":
+          description: Resultado do teste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpressaoResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    SuccessResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+      required:
+        - ok
+
+    Produto:
+      type: object
+      properties:
+        id:
+          type: integer
+        codigo:
+          type: string
+          nullable: true
+        nome:
+          type: string
+        marca:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          enum: [mercado, cozinha, feira]
+        preco:
+          type: number
+        custo:
+          type: number
+        estoque:
+          type: number
+        estoque_min:
+          type: number
+        unidade:
+          type: string
+        validade:
+          type: string
+          nullable: true
+        ativo:
+          type: boolean
+        criado_em:
+          type: string
+      required:
+        - id
+        - nome
+        - categoria
+        - preco
+        - custo
+        - estoque
+        - estoque_min
+        - unidade
+        - ativo
+        - criado_em
+
+    AlertasProdutos:
+      type: object
+      properties:
+        estoque_baixo:
+          type: array
+          items:
+            $ref: "#/components/schemas/Produto"
+        vencendo:
+          type: array
+          items:
+            $ref: "#/components/schemas/Produto"
+        vencidos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Produto"
+        total_alertas:
+          type: integer
+      required:
+        - estoque_baixo
+        - vencendo
+        - vencidos
+        - total_alertas
+
+    CriarProdutoInput:
+      type: object
+      properties:
+        codigo:
+          type: string
+          nullable: true
+        nome:
+          type: string
+        marca:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          enum: [mercado, cozinha, feira]
+        preco:
+          type: number
+        custo:
+          type: number
+          default: 0
+        estoque:
+          type: number
+          default: 0
+        estoque_min:
+          type: number
+          default: 5
+        unidade:
+          type: string
+          default: un
+        validade:
+          type: string
+          nullable: true
+      required:
+        - nome
+        - categoria
+        - preco
+
+    EditarProdutoInput:
+      type: object
+      properties:
+        codigo:
+          type: string
+          nullable: true
+        nome:
+          type: string
+        marca:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          enum: [mercado, cozinha, feira]
+        preco:
+          type: number
+        custo:
+          type: number
+        estoque:
+          type: number
+        estoque_min:
+          type: number
+        unidade:
+          type: string
+        validade:
+          type: string
+          nullable: true
+        ativo:
+          type: boolean
+
+    ItemVendaInput:
+      type: object
+      properties:
+        produto_id:
+          type: integer
+        quantidade:
+          type: number
+        preco_unit:
+          type: number
+        unidades:
+          type: number
+          description: "Feira: número de unidades (peças). A quantidade continua em kg (peso) para cálculo."
+      required:
+        - produto_id
+        - quantidade
+        - preco_unit
+
+    RegistrarVendaInput:
+      type: object
+      properties:
+        categoria:
+          type: string
+          enum: [mercado, cozinha, feira]
+        desconto:
+          type: number
+          default: 0
+        pagamento:
+          type: string
+          enum: [dinheiro, pix, cartao, fiado]
+        cliente_id:
+          type: integer
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemVendaInput"
+      required:
+        - categoria
+        - pagamento
+        - itens
+
+    ItemVenda:
+      type: object
+      properties:
+        id:
+          type: integer
+        venda_id:
+          type: integer
+        produto_id:
+          type: integer
+        nome_snap:
+          type: string
+        quantidade:
+          type: number
+        unidades:
+          type: number
+          nullable: true
+        preco_unit:
+          type: number
+        subtotal:
+          type: number
+      required:
+        - id
+        - venda_id
+        - produto_id
+        - nome_snap
+        - quantidade
+        - preco_unit
+        - subtotal
+
+    Venda:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessao_id:
+          type: integer
+          nullable: true
+        categoria:
+          type: string
+        total:
+          type: number
+        desconto:
+          type: number
+        pagamento:
+          type: string
+        cliente_id:
+          type: integer
+          nullable: true
+        cliente_nome:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - categoria
+        - total
+        - desconto
+        - pagamento
+        - criado_em
+
+    ResumoVendas:
+      type: object
+      properties:
+        total:
+          type: number
+        total_dinheiro:
+          type: number
+        total_pix:
+          type: number
+        total_cartao:
+          type: number
+        total_fiado:
+          type: number
+        num_vendas:
+          type: integer
+        mercado:
+          type: number
+        cozinha:
+          type: number
+        feira:
+          type: number
+      required:
+        - total
+        - total_dinheiro
+        - total_pix
+        - total_cartao
+        - total_fiado
+        - num_vendas
+        - mercado
+        - cozinha
+        - feira
+
+    MovimentoEstoqueInput:
+      type: object
+      properties:
+        produto_id:
+          type: integer
+        tipo:
+          type: string
+          enum: [entrada, saida, ajuste]
+        quantidade:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+      required:
+        - produto_id
+        - tipo
+        - quantidade
+
+    MovimentoEstoque:
+      type: object
+      properties:
+        id:
+          type: integer
+        produto_id:
+          type: integer
+        produto_nome:
+          type: string
+          nullable: true
+        tipo:
+          type: string
+        quantidade:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - produto_id
+        - tipo
+        - quantidade
+        - criado_em
+
+    Cliente:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome:
+          type: string
+        apelido:
+          type: string
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+        cpf:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - nome
+        - criado_em
+
+    CriarClienteInput:
+      type: object
+      properties:
+        nome:
+          type: string
+        apelido:
+          type: string
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+        cpf:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+      required:
+        - nome
+
+    FiadoItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        venda_id:
+          type: integer
+          nullable: true
+        valor:
+          type: number
+        pago:
+          type: boolean
+        pago_em:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - valor
+        - pago
+        - criado_em
+
+    ExtratoCliente:
+      type: object
+      properties:
+        cliente:
+          $ref: "#/components/schemas/Cliente"
+        fiados:
+          type: array
+          items:
+            $ref: "#/components/schemas/FiadoItem"
+        total_aberto:
+          type: number
+      required:
+        - cliente
+        - fiados
+        - total_aberto
+
+    PagarFiadoInput:
+      type: object
+      properties:
+        valor:
+          type: number
+      required:
+        - valor
+
+    ResumoFiado:
+      type: object
+      properties:
+        cliente:
+          $ref: "#/components/schemas/Cliente"
+        total_aberto:
+          type: number
+      required:
+        - cliente
+        - total_aberto
+
+    SessaoCaixa:
+      type: object
+      properties:
+        id:
+          type: integer
+        aberto_em:
+          type: string
+        fechado_em:
+          type: string
+          nullable: true
+        fundo_inicial:
+          type: number
+        total_dinheiro:
+          type: number
+        total_pix:
+          type: number
+        total_cartao:
+          type: number
+        total_fiado:
+          type: number
+        total_sangria:
+          type: number
+        status:
+          type: string
+          enum: [aberto, fechado]
+      required:
+        - id
+        - aberto_em
+        - fundo_inicial
+        - total_dinheiro
+        - total_pix
+        - total_cartao
+        - total_fiado
+        - total_sangria
+        - status
+
+    StatusCaixa:
+      type: object
+      properties:
+        aberto:
+          type: boolean
+        sessao:
+          $ref: "#/components/schemas/SessaoCaixa"
+          nullable: true
+      required:
+        - aberto
+
+    AbrirCaixaInput:
+      type: object
+      properties:
+        fundo_inicial:
+          type: number
+          default: 300
+      required: []
+
+    Sangria:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessao_id:
+          type: integer
+        valor:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+        criado_em:
+          type: string
+      required:
+        - id
+        - sessao_id
+        - valor
+        - criado_em
+
+    SangriaInput:
+      type: object
+      properties:
+        valor:
+          type: number
+        motivo:
+          type: string
+          nullable: true
+      required:
+        - valor
+
+    ImprimirCupomInput:
+      type: object
+      properties:
+        venda_id:
+          type: integer
+      required:
+        - venda_id
+
+    ImprimirSangriaInput:
+      type: object
+      properties:
+        data_inicio:
+          type: string
+        data_fim:
+          type: string
+        sessao_id:
+          type: integer
+          nullable: true
+      required:
+        - data_inicio
+        - data_fim
+
+    ImpressaoResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        erro:
+          type: string
+          nullable: true
+      required:
+        - ok
 </file>
 
 <file path="artifacts/api-server/src/routes/produtos.ts">
@@ -18577,6 +18564,73 @@ function formatProduto(p: typeof produtosTable.$inferSelect) {
 export default router;
 </file>
 
+<file path="package.json">
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "preinstall": "node -e \"const fs=require('fs');if(fs.existsSync('package-lock.json'))fs.unlinkSync('package-lock.json');if(fs.existsSync('yarn.lock'))fs.unlinkSync('yarn.lock');\"",
+    "build": "pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --if-present run typecheck",
+    "db:seed": "tsx lib/db/seed.ts"
+  },
+  
+  "private": true,
+  "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.1",
+    "lightningcss": "^1.32.0",
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  },
+  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
+}
+</file>
+
+<file path="artifacts/api-server/package.json">
+{
+  "name": "@workspace/api-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "node ./build.mjs",
+    "start": "node --enable-source-maps ./dist/index.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/api-zod": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "catalog:",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-usb": "3.0.0-alpha.4",
+    "express": "^5",
+    "fast-xml-parser": "^5.3.0",
+    "pino": "^9",
+    "pino-http": "^10",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.27.3",
+    "esbuild-plugin-pino": "^2.3.3",
+    "pino-pretty": "^13",
+    "thread-stream": "3.1.0",
+    "tsx": "^4.21.0"
+  }
+}
+</file>
+
 <file path="artifacts/arvoredo/src/pages/historico.tsx">
 import React, { useEffect, useMemo, useState } from "react";
 import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
@@ -18602,28 +18656,28 @@ export default function Historico() {
   const [dataFim, setDataFim] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState("10");
   
+  const pageLimit = pageSize === "all" ? 1000 : Number(pageSize);
+  const requestedLimit = pageLimit === 1000 ? pageLimit : pageLimit + 1;
+
   const { data: resumo } = useVendasResumoHoje();
   const { data: vendas = [], isLoading } = useVendasList({
     data: dataFilter || undefined,
     data_inicio: dataInicio || undefined,
     data_fim: dataFim || undefined,
     categoria: catFilter || undefined,
-    limit: 1000,
+    q: q || undefined,
+    limit: requestedLimit,
+    page,
   });
   
   const [selectedVendaId, setSelectedVendaId] = useState<number | null>(null);
   const [menuVendaId, setMenuVendaId] = useState<number | null>(null);
   const [editVenda, setEditVenda] = useState<{ id: number; observacao: string; pagamento: string } | null>(null);
-  const vendasFiltradas = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return vendas;
-    return vendas.filter((v) =>
-      String(v.id).includes(term) ||
-      (v.cliente_nome || "").toLowerCase().includes(term) ||
-      (v.observacao || "").toLowerCase().includes(term),
-    );
-  }, [q, vendas]);
+  const vendasFiltradas = vendas.slice(0, pageLimit);
+  const hasNextPage = vendas.length > pageLimit;
 
   const [statusMap, setStatusMap] = useState<StatusMap>({});
   const [nfceDetailMap, setNfceDetailMap] = useState<NfceDetailMap>({});
@@ -18631,6 +18685,10 @@ export default function Historico() {
   const [errorVendaId, setErrorVendaId] = useState<number | null>(null);
   const { toast } = useToast();
   const { data: itens = [], isLoading: loadingItens } = useVendaItens(selectedVendaId);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dataFilter, dataInicio, dataFim, catFilter, pageSize, q]);
 
   useEffect(() => {
     let active = true;
@@ -18795,7 +18853,45 @@ export default function Historico() {
             </div>
           </div>
         </div>
-        
+
+        <div className="p-4 border-b border-border bg-background flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>Itens por página:</span>
+            <Select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(e.target.value);
+                setPage(1);
+              }}
+              className="w-28"
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="100">100</option>
+              <option value="all">Todos</option>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page <= 1 || isLoading}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-muted-foreground">Página {page}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isLoading || !hasNextPage}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Carregando vendas...</div>
@@ -19179,6 +19275,8 @@ export const ListarVendasQueryParams = zod.object({
   data_fim: zod.coerce.string().optional(),
   categoria: zod.coerce.string().optional(),
   limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
+  page: zod.coerce.number().default(1),
+  q: zod.coerce.string().optional(),
 });
 
 export const ListarVendasResponseItem = zod.object({
@@ -19206,6 +19304,7 @@ export const RegistrarVendaBody = zod.object({
   pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
   cliente_id: zod.number().nullish(),
   observacao: zod.string().nullish(),
+  cpf_nota: zod.string().nullish(),
   cnpj_credenciadora: zod.string().nullish(),
   codigo_autorizacao: zod.string().nullish(),
   bandeira_cartao: zod.string().nullish(),
@@ -19524,46 +19623,42 @@ export const TestImpressoraResponse = zod.object({
 });
 </file>
 
-<file path="artifacts/api-server/package.json">
-{
-  "name": "@workspace/api-server",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+<file path="lib/db/src/schema/produtos.ts">
+import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
+
+export const produtosTable = pgTable(
+  "produtos",
+  {
+    id: serial("id").primaryKey(),
+    codigo: text("codigo"),
+    nome: text("nome").notNull(),
+    marca: text("marca"),
+    categoria: categoriaEnum("categoria").notNull().default("mercado"),
+    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
+    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
+    cest: text("cest"), // Código Especificador da Substituição Tributária
+    cst: text("cst"),
+    preco: real("preco").notNull(),
+    custo: real("custo").notNull().default(0),
+    estoque: real("estoque").notNull().default(0),
+    estoque_min: real("estoque_min").notNull().default(5),
+    unidade: text("unidade").notNull().default("un"),
+    validade: text("validade"),
+    ativo: boolean("ativo").notNull().default(true),
+    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
   },
-  "dependencies": {
-    "@workspace/api-zod": "workspace:*",
-    "@workspace/db": "workspace:*",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2",
-    "dotenv": "^16.3.1",
-    "drizzle-orm": "catalog:",
-    "escpos": "3.0.0-alpha.6",
-    "escpos-usb": "3.0.0-alpha.4",
-    "express": "^5",
-    "fast-xml-parser": "^5.3.0",
-    "pino": "^9",
-    "pino-http": "^10",
-    "qrcode": "^1.5.4"
-  },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "catalog:",
-    "@types/qrcode": "^1.5.6",
-    "esbuild": "^0.27.3",
-    "esbuild-plugin-pino": "^2.3.3",
-    "pino-pretty": "^13",
-    "thread-stream": "3.1.0",
-    "tsx": "^4.21.0"
-  }
-}
+  (table) => ({
+    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
+  })
+);
+
+export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
+export type InsertProduto = z.infer<typeof insertProdutoSchema>;
+export type Produto = typeof produtosTable.$inferSelect;
 </file>
 
 <file path="lib/api-client-react/src/generated/api.schemas.ts">
@@ -19699,6 +19794,7 @@ export interface RegistrarVendaInput {
   pagamento: RegistrarVendaInputPagamento;
   cliente_id?: number | null;
   observacao?: string | null;
+  cpf_nota?: string | null;
   cnpj_credenciadora?: string | null;
   codigo_autorizacao?: string | null;
   bandeira_cartao?: string | null;
@@ -19895,6 +19991,8 @@ export type ListarVendasParams = {
   data_fim?: string;
   categoria?: string;
   limit?: number;
+  page?: number;
+  q?: string;
 };
 
 export type ListarMovimentosParams = {
@@ -19909,310 +20007,6 @@ export type ListarClientesParams = {
 export type ListarSangriasParams = {
   sessao_id?: number;
 };
-</file>
-
-<file path="lib/db/src/schema/produtos.ts">
-import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-
-export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
-
-export const produtosTable = pgTable(
-  "produtos",
-  {
-    id: serial("id").primaryKey(),
-    codigo: text("codigo"),
-    nome: text("nome").notNull(),
-    marca: text("marca"),
-    categoria: categoriaEnum("categoria").notNull().default("mercado"),
-    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
-    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
-    cest: text("cest"), // Código Especificador da Substituição Tributária
-    cst: text("cst"),
-    preco: real("preco").notNull(),
-    custo: real("custo").notNull().default(0),
-    estoque: real("estoque").notNull().default(0),
-    estoque_min: real("estoque_min").notNull().default(5),
-    unidade: text("unidade").notNull().default("un"),
-    validade: text("validade"),
-    ativo: boolean("ativo").notNull().default(true),
-    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
-  })
-);
-
-export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
-export type InsertProduto = z.infer<typeof insertProdutoSchema>;
-export type Produto = typeof produtosTable.$inferSelect;
-</file>
-
-<file path="artifacts/api-server/src/routes/vendas.ts">
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import {
-  vendasTable,
-  itensVendaTable,
-  produtosTable,
-  sessoesCaixaTable,
-  fiadosTable,
-  clientesTable,
-  nfceLogsTable,
-} from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, desc, inArray } from "drizzle-orm";
-import { RegistrarVendaBody } from "@workspace/api-zod";
-import { emitirNfce } from "../services/sefaz.service";
-import { imprimirDanfeSimplificado } from "../services/danfe.service";
-
-const router: IRouter = Router();
-
-router.get("/", async (req, res) => {
-  const { data, data_inicio, data_fim, categoria, limit } = req.query as {
-    data?: string;
-    data_inicio?: string;
-    data_fim?: string;
-    categoria?: string;
-    limit?: string;
-  };
-
-  const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
-  const conditions = [];
-  if (data) {
-    const start = new Date(data);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(data);
-    end.setHours(23, 59, 59, 999);
-    conditions.push(gte(vendasTable.criado_em, start));
-    conditions.push(lte(vendasTable.criado_em, end));
-  }
-  if (data_inicio) {
-    const start = new Date(data_inicio);
-    start.setHours(0, 0, 0, 0);
-    conditions.push(gte(vendasTable.criado_em, start));
-  }
-  if (data_fim) {
-    const end = new Date(data_fim);
-    end.setHours(23, 59, 59, 999);
-    conditions.push(lte(vendasTable.criado_em, end));
-  }
-  if (categoria) conditions.push(eq(vendasTable.categoria, categoria));
-
-  const vendas = await db
-    .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
-    .from(vendasTable)
-    .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(vendasTable.criado_em))
-    .limit(lim);
-
-  res.json(
-    vendas.map(({ venda, cliente_nome }) => ({
-      ...venda,
-      cliente_nome,
-      criado_em: venda.criado_em.toISOString(),
-    })),
-  );
-});
-router.get("/resumo/hoje", async (req, res) => {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const amanha = new Date(hoje);
-  amanha.setDate(amanha.getDate() + 1);
-  const vendas = await db
-    .select()
-    .from(vendasTable)
-    .where(and(gte(vendasTable.criado_em, hoje), lte(vendasTable.criado_em, amanha)));
-  const resumo = {
-    total: 0,
-    total_dinheiro: 0,
-    total_pix: 0,
-    total_cartao: 0,
-    total_fiado: 0,
-    num_vendas: vendas.length,
-    mercado: 0,
-    cozinha: 0,
-    feira: 0,
-  };
-  for (const v of vendas) {
-    resumo.total += v.total;
-    if (v.pagamento === "dinheiro") resumo.total_dinheiro += v.total;
-    if (v.pagamento === "pix") resumo.total_pix += v.total;
-    if (v.pagamento === "cartao") resumo.total_cartao += v.total;
-    if (v.pagamento === "fiado") resumo.total_fiado += v.total;
-    if (v.categoria === "mercado") resumo.mercado += v.total;
-    if (v.categoria === "cozinha") resumo.cozinha += v.total;
-    if (v.categoria === "feira") resumo.feira += v.total;
-  }
-  res.json(resumo);
-});
-router.get("/:id/itens", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, id));
-  res.json(itens);
-});
-
-
-router.post("/", async (req, res) => {
-  const data = RegistrarVendaBody.parse(req.body);
-  const rawBody = req.body as Record<string, unknown>;
-
-  const sessao = await db.query.sessoesCaixaTable.findFirst({
-    where: eq(sessoesCaixaTable.status, "aberto"),
-  });
-
-  const subtotal = data.itens.reduce((acc, item) => acc + item.quantidade * item.preco_unit, 0);
-  const total = Math.max(0, subtotal - (data.desconto ?? 0));
-
-  const [venda] = await db.insert(vendasTable)
-    .values({
-      sessao_id: sessao?.id ?? null,
-      categoria: data.categoria,
-      total,
-      desconto: data.desconto ?? 0,
-      pagamento: data.pagamento,
-      cliente_id: data.cliente_id ?? null,
-      observacao: data.observacao ?? null,
-      cnpj_credenciadora: (data as any).cnpj_credenciadora ?? null,
-      codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
-      bandeira_cartao: (data as any).bandeira_cartao ?? null,
-      tipo_pagamento: (data as any).tipo_pagamento ?? null,
-    } as any)
-    .returning();
-
-  const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
-  for (const item of data.itens) {
-    const produto = await db.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
-    if (!produto) continue;
-
-    const nome_snap = produto.marca ? `${produto.nome} - ${produto.marca}` : produto.nome;
-
-    const [insertedItem] = await db.insert(itensVendaTable).values({
-      venda_id: venda.id,
-      produto_id: item.produto_id,
-      nome_snap,
-      quantidade: item.quantidade,
-      unidades: null,
-      preco_unit: item.preco_unit,
-      subtotal: item.quantidade * item.preco_unit,
-    }).returning();
-    insertedItensVenda.push(insertedItem);
-
-    const qtdBaixaEstoque = item.quantidade;
-    const novoEstoque = produto.estoque - qtdBaixaEstoque;
-    await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
-  }
-
-  if (data.pagamento === "fiado" && data.cliente_id) {
-    await db.insert(fiadosTable).values({
-      cliente_id: data.cliente_id,
-      venda_id: venda.id,
-      valor: total,
-      pago: false,
-    });
-  }
-
-  if (sessao) {
-    const updates: Record<string, number> = {};
-    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}` as unknown as number;
-    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}` as unknown as number;
-    if (data.pagamento === "cartao") updates.total_cartao = sql`total_cartao + ${total}` as unknown as number;
-    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}` as unknown as number;
-
-    if (Object.keys(updates).length > 0) {
-      await db.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
-    }
-  }
-  
-  // Responder imediatamente ao frontend
-  res.status(201).json({
-    ...venda,
-    criado_em: venda.criado_em.toISOString(),
-    danfe_impresso: false,
-    nfce_status: "pendente",
-    // Flag para indicar que DANFE será impresso em background (evita duplicação)
-    _danfe_will_print: true,
-  });
-
-  // Processar NFC-e em background (não-bloqueante)
-  setImmediate(async () => {
-    try {
-      console.log("[NFC-e background] iniciando para venda", venda.id);
-      const produtosIds = data.itens.map((i) => i.produto_id);
-      const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
-      const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
-
-      const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
-      const vendaParaSefaz = {
-        ...venda,
-        observacao:
-          cpfNota.length === 11
-            ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
-            : venda.observacao,
-      };
-
-      const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
-
-      if (emissao.success && emissao.xmlAutorizado) {
-        const printTimeoutMs = Number(process.env.DANFE_PRINT_TIMEOUT_MS || "12000");
-        try {
-          await Promise.race([
-            await imprimirDanfeSimplificado(
-              emissao.qrCodeUrl || "",
-              emissao.chaveAcesso || "",
-              emissao.xmlAutorizado,
-              {
-                venda: { ...venda, criado_em: venda.criado_em },
-                itens: insertedItensVenda,
-                clienteNome: cliente?.nome,
-              }
-            ),
-            new Promise((_, reject) =>
-              setTimeout(
-                () => reject(new Error(`Timeout da impressao DANFE (${printTimeoutMs}ms)`)),
-                printTimeoutMs,
-              ),
-            ),
-          ]);
-        } catch (printError) {
-          console.error("[NFC-e background] Falha ao imprimir DANFE:", printError);
-        }
-      }
-    } catch (bgErr) {
-      console.error("[NFC-e background] erro:", bgErr);
-    }
-  });
-});
-
-router.put("/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    res.status(400).json({ ok: false, message: "id invalido" });
-    return;
-  }
-  const payload = req.body as Partial<{
-    pagamento: "dinheiro" | "pix" | "cartao" | "fiado";
-    cliente_id: number | null;
-    observacao: string | null;
-  }>;
-  const [updated] = await db
-    .update(vendasTable)
-    .set({
-      pagamento: payload.pagamento,
-      cliente_id: payload.cliente_id,
-      observacao: payload.observacao,
-    })
-    .where(eq(vendasTable.id, id))
-    .returning();
-  if (!updated) {
-    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
-    return;
-  }
-  res.json({ ...updated, criado_em: updated.criado_em.toISOString() });
-});
-
-export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/pages/produtos.tsx">
@@ -21103,6 +20897,290 @@ export default function Produtos() {
 }
 </file>
 
+<file path="artifacts/api-server/src/routes/vendas.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import {
+  vendasTable,
+  itensVendaTable,
+  produtosTable,
+  sessoesCaixaTable,
+  fiadosTable,
+  clientesTable,
+  nfceLogsTable,
+} from "@workspace/db/schema";
+import { eq, and, gte, lte, sql, desc, inArray, ilike, or } from "drizzle-orm";
+import { RegistrarVendaBody } from "@workspace/api-zod";
+import { emitirNfce } from "../services/sefaz.service";
+import { imprimirDanfeSimplificado } from "../services/danfe.service";
+
+const router: IRouter = Router();
+
+router.get("/", async (req, res) => {
+  const { data, data_inicio, data_fim, categoria, limit, page, q } = req.query as {
+    data?: string;
+    data_inicio?: string;
+    data_fim?: string;
+    categoria?: string;
+    limit?: string;
+    page?: string;
+    q?: string;
+  };
+
+  const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
+  const pageNumber = Math.max(1, parseInt(page ?? "1") || 1);
+  const offset = (pageNumber - 1) * lim;
+
+  const conditions = [];
+  if (data) {
+    const start = new Date(data);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(data);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(gte(vendasTable.criado_em, start));
+    conditions.push(lte(vendasTable.criado_em, end));
+  }
+  if (data_inicio) {
+    const start = new Date(data_inicio);
+    start.setHours(0, 0, 0, 0);
+    conditions.push(gte(vendasTable.criado_em, start));
+  }
+  if (data_fim) {
+    const end = new Date(data_fim);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(vendasTable.criado_em, end));
+  }
+  if (categoria) conditions.push(eq(vendasTable.categoria, categoria));
+  if (q?.trim()) {
+    const search = q.trim();
+    conditions.push(
+      or(
+        eq(vendasTable.id, Number(search)),
+        ilike(clientesTable.nome, `%${search}%`),
+        ilike(vendasTable.observacao, `%${search}%`),
+      ),
+    );
+  }
+
+  const vendas = await db
+    .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
+    .from(vendasTable)
+    .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(vendasTable.criado_em))
+    .limit(lim)
+    .offset(offset);
+
+  res.json(
+    vendas.map(({ venda, cliente_nome }) => ({
+      ...venda,
+      cliente_nome,
+      criado_em: venda.criado_em.toISOString(),
+    })),
+  );
+});
+router.get("/resumo/hoje", async (req, res) => {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const amanha = new Date(hoje);
+  amanha.setDate(amanha.getDate() + 1);
+  const vendas = await db
+    .select()
+    .from(vendasTable)
+    .where(and(gte(vendasTable.criado_em, hoje), lte(vendasTable.criado_em, amanha)));
+  const resumo = {
+    total: 0,
+    total_dinheiro: 0,
+    total_pix: 0,
+    total_cartao: 0,
+    total_fiado: 0,
+    num_vendas: vendas.length,
+    mercado: 0,
+    cozinha: 0,
+    feira: 0,
+  };
+  for (const v of vendas) {
+    resumo.total += v.total;
+    if (v.pagamento === "dinheiro") resumo.total_dinheiro += v.total;
+    if (v.pagamento === "pix") resumo.total_pix += v.total;
+    if (v.pagamento === "cartao") resumo.total_cartao += v.total;
+    if (v.pagamento === "fiado") resumo.total_fiado += v.total;
+    if (v.categoria === "mercado") resumo.mercado += v.total;
+    if (v.categoria === "cozinha") resumo.cozinha += v.total;
+    if (v.categoria === "feira") resumo.feira += v.total;
+  }
+  res.json(resumo);
+});
+router.get("/:id/itens", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, id));
+  res.json(itens);
+});
+
+
+router.post("/", async (req, res) => {
+  const data = RegistrarVendaBody.parse(req.body);
+  const rawBody = req.body as Record<string, unknown>;
+
+  const sessao = await db.query.sessoesCaixaTable.findFirst({
+    where: eq(sessoesCaixaTable.status, "aberto"),
+  });
+
+  const subtotal = data.itens.reduce((acc, item) => acc + item.quantidade * item.preco_unit, 0);
+  const total = Math.max(0, subtotal - (data.desconto ?? 0));
+
+  const [venda] = await db.insert(vendasTable)
+    .values({
+      sessao_id: sessao?.id ?? null,
+      categoria: data.categoria,
+      total,
+      desconto: data.desconto ?? 0,
+      pagamento: data.pagamento,
+      cliente_id: data.cliente_id ?? null,
+      observacao: data.observacao ?? null,
+      cnpj_credenciadora: (data as any).cnpj_credenciadora ?? null,
+      codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
+      bandeira_cartao: (data as any).bandeira_cartao ?? null,
+      tipo_pagamento: (data as any).tipo_pagamento ?? null,
+    } as any)
+    .returning();
+
+  const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
+  for (const item of data.itens) {
+    const produto = await db.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
+    if (!produto) continue;
+
+    const nome_snap = produto.marca ? `${produto.nome} - ${produto.marca}` : produto.nome;
+
+    const [insertedItem] = await db.insert(itensVendaTable).values({
+      venda_id: venda.id,
+      produto_id: item.produto_id,
+      nome_snap,
+      quantidade: item.quantidade,
+      unidades: null,
+      preco_unit: item.preco_unit,
+      subtotal: item.quantidade * item.preco_unit,
+    }).returning();
+    insertedItensVenda.push(insertedItem);
+
+    const qtdBaixaEstoque = item.quantidade;
+    const novoEstoque = produto.estoque - qtdBaixaEstoque;
+    await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
+  }
+
+  if (data.pagamento === "fiado" && data.cliente_id) {
+    await db.insert(fiadosTable).values({
+      cliente_id: data.cliente_id,
+      venda_id: venda.id,
+      valor: total,
+      pago: false,
+    });
+  }
+
+  if (sessao) {
+    const updates: Record<string, number> = {};
+    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}` as unknown as number;
+    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}` as unknown as number;
+    if (data.pagamento === "cartao") updates.total_cartao = sql`total_cartao + ${total}` as unknown as number;
+    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}` as unknown as number;
+
+    if (Object.keys(updates).length > 0) {
+      await db.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
+    }
+  }
+  
+  // Responder imediatamente ao frontend
+  res.status(201).json({
+    ...venda,
+    criado_em: venda.criado_em.toISOString(),
+    danfe_impresso: false,
+    nfce_status: "pendente",
+    // Flag para indicar que DANFE será impresso em background (evita duplicação)
+    _danfe_will_print: true,
+  });
+
+  // Processar NFC-e em background (não-bloqueante)
+  setImmediate(async () => {
+    try {
+      console.log("[NFC-e background] iniciando para venda", venda.id);
+      const produtosIds = data.itens.map((i) => i.produto_id);
+      const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
+      const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
+
+      const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
+      const vendaParaSefaz = {
+        ...venda,
+        observacao:
+          cpfNota.length === 11
+            ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
+            : cpfNota.length === 14
+              ? `${venda.observacao ? `${venda.observacao} | ` : ""}CNPJ_NA_NOTA:${cpfNota}`
+              : venda.observacao,
+      };
+
+      const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
+
+      if (emissao.success && emissao.xmlAutorizado) {
+        const printTimeoutMs = Number(process.env.DANFE_PRINT_TIMEOUT_MS || "12000");
+        try {
+          await Promise.race([
+            await imprimirDanfeSimplificado(
+              emissao.qrCodeUrl || "",
+              emissao.chaveAcesso || "",
+              emissao.xmlAutorizado,
+              {
+                venda: { ...venda, criado_em: venda.criado_em },
+                itens: insertedItensVenda,
+                clienteNome: cliente?.nome,
+              }
+            ),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Timeout da impressao DANFE (${printTimeoutMs}ms)`)),
+                printTimeoutMs,
+              ),
+            ),
+          ]);
+        } catch (printError) {
+          console.error("[NFC-e background] Falha ao imprimir DANFE:", printError);
+        }
+      }
+    } catch (bgErr) {
+      console.error("[NFC-e background] erro:", bgErr);
+    }
+  });
+});
+
+router.put("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ ok: false, message: "id invalido" });
+    return;
+  }
+  const payload = req.body as Partial<{
+    pagamento: "dinheiro" | "pix" | "cartao" | "fiado";
+    cliente_id: number | null;
+    observacao: string | null;
+  }>;
+  const [updated] = await db
+    .update(vendasTable)
+    .set({
+      pagamento: payload.pagamento,
+      cliente_id: payload.cliente_id,
+      observacao: payload.observacao,
+    })
+    .where(eq(vendasTable.id, id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+  res.json({ ...updated, criado_em: updated.criado_em.toISOString() });
+});
+
+export default router;
+</file>
+
 <file path="artifacts/api-server/src/services/sefaz.service.ts">
 import { db } from "@workspace/db";
 import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
@@ -21420,8 +21498,13 @@ export async function emitirNfce(
     const dataEmi = new Date();
     const chaveAcesso = gerarChaveAcesso(config, venda, dataEmi);
     console.log(`[SEFAZ] Chave de acesso gerada para venda ${venda.id}: ${chaveAcesso}`);
-    const cpfMatch = (venda.observacao || "").match(/CPF_NA_NOTA:(\d{11})/);
-    const cpfDestinatario = cpfMatch?.[1] || cliente?.cpf;
+    const cpfMatch = (venda.observacao || "").match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
+    const documentoDestinatario = cpfMatch?.[1] || cliente?.cpf;
+    
+    // Detectar se é CPF (11 dígitos) ou CNPJ (14 dígitos)
+    const documentoLimpo = documentoDestinatario?.replace(/\D/g, "") || "";
+    const isCnpj = documentoLimpo.length === 14;
+    const documentoTag = isCnpj ? "CNPJ" : "CPF";
 
     const nfeObj = {
       NFe: {
@@ -21468,9 +21551,9 @@ export async function emitirNfce(
             IE: config.ie.replace(/\D/g, ""),
             CRT: config.crt,
           },
-          ...(cpfDestinatario ? {
+          ...(documentoDestinatario ? {
             dest: {
-              CPF: cpfDestinatario.replace(/\D/g, ""),
+              [documentoTag]: documentoLimpo,
               xNome: config.ambiente === "homologacao"
                 ? "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
                 : (cliente?.nome || "CONSUMIDOR").toUpperCase().slice(0, 60),
@@ -21536,9 +21619,7 @@ export async function emitirNfce(
                 : venda.pagamento === "pix"
                   ? "17"
                   : venda.pagamento === "cartao"
-                    ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
-                        ? (venda.tipo_pagamento || "03")
-                        : "03") // MODO TESTE: usar "03" como padrão ao invés de "99" para aceitar teste sem TEF real
+                    ? (venda.tipo_pagamento || "03")
                     : "99",
               vPag: (venda.total - venda.desconto).toFixed(2),
               ...((() => {
@@ -21547,28 +21628,27 @@ export async function emitirNfce(
                   : venda.pagamento === "pix"
                     ? "17"
                     : venda.pagamento === "cartao"
-                      ? (venda.cnpj_credenciadora || venda.bandeira_cartao || venda.codigo_autorizacao
-                          ? (venda.tipo_pagamento || "03")
-                          : "03") // MODO TESTE: usar "03" como padrão
+                      ? (venda.tipo_pagamento || "03")
                       : "99";
                 const result: any = {};
-                
+
                 // SEFAZ requires xPag (description) when tPag is 99
                 if (tPag === "99") {
                   result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
                 }
-                
-                // MODO TESTE: quando em pagamento com cartão, usar dados padrão se não tiver dados reais da máquina
-                // Quando contratar um serviço TEF real, os dados abaixo virão preenchidos do maquininha.ts
-                if (venda.pagamento === "cartao") {
+
+                // Incluir dados de cartão sempre que houver informações válidas.
+                // Isso permite pagamento em débito/crédito funcionar com o simulador Stone.
+                const temDadosCartao = venda.cnpj_credenciadora && venda.codigo_autorizacao;
+                if (venda.pagamento === "cartao" && temDadosCartao) {
                   result.card = {
                     tpIntegra: "1",
-                    // Dados padrão para teste - será substituído por dados reais do TEF quando integrado
-                    CNPJ: venda.cnpj_credenciadora || "16088083000155", // CNPJ do simulador Stone
-                    tBand: normalizarBandeira(venda.bandeira_cartao || (venda.tipo_pagamento === "04" ? "VISA" : "MASTERCARD")),
-                    cAut: venda.codigo_autorizacao || "000000", // Será preenchido pelo terminal TEF real
+                    CNPJ: String(venda.cnpj_credenciadora || "").replace(/\D/g, ""),
+                    tBand: normalizarBandeira(venda.bandeira_cartao || "99"),
+                    cAut: venda.codigo_autorizacao,
                   };
                 }
+
                 return result;
               })()),
             }],
@@ -21862,6 +21942,16 @@ function wrapText(text: string, w: number): string[] {
     return out;
 }
 
+function parseDocumentoNota(observacao?: string) {
+  const match = observacao?.match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
+  if (!match) return null;
+  const documento = match[1];
+  return {
+    label: documento.length === 14 ? "CNPJ" : "CPF",
+    value: documento,
+  };
+}
+
 function codigo6(item: CupomItem) {
   if (item.produto_id != null) {
     return String(item.produto_id).padStart(6, "0").slice(-6);
@@ -21955,6 +22045,10 @@ export async function buildCupomText(
   }
 
   if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
+  const destinatarioDoc = parseDocumentoNota(venda.observacao);
+  if (destinatarioDoc) {
+    rows.push(`${destinatarioDoc.label}: ${destinatarioDoc.value}`.slice(0, W));
+  }
   if (venda.observacao) {
      for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
   }
@@ -22389,7 +22483,9 @@ export default function Pdv() {
     const observacaoComCpf =
       cpfDigits.length === 11
         ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CPF_NA_NOTA:${cpfDigits}`
-        : observacaoFinal;
+        : cpfDigits.length === 14
+          ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CNPJ_NA_NOTA:${cpfDigits}`
+          : observacaoFinal;
 
     registrarVenda.mutate({
       data: {
@@ -22398,6 +22494,7 @@ export default function Pdv() {
         desconto: cart.desconto,
         cliente_id: clienteId,
         observacao: observacaoComCpf,
+        cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
         itens: cart.getPayloadItens(),
         ...dadosCartao,
       }
@@ -22877,12 +22974,12 @@ export default function Pdv() {
         </div>
       </Modal>
 
-      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF na nota (opcional)">
+      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF/CNPJ na nota (opcional)">
         <div className="space-y-4">
           <Input
             value={cpfInput}
             onChange={(e) => setCpfInput(e.target.value)}
-            placeholder="Digite o CPF e clique em Sim, ou clique em Nao"
+            placeholder="Digite CPF ou CNPJ e clique em Sim, ou clique em Nao"
             className="font-mono"
           />
           <div className="flex gap-2">
@@ -22951,6 +23048,8 @@ import { buildCupomText, type CupomVenda, type CupomItem } from "../lib/print-la
 type DanfeData = {
   emitente: string;
   destinatario: string;
+  documentoTipo?: string;
+  documentoDestinatario?: string;
   numero: string;
   serie: string;
   dataEmissao: string;
@@ -23016,6 +23115,14 @@ function formatarHorarioBrasil(data: Date | string): string {
   });
 }
 
+function formatDocumentoFiscal(dest: any) {
+  const raw = String(dest?.CNPJ || dest?.CPF || dest?.cnpj || dest?.cpf || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 14) return { tipo: "CNPJ", valor: digits };
+  if (digits.length === 11) return { tipo: "CPF", valor: digits };
+  return null;
+}
+
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
   const parsed = parser.parse(xmlAutorizado);
@@ -23031,6 +23138,8 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
 
   const det = asArray(infNFe?.det);
   const detPag = asArray(pag?.detPag);
+
+  const documentoFiscal = formatDocumentoFiscal(dest);
 
   // Extrair QR Code de forma limpa e direta
   const infNFeSupl = infNFe?.infNFeSupl || {};
@@ -23050,6 +23159,8 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   return {
     emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
     destinatario: dest?.xNome || "Consumidor Final",
+    documentoTipo: documentoFiscal?.tipo,
+    documentoDestinatario: documentoFiscal?.valor,
     numero: String(ide?.nNF || "000"),
     serie: String(ide?.serie || "1"),
     dataEmissao: formatarDataEmissao(ide?.dhEmi),
@@ -23093,6 +23204,9 @@ function renderDanfeSimplificadoText(data: DanfeData): string {
   rows.push(`NF: ${data.numero}  Serie: ${data.serie}`);
   rows.push(`Emissao: ${data.dataEmissao}`);
   rows.push(`Destinatario: ${data.destinatario}`);
+  if (data.documentoTipo && data.documentoDestinatario) {
+    rows.push(`${data.documentoTipo}: ${data.documentoDestinatario}`);
+  }
   rows.push(drawLine());
   rows.push("Qtd Und x Vlr.Unit = Total");
 

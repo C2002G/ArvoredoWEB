@@ -92,6 +92,16 @@ function wrapText(text: string, w: number): string[] {
     return out;
 }
 
+function parseDocumentoNota(observacao?: string) {
+  const match = observacao?.match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
+  if (!match) return null;
+  const documento = match[1];
+  return {
+    label: documento.length === 14 ? "CNPJ" : "CPF",
+    value: documento,
+  };
+}
+
 function codigo6(item: CupomItem) {
   if (item.produto_id != null) {
     return String(item.produto_id).padStart(6, "0").slice(-6);
@@ -185,6 +195,10 @@ export async function buildCupomText(
   }
 
   if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
+  const destinatarioDoc = parseDocumentoNota(venda.observacao);
+  if (destinatarioDoc) {
+    rows.push(`${destinatarioDoc.label}: ${destinatarioDoc.value}`.slice(0, W));
+  }
   if (venda.observacao) {
      for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
   }

@@ -314,8 +314,13 @@ export async function emitirNfce(
     const dataEmi = new Date();
     const chaveAcesso = gerarChaveAcesso(config, venda, dataEmi);
     console.log(`[SEFAZ] Chave de acesso gerada para venda ${venda.id}: ${chaveAcesso}`);
-    const cpfMatch = (venda.observacao || "").match(/CPF_NA_NOTA:(\d{11})/);
-    const cpfDestinatario = cpfMatch?.[1] || cliente?.cpf;
+    const cpfMatch = (venda.observacao || "").match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
+    const documentoDestinatario = cpfMatch?.[1] || cliente?.cpf;
+    
+    // Detectar se é CPF (11 dígitos) ou CNPJ (14 dígitos)
+    const documentoLimpo = documentoDestinatario?.replace(/\D/g, "") || "";
+    const isCnpj = documentoLimpo.length === 14;
+    const documentoTag = isCnpj ? "CNPJ" : "CPF";
 
     const nfeObj = {
       NFe: {
@@ -362,9 +367,9 @@ export async function emitirNfce(
             IE: config.ie.replace(/\D/g, ""),
             CRT: config.crt,
           },
-          ...(cpfDestinatario ? {
+          ...(documentoDestinatario ? {
             dest: {
-              CPF: cpfDestinatario.replace(/\D/g, ""),
+              [documentoTag]: documentoLimpo,
               xNome: config.ambiente === "homologacao"
                 ? "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
                 : (cliente?.nome || "CONSUMIDOR").toUpperCase().slice(0, 60),

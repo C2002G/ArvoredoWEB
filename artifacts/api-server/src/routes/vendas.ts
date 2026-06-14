@@ -213,7 +213,9 @@ router.post("/", async (req, res) => {
         observacao:
           cpfNota.length === 11
             ? `${venda.observacao ? `${venda.observacao} | ` : ""}CPF_NA_NOTA:${cpfNota}`
-            : venda.observacao,
+            : cpfNota.length === 14
+              ? `${venda.observacao ? `${venda.observacao} | ` : ""}CNPJ_NA_NOTA:${cpfNota}`
+              : venda.observacao,
       };
 
       const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);

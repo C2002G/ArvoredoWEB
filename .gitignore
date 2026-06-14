@@ -56,3 +56,6 @@ Thumbs.db
 !.env.example
 Logs/
 repomix-output.xml
+
+*.md
+!README.md

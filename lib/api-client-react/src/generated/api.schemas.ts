@@ -130,6 +130,7 @@ export interface RegistrarVendaInput {
   pagamento: RegistrarVendaInputPagamento;
   cliente_id?: number | null;
   observacao?: string | null;
+  cpf_nota?: string | null;
   cnpj_credenciadora?: string | null;
   codigo_autorizacao?: string | null;
   bandeira_cartao?: string | null;

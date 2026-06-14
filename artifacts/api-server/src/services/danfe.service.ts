@@ -9,6 +9,8 @@ import { buildCupomText, type CupomVenda, type CupomItem } from "../lib/print-la
 type DanfeData = {
   emitente: string;
   destinatario: string;
+  documentoTipo?: string;
+  documentoDestinatario?: string;
   numero: string;
   serie: string;
   dataEmissao: string;
@@ -74,6 +76,14 @@ function formatarHorarioBrasil(data: Date | string): string {
   });
 }
 
+function formatDocumentoFiscal(dest: any) {
+  const raw = String(dest?.CNPJ || dest?.CPF || dest?.cnpj || dest?.cpf || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 14) return { tipo: "CNPJ", valor: digits };
+  if (digits.length === 11) return { tipo: "CPF", valor: digits };
+  return null;
+}
+
 function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
   const parsed = parser.parse(xmlAutorizado);
@@ -89,6 +99,8 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
 
   const det = asArray(infNFe?.det);
   const detPag = asArray(pag?.detPag);
+
+  const documentoFiscal = formatDocumentoFiscal(dest);
 
   // Extrair QR Code de forma limpa e direta
   const infNFeSupl = infNFe?.infNFeSupl || {};
@@ -108,6 +120,8 @@ function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAces
   return {
     emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
     destinatario: dest?.xNome || "Consumidor Final",
+    documentoTipo: documentoFiscal?.tipo,
+    documentoDestinatario: documentoFiscal?.valor,
     numero: String(ide?.nNF || "000"),
     serie: String(ide?.serie || "1"),
     dataEmissao: formatarDataEmissao(ide?.dhEmi),
@@ -151,6 +165,9 @@ function renderDanfeSimplificadoText(data: DanfeData): string {
   rows.push(`NF: ${data.numero}  Serie: ${data.serie}`);
   rows.push(`Emissao: ${data.dataEmissao}`);
   rows.push(`Destinatario: ${data.destinatario}`);
+  if (data.documentoTipo && data.documentoDestinatario) {
+    rows.push(`${data.documentoTipo}: ${data.documentoDestinatario}`);
+  }
   rows.push(drawLine());
   rows.push("Qtd Und x Vlr.Unit = Total");
 

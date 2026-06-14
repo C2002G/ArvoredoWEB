@@ -351,7 +351,9 @@ export default function Pdv() {
     const observacaoComCpf =
       cpfDigits.length === 11
         ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CPF_NA_NOTA:${cpfDigits}`
-        : observacaoFinal;
+        : cpfDigits.length === 14
+          ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CNPJ_NA_NOTA:${cpfDigits}`
+          : observacaoFinal;
 
     registrarVenda.mutate({
       data: {
@@ -360,6 +362,7 @@ export default function Pdv() {
         desconto: cart.desconto,
         cliente_id: clienteId,
         observacao: observacaoComCpf,
+        cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
         itens: cart.getPayloadItens(),
         ...dadosCartao,
       }
@@ -839,12 +842,12 @@ export default function Pdv() {
         </div>
       </Modal>
 
-      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF na nota (opcional)">
+      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF/CNPJ na nota (opcional)">
         <div className="space-y-4">
           <Input
             value={cpfInput}
             onChange={(e) => setCpfInput(e.target.value)}
-            placeholder="Digite o CPF e clique em Sim, ou clique em Nao"
+            placeholder="Digite CPF ou CNPJ e clique em Sim, ou clique em Nao"
             className="font-mono"
           />
           <div className="flex gap-2">
