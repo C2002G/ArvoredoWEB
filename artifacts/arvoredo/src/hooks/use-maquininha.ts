@@ -4,13 +4,14 @@ const BASE = "/api/maquininha";
 
 export type MaquininhaConfig = {
   ativo: boolean;
-  modo_conexao: "manual" | "api" | "usb_bridge";
+  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
   api_url: string;
   api_token: string;
   timeout_ms: number;
   empresa_nome: string;
   empresa_cnpj: string;
   empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
 };
 
 type EnvioMaquininhaInput = {
@@ -30,7 +31,7 @@ type EnvioMaquininhaInput = {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init);
   const payload = await res.json();
-  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisicao da maquininha");
+  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
   return payload as T;
 }
 
@@ -54,15 +55,20 @@ export function useSalvarMaquininhaConfig() {
 
 export type MaquininhaResponse = {
   ok: boolean;
-  enviado: boolean;
-  mensagem: string;
-  modo: string;
+  aprovado?: boolean;
+  enviado?: boolean;
+  mensagem?: string;
+  modo?: string;
   dados_cartao?: {
     cnpj_credenciadora?: string | null;
     codigo_autorizacao?: string | null;
     bandeira_cartao?: string | null;
     tipo_pagamento?: string | null;
+    nsu_tef?: string | null;
+    tef_intencao_id?: number | null;
   };
+  comprovante_estabelecimento?: string | null;
+  comprovante_cliente?: string | null;
 };
 
 export function useEnviarParaMaquininha() {
@@ -76,12 +82,26 @@ export function useEnviarParaMaquininha() {
   });
 }
 
+export function useCancelarPagamento() {
+  return useMutation({
+    mutationFn: (data: { intencao_venda_id: number }) =>
+      request<{ ok: boolean; mensagem: string }>("/cancelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
 export function useTestarMaquininha() {
   return useMutation({
     mutationFn: () =>
-      request<{ ok: boolean; mensagem: string; modo_conexao: string }>("/testar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }),
+      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
+        "/testar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
   });
 }

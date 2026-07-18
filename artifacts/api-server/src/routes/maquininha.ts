@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-type ModoConexao = "manual" | "api" | "usb_bridge";
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
 
 type MaquininhaConfig = {
   ativo: boolean;
@@ -13,6 +13,7 @@ type MaquininhaConfig = {
   empresa_nome: string;
   empresa_cnpj: string;
   empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
 };
 
 const router: IRouter = Router();
@@ -23,20 +24,18 @@ const DEFAULT_CONFIG: MaquininhaConfig = {
   modo_conexao: "manual",
   api_url: "",
   api_token: "",
-  timeout_ms: 8000,
+  timeout_ms: 60000,
   empresa_nome: "NOME DA EMPRESA",
   empresa_cnpj: "00.000.000/0000-00",
   empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
 };
 
 async function loadConfig(): Promise<MaquininhaConfig> {
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return {
-      ...DEFAULT_CONFIG,
-      ...parsed,
-    };
+    return { ...DEFAULT_CONFIG, ...parsed };
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -45,6 +44,38 @@ async function loadConfig(): Promise<MaquininhaConfig> {
 async function saveConfig(config: MaquininhaConfig): Promise<void> {
   await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
   await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`);
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number = data?.statusId ?? data?.status?.id;
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch {
+      // falha de rede temporária — continua tentando
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
 }
 
 router.get("/config", async (_req, res) => {
@@ -58,7 +89,7 @@ router.post("/config", async (req, res) => {
   const merged: MaquininhaConfig = {
     ...current,
     ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 8000)),
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
   };
   await saveConfig(merged);
   res.json({ ok: true, config: merged });
@@ -70,166 +101,138 @@ router.post("/enviar", async (req, res) => {
   const payload = req.body as {
     venda_local_id?: string;
     metodo: "debito" | "credito" | "pix";
-    valor_total: number;
-    desconto?: number;
-    itens: Array<{
-      produto_id: number;
-      nome: string;
-      quantidade: number;
-      preco_unit: number;
-      subtotal: number;
-    }>;
-  };
-
-  const envio = {
-    origem: "arvoredo-pdv",
-    enviado_em: new Date().toISOString(),
-    empresa: {
-      nome: config.empresa_nome,
-      cnpj: config.empresa_cnpj,
-      regra: config.empresa_regra_padrao,
-    },
-    pedido: {
-      venda_local_id: payload.venda_local_id ?? null,
-      metodo: payload.metodo,
-      valor_total: payload.valor_total,
-      desconto: payload.desconto ?? 0,
-      itens: payload.itens ?? [],
-    },
+    valor_total: number; // em reais, ex: 10.50
   };
 
   if (!config.ativo) {
-    return res.json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: "Integracao de maquininha esta desativada.",
-    });
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
   }
 
-  if (config.modo_conexao !== "api") {
-    return res.json({
-      ok: true,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem:
-        "Solicitacao preparada. Conexao nao-API exige middleware do fabricante ou uso manual na maquininha.",
-      payload_preview: envio,
-    });
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
   }
 
-  const terminalIp = process.env.STONE_TERMINAL_IP?.trim();
-  const useStoneEmulator = !!terminalIp && (payload.metodo === "debito" || payload.metodo === "credito");
-
-  if (!config.api_url && !useStoneEmulator) {
-    return res.status(400).json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: "Defina a URL da API/gateway da maquininha em Dispositivos ou STONE_TERMINAL_IP no .env.",
-    });
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
   }
 
-  const endpoint = useStoneEmulator
-    ? `http://${terminalIp}/api/v1/pagamentos`
-    : config.api_url;
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+          terminalId,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+    const motivo = resultado.timeout
+      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
+    return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: pagamento.autorizacao ?? null,
+      bandeira_cartao: pagamento.bandeira ?? null,
+      tipo_pagamento:
+        payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05",
+      nsu_tef: pagamento.nsuTid ?? pagamento.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
 
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(config.api_token && !useStoneEmulator ? { Authorization: `Bearer ${config.api_token}` } : {}),
+    const resp = await fetch(
+      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      {   
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
       },
-      body: JSON.stringify(
-        useStoneEmulator
-          ? {
-              valor: payload.valor_total,
-              tipo: payload.metodo === "credito" ? "credito" : "debito",
-            }
-          : envio,
-      ),
-      signal: AbortSignal.timeout(config.timeout_ms),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      return res.status(502).json({
-        ok: false,
-        enviado: false,
-        modo: config.modo_conexao,
-        mensagem: `Gateway da maquininha respondeu erro HTTP ${response.status}.`,
-        detalhe: text || null,
-      });
-    }
-
-    const result: any = await response.json().catch(() => ({}));
-    const status = String(result?.status || result?.Status || result?.aprovado || result?.approved || "").toLowerCase();
-    const aprovado = useStoneEmulator
-      ? status === "aprovado" || status === "approved" || status === "true" || status === "ok" || result?.approved === true
-      : true;
-
-    if (useStoneEmulator && !aprovado) {
-      return res.status(502).json({
-        ok: false,
-        enviado: false,
-        modo: "stone-dpos",
-        mensagem: `Pagamento não aprovado pela maquininha Stone: ${JSON.stringify(result)}`,
-        detalhe: result,
-      });
-    }
-
-    const additionalCardData = {
-      cnpj_credenciadora:
-        result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || result?.dados_cartao?.cnpj_credenciadora || result?.dados_cartao?.CNPJ || null,
-      codigo_autorizacao:
-        result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || result?.dados_cartao?.codigo_autorizacao || result?.dados_cartao?.autorizacao || null,
-      bandeira_cartao:
-        result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || result?.dados_cartao?.bandeira_cartao || null,
-      tipo_pagamento:
-        result?.tipo_pagamento || result?.tipoPagamento || result?.tpPagamento || result?.dados_cartao?.tipo_pagamento || null,
-    };
-
-    const dadosCartao = useStoneEmulator
-      ? {
-          cnpj_credenciadora: result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || null,
-          codigo_autorizacao: result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || null,
-          bandeira_cartao: result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || null,
-          tipo_pagamento: payload.metodo === "credito" ? "03" : "04",
-        }
-      : (payload.metodo === "debito" || payload.metodo === "credito")
-        ? additionalCardData
-        : undefined;
-
-    return res.json({
-      ok: true,
-      enviado: true,
-      modo: useStoneEmulator ? "stone-dpos" : config.modo_conexao,
-      mensagem: useStoneEmulator ? "Pagamento aprovado na Stone" : "Pedido enviado para a integracao da maquininha.",
-      dados_cartao: dadosCartao,
-      resultado_maquininha: result,
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Falha de comunicacao com gateway";
-    return res.status(502).json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: msg,
-    });
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
   }
 });
 
 router.post("/testar", async (_req, res) => {
   const config = await loadConfig();
-  res.json({
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
     ok: true,
     ativo: config.ativo,
     modo_conexao: config.modo_conexao,
-    mensagem:
-      config.modo_conexao === "api"
-        ? "Teste de configuracao pronto. Use o PDV para teste real com envio de valor."
-        : "Modo sem API: o sistema prepara os dados e a confirmacao segue manual.",
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
   });
 });
 

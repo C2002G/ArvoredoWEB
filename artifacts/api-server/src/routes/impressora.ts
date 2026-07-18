@@ -159,4 +159,19 @@ router.post("/sangria", async (req, res) => {
   }
 });
 
+router.post("/comprovante-tef", async (req, res) => {
+  try {
+    const { via } = req.body as { via: string };
+    if (!via || typeof via !== "string" || via.trim().length === 0) {
+      return res.status(400).json({ ok: false, erro: "Campo 'via' ausente ou vazio." });
+    }
+    const result = await printCupomWithQrCode(via.trim());
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
+    logger.error(`Erro na rota /comprovante-tef: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
 export default router;

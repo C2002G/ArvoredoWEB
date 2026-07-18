@@ -254,6 +254,8 @@ export const RegistrarVendaBody = zod.object({
   codigo_autorizacao: zod.string().nullish(),
   bandeira_cartao: zod.string().nullish(),
   tipo_pagamento: zod.string().nullish(),
+  nsu_tef: zod.string().nullish(),
+  tef_intencao_id: zod.number().nullish(),
   itens: zod.array(
     zod.object({
       produto_id: zod.number(),

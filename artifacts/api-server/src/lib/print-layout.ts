@@ -92,7 +92,7 @@ function wrapText(text: string, w: number): string[] {
     return out;
 }
 
-function parseDocumentoNota(observacao?: string) {
+function parseDocumentoNota(observacao?: string | null) {
   const match = observacao?.match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
   if (!match) return null;
   const documento = match[1];

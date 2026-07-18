@@ -21,6 +21,8 @@ export const vendasTable = pgTable("vendas", {
   codigo_autorizacao: text("codigo_autorizacao"),
   bandeira_cartao: text("bandeira_cartao"),
   tipo_pagamento: text("tipo_pagamento"),
+  nsu_tef: text("nsu_tef"),
+  tef_intencao_id: integer("tef_intencao_id"),
   criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 

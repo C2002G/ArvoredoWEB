@@ -40,14 +40,15 @@ export default function Dispositivos() {
   const [erroImpressora, setErroImpressora] = useState<string>("");
   const [formMaquininha, setFormMaquininha] = useState({
     ativo: true,
-    modo_conexao: "manual" as "manual" | "api" | "usb_bridge",
+    modo_conexao: "controlpay" as "manual" | "api" | "usb_bridge" | "controlpay",
     api_url: "",
     api_token: "",
-    timeout_ms: 8000,
+    timeout_ms: 60000,
     empresa_nome: "NOME DA EMPRESA",
     empresa_cnpj: "00.000.000/0000-00",
     empresa_regra_padrao:
       "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+    cnpj_credenciadora: "",
   });
 
   useEffect(() => {
@@ -219,10 +220,11 @@ export default function Dispositivos() {
                     onChange={(e) =>
                       setFormMaquininha(prev => ({
                         ...prev,
-                        modo_conexao: e.target.value as "manual" | "api" | "usb_bridge",
+                        modo_conexao: e.target.value as "manual" | "api" | "usb_bridge" | "controlpay",
                       }))
                     }
                   >
+                    <option value="controlpay">ControlPay (PayGo ACBr) ← ATIVO</option>
                     <option value="manual">Manual (sem integração direta)</option>
                     <option value="api">API/Gateway</option>
                     <option value="usb_bridge">USB com bridge local</option>
@@ -257,7 +259,7 @@ export default function Dispositivos() {
                     className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
                     value={formMaquininha.timeout_ms}
                     onChange={(e) =>
-                      setFormMaquininha(prev => ({ ...prev, timeout_ms: Number(e.target.value || 8000) }))
+                      setFormMaquininha(prev => ({ ...prev, timeout_ms: Number(e.target.value || 60000) }))
                     }
                   />
                 </label>
@@ -277,6 +279,16 @@ export default function Dispositivos() {
                     className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
                     value={formMaquininha.empresa_cnpj}
                     onChange={(e) => setFormMaquininha(prev => ({ ...prev, empresa_cnpj: e.target.value }))}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">CNPJ da credenciadora</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="Ex: 16501555000157 (Stone) ou 01425787000104 (Rede)"
+                    value={formMaquininha.cnpj_credenciadora}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, cnpj_credenciadora: e.target.value }))}
                   />
                 </label>
 

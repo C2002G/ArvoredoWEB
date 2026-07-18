@@ -40,219 +40,240 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+artifacts/
+  api-server/
+    data/
+      maquininha-config.json
+    src/
+      lib/
+        .gitkeep
+        logger.ts
+        print-layout.ts
+        printer.ts
+      middlewares/
+        .gitkeep
+      routes/
+        caixa.ts
+        estoque.ts
+        fiado.ts
+        health.ts
+        impressora.ts
+        index.ts
+        maquininha.ts
+        nfce.ts
+        produtos.ts
+        vendas.ts
+      services/
+        danfe.service.ts
+        sefaz.service.ts
+      types/
+        escpos.d.ts
+      app.ts
+      index.ts
+      migrate.ts
+    build.mjs
+    package.json
+    tsconfig.json
+  arvoredo/
+    public/
+      favicon.svg
+      opengraph.jpg
+    src/
+      components/
+        ui/
+          accordion.tsx
+          alert-dialog.tsx
+          alert.tsx
+          aspect-ratio.tsx
+          avatar.tsx
+          badge.tsx
+          breadcrumb.tsx
+          button-group.tsx
+          button.tsx
+          calendar.tsx
+          card.tsx
+          carousel.tsx
+          chart.tsx
+          checkbox.tsx
+          collapsible.tsx
+          command.tsx
+          context-menu.tsx
+          dialog.tsx
+          drawer.tsx
+          dropdown-menu.tsx
+          empty.tsx
+          field.tsx
+          form.tsx
+          hover-card.tsx
+          input-group.tsx
+          input-otp.tsx
+          input.tsx
+          item.tsx
+          kbd.tsx
+          label.tsx
+          menubar.tsx
+          navigation-menu.tsx
+          pagination.tsx
+          popover.tsx
+          progress.tsx
+          radio-group.tsx
+          resizable.tsx
+          scroll-area.tsx
+          select.tsx
+          separator.tsx
+          sheet.tsx
+          sidebar.tsx
+          skeleton.tsx
+          slider.tsx
+          sonner.tsx
+          spinner.tsx
+          switch.tsx
+          table.tsx
+          tabs.tsx
+          textarea.tsx
+          toast.tsx
+          toaster.tsx
+          toggle-group.tsx
+          toggle.tsx
+          tooltip.tsx
+        layout.tsx
+        ui-elements.tsx
+      hooks/
+        use-caixa.ts
+        use-estoque.ts
+        use-fiado.ts
+        use-impressora.ts
+        use-maquininha.ts
+        use-mobile.tsx
+        use-produtos.ts
+        use-toast.ts
+        use-vendas.ts
+      lib/
+        utils.ts
+      pages/
+        caixa.tsx
+        dispositivos.tsx
+        estoque.tsx
+        fiado.tsx
+        historico.tsx
+        not-found.tsx
+        pdv.tsx
+        produtos.tsx
+      store/
+        use-cart.ts
+      App.tsx
+      index.css
+      main.tsx
+    components.json
+    index.html
+    package.json
+    tsconfig.json
+    vite.config.ts
+deployment/
+  SQL/
+    2026-04-24-add-categoria-feira.sql
+    2026-04-24-itens-venda-unidades.sql
+    2026-05-15-vendas-cartoes-stone.sql
+    2026-06-14-vendas-tef-controlpay.sql
+    criar-banco.sql
+  .env.example
+  atualizar.ps1
+  backup-diario.ps1
+  backup-excel.ps1
+  configurar-sistema.ps1
+  iniciar.ps1
+  instalacao-completa.ps1
+  instalar-dependencias.ps1
+  menu.ps1
+  parar.ps1
+kiara/
+  favicon.ico
+  kiara.png
+lib/
+  api-client-react/
+    src/
+      generated/
+        api.schemas.ts
+        api.ts
+      custom-fetch.ts
+      index.ts
+    package.json
+    tsconfig.json
+  api-spec/
+    openapi.yaml
+    orval.config.ts
+    package.json
+  api-zod/
+    src/
+      generated/
+        types/
+          abrirCaixaInput.ts
+          alertasProdutos.ts
+          buscarProdutoParams.ts
+          cliente.ts
+          criarClienteInput.ts
+          criarProdutoInput.ts
+          criarProdutoInputCategoria.ts
+          editarProdutoInput.ts
+          editarProdutoInputCategoria.ts
+          extratoCliente.ts
+          fiadoItem.ts
+          healthStatus.ts
+          impressaoResponse.ts
+          imprimirCupomInput.ts
+          imprimirSangriaInput.ts
+          index.ts
+          itemVenda.ts
+          itemVendaInput.ts
+          listarClientesParams.ts
+          listarMovimentosParams.ts
+          listarProdutosCategoria.ts
+          listarProdutosParams.ts
+          listarSangriasParams.ts
+          listarVendasParams.ts
+          movimentoEstoque.ts
+          movimentoEstoqueInput.ts
+          movimentoEstoqueInputTipo.ts
+          pagarFiadoInput.ts
+          produto.ts
+          produtoCategoria.ts
+          registrarVendaInput.ts
+          registrarVendaInputCategoria.ts
+          registrarVendaInputPagamento.ts
+          resumoFiado.ts
+          resumoVendas.ts
+          sangria.ts
+          sangriaInput.ts
+          sessaoCaixa.ts
+          sessaoCaixaStatus.ts
+          statusCaixa.ts
+          successResponse.ts
+          venda.ts
+        api.ts
+      index.ts
+    package.json
+    tsconfig.json
+  db/
+    src/
+      schema/
+        caixa.ts
+        clientes.ts
+        fiscal.ts
+        index.ts
+        produtos.ts
+        vendas.ts
+      index.ts
+    drizzle.config.cjs
+    package.json
+    seed.ts
+    tsconfig.json
+modelo-nota/
+  Captura de tela 2026-04-24 154017.png
+  fabio.pdf
 .env.example
 .gitignore
 .npmrc
-artifacts/api-server/build.mjs
-artifacts/api-server/package.json
-artifacts/api-server/src/app.ts
-artifacts/api-server/src/index.ts
-artifacts/api-server/src/lib/.gitkeep
-artifacts/api-server/src/lib/logger.ts
-artifacts/api-server/src/lib/print-layout.ts
-artifacts/api-server/src/lib/printer.ts
-artifacts/api-server/src/middlewares/.gitkeep
-artifacts/api-server/src/migrate.ts
-artifacts/api-server/src/routes/caixa.ts
-artifacts/api-server/src/routes/estoque.ts
-artifacts/api-server/src/routes/fiado.ts
-artifacts/api-server/src/routes/health.ts
-artifacts/api-server/src/routes/impressora.ts
-artifacts/api-server/src/routes/index.ts
-artifacts/api-server/src/routes/maquininha.ts
-artifacts/api-server/src/routes/nfce.ts
-artifacts/api-server/src/routes/produtos.ts
-artifacts/api-server/src/routes/vendas.ts
-artifacts/api-server/src/services/danfe.service.ts
-artifacts/api-server/src/services/sefaz.service.ts
-artifacts/api-server/src/types/escpos.d.ts
-artifacts/api-server/tsconfig.json
-artifacts/arvoredo/components.json
-artifacts/arvoredo/index.html
-artifacts/arvoredo/package.json
-artifacts/arvoredo/public/favicon.svg
-artifacts/arvoredo/public/opengraph.jpg
-artifacts/arvoredo/src/App.tsx
-artifacts/arvoredo/src/components/layout.tsx
-artifacts/arvoredo/src/components/ui-elements.tsx
-artifacts/arvoredo/src/components/ui/accordion.tsx
-artifacts/arvoredo/src/components/ui/alert-dialog.tsx
-artifacts/arvoredo/src/components/ui/alert.tsx
-artifacts/arvoredo/src/components/ui/aspect-ratio.tsx
-artifacts/arvoredo/src/components/ui/avatar.tsx
-artifacts/arvoredo/src/components/ui/badge.tsx
-artifacts/arvoredo/src/components/ui/breadcrumb.tsx
-artifacts/arvoredo/src/components/ui/button-group.tsx
-artifacts/arvoredo/src/components/ui/button.tsx
-artifacts/arvoredo/src/components/ui/calendar.tsx
-artifacts/arvoredo/src/components/ui/card.tsx
-artifacts/arvoredo/src/components/ui/carousel.tsx
-artifacts/arvoredo/src/components/ui/chart.tsx
-artifacts/arvoredo/src/components/ui/checkbox.tsx
-artifacts/arvoredo/src/components/ui/collapsible.tsx
-artifacts/arvoredo/src/components/ui/command.tsx
-artifacts/arvoredo/src/components/ui/context-menu.tsx
-artifacts/arvoredo/src/components/ui/dialog.tsx
-artifacts/arvoredo/src/components/ui/drawer.tsx
-artifacts/arvoredo/src/components/ui/dropdown-menu.tsx
-artifacts/arvoredo/src/components/ui/empty.tsx
-artifacts/arvoredo/src/components/ui/field.tsx
-artifacts/arvoredo/src/components/ui/form.tsx
-artifacts/arvoredo/src/components/ui/hover-card.tsx
-artifacts/arvoredo/src/components/ui/input-group.tsx
-artifacts/arvoredo/src/components/ui/input-otp.tsx
-artifacts/arvoredo/src/components/ui/input.tsx
-artifacts/arvoredo/src/components/ui/item.tsx
-artifacts/arvoredo/src/components/ui/kbd.tsx
-artifacts/arvoredo/src/components/ui/label.tsx
-artifacts/arvoredo/src/components/ui/menubar.tsx
-artifacts/arvoredo/src/components/ui/navigation-menu.tsx
-artifacts/arvoredo/src/components/ui/pagination.tsx
-artifacts/arvoredo/src/components/ui/popover.tsx
-artifacts/arvoredo/src/components/ui/progress.tsx
-artifacts/arvoredo/src/components/ui/radio-group.tsx
-artifacts/arvoredo/src/components/ui/resizable.tsx
-artifacts/arvoredo/src/components/ui/scroll-area.tsx
-artifacts/arvoredo/src/components/ui/select.tsx
-artifacts/arvoredo/src/components/ui/separator.tsx
-artifacts/arvoredo/src/components/ui/sheet.tsx
-artifacts/arvoredo/src/components/ui/sidebar.tsx
-artifacts/arvoredo/src/components/ui/skeleton.tsx
-artifacts/arvoredo/src/components/ui/slider.tsx
-artifacts/arvoredo/src/components/ui/sonner.tsx
-artifacts/arvoredo/src/components/ui/spinner.tsx
-artifacts/arvoredo/src/components/ui/switch.tsx
-artifacts/arvoredo/src/components/ui/table.tsx
-artifacts/arvoredo/src/components/ui/tabs.tsx
-artifacts/arvoredo/src/components/ui/textarea.tsx
-artifacts/arvoredo/src/components/ui/toast.tsx
-artifacts/arvoredo/src/components/ui/toaster.tsx
-artifacts/arvoredo/src/components/ui/toggle-group.tsx
-artifacts/arvoredo/src/components/ui/toggle.tsx
-artifacts/arvoredo/src/components/ui/tooltip.tsx
-artifacts/arvoredo/src/hooks/use-caixa.ts
-artifacts/arvoredo/src/hooks/use-estoque.ts
-artifacts/arvoredo/src/hooks/use-fiado.ts
-artifacts/arvoredo/src/hooks/use-impressora.ts
-artifacts/arvoredo/src/hooks/use-maquininha.ts
-artifacts/arvoredo/src/hooks/use-mobile.tsx
-artifacts/arvoredo/src/hooks/use-produtos.ts
-artifacts/arvoredo/src/hooks/use-toast.ts
-artifacts/arvoredo/src/hooks/use-vendas.ts
-artifacts/arvoredo/src/index.css
-artifacts/arvoredo/src/lib/utils.ts
-artifacts/arvoredo/src/main.tsx
-artifacts/arvoredo/src/pages/caixa.tsx
-artifacts/arvoredo/src/pages/dispositivos.tsx
-artifacts/arvoredo/src/pages/estoque.tsx
-artifacts/arvoredo/src/pages/fiado.tsx
-artifacts/arvoredo/src/pages/historico.tsx
-artifacts/arvoredo/src/pages/not-found.tsx
-artifacts/arvoredo/src/pages/pdv.tsx
-artifacts/arvoredo/src/pages/produtos.tsx
-artifacts/arvoredo/src/store/use-cart.ts
-artifacts/arvoredo/tsconfig.json
-artifacts/arvoredo/vite.config.ts
-deployment/.env.example
-deployment/atualizar.ps1
-deployment/backup-diario.ps1
-deployment/backup-excel.ps1
-deployment/configurar-sistema.ps1
-deployment/GUIAS/BACKUP-EXCEL.md
-deployment/GUIAS/comandos-apos-pull.md
-deployment/GUIAS/GUIA-ATUALIZACOES.md
-deployment/GUIAS/GUIA-DESENVOLVIMENTO.md
-deployment/GUIAS/GUIA-ESTABELECIMENTO.md
-deployment/GUIAS/GUIA-FEATURES-ADICIONAIS.md
-deployment/GUIAS/GUIA-IMPRESSORA-ELGIN-I7.md
-deployment/GUIAS/GUIA-MAQUININHA-PDV.md
-deployment/GUIAS/guia-perguntas-estabelecimento.md
-deployment/GUIAS/pull-para-outros-pcs.md
-deployment/GUIAS/ultimos-ajustes.md
-deployment/iniciar.ps1
-deployment/instalacao-completa.ps1
-deployment/instalar-dependencias.ps1
-deployment/menu.ps1
-deployment/parar.ps1
-deployment/SQL/2026-04-24-add-categoria-feira.sql
-deployment/SQL/2026-04-24-itens-venda-unidades.sql
-deployment/SQL/2026-05-15-vendas-cartoes-stone.sql
-deployment/SQL/criar-banco.sql
 doge.png
-estabelecimento2.0.md
-guia.md
-guia3.md
-kiara/favicon.ico
-kiara/kiara.png
-lib/api-client-react/package.json
-lib/api-client-react/src/custom-fetch.ts
-lib/api-client-react/src/generated/api.schemas.ts
-lib/api-client-react/src/generated/api.ts
-lib/api-client-react/src/index.ts
-lib/api-client-react/tsconfig.json
-lib/api-spec/openapi.yaml
-lib/api-spec/orval.config.ts
-lib/api-spec/package.json
-lib/api-zod/package.json
-lib/api-zod/src/generated/api.ts
-lib/api-zod/src/generated/types/abrirCaixaInput.ts
-lib/api-zod/src/generated/types/alertasProdutos.ts
-lib/api-zod/src/generated/types/buscarProdutoParams.ts
-lib/api-zod/src/generated/types/cliente.ts
-lib/api-zod/src/generated/types/criarClienteInput.ts
-lib/api-zod/src/generated/types/criarProdutoInput.ts
-lib/api-zod/src/generated/types/criarProdutoInputCategoria.ts
-lib/api-zod/src/generated/types/editarProdutoInput.ts
-lib/api-zod/src/generated/types/editarProdutoInputCategoria.ts
-lib/api-zod/src/generated/types/extratoCliente.ts
-lib/api-zod/src/generated/types/fiadoItem.ts
-lib/api-zod/src/generated/types/healthStatus.ts
-lib/api-zod/src/generated/types/impressaoResponse.ts
-lib/api-zod/src/generated/types/imprimirCupomInput.ts
-lib/api-zod/src/generated/types/imprimirSangriaInput.ts
-lib/api-zod/src/generated/types/index.ts
-lib/api-zod/src/generated/types/itemVenda.ts
-lib/api-zod/src/generated/types/itemVendaInput.ts
-lib/api-zod/src/generated/types/listarClientesParams.ts
-lib/api-zod/src/generated/types/listarMovimentosParams.ts
-lib/api-zod/src/generated/types/listarProdutosCategoria.ts
-lib/api-zod/src/generated/types/listarProdutosParams.ts
-lib/api-zod/src/generated/types/listarSangriasParams.ts
-lib/api-zod/src/generated/types/listarVendasParams.ts
-lib/api-zod/src/generated/types/movimentoEstoque.ts
-lib/api-zod/src/generated/types/movimentoEstoqueInput.ts
-lib/api-zod/src/generated/types/movimentoEstoqueInputTipo.ts
-lib/api-zod/src/generated/types/pagarFiadoInput.ts
-lib/api-zod/src/generated/types/produto.ts
-lib/api-zod/src/generated/types/produtoCategoria.ts
-lib/api-zod/src/generated/types/registrarVendaInput.ts
-lib/api-zod/src/generated/types/registrarVendaInputCategoria.ts
-lib/api-zod/src/generated/types/registrarVendaInputPagamento.ts
-lib/api-zod/src/generated/types/resumoFiado.ts
-lib/api-zod/src/generated/types/resumoVendas.ts
-lib/api-zod/src/generated/types/sangria.ts
-lib/api-zod/src/generated/types/sangriaInput.ts
-lib/api-zod/src/generated/types/sessaoCaixa.ts
-lib/api-zod/src/generated/types/sessaoCaixaStatus.ts
-lib/api-zod/src/generated/types/statusCaixa.ts
-lib/api-zod/src/generated/types/successResponse.ts
-lib/api-zod/src/generated/types/venda.ts
-lib/api-zod/src/index.ts
-lib/api-zod/tsconfig.json
-lib/db/drizzle.config.cjs
-lib/db/package.json
-lib/db/seed.ts
-lib/db/src/index.ts
-lib/db/src/schema/caixa.ts
-lib/db/src/schema/clientes.ts
-lib/db/src/schema/fiscal.ts
-lib/db/src/schema/index.ts
-lib/db/src/schema/produtos.ts
-lib/db/src/schema/vendas.ts
-lib/db/tsconfig.json
-modelo-nota/Captura de tela 2026-04-24 154017.png
-modelo-nota/fabio.pdf
-MODO_TESTE_CARTAO.md
 ngc
 package.json
 pnpm-workspace.yaml
@@ -267,9 +288,74 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path=".npmrc">
-auto-install-peers=false
-strict-peer-dependencies=false
+<file path="artifacts/api-server/data/maquininha-config.json">
+{
+  "ativo": true,
+  "modo_conexao": "usb_bridge",
+  "api_url": "https://sandbox.controlpay.com.br",
+  "api_token": "ItHktKa3hqNqKJlS0fJC7TVBi3LFXUdHzkXRFLhxNcujnOujlmlvb59PzaZlRQGJNWIwoE59btDygfx9ugb5mS4KjUuckd2%2b083iJZqPHx%2bboklwxyE%2fHoTGrvkIu50%2b",
+  "timeout_ms": 60000,
+  "empresa_nome": "NOME DA EMPRESA",
+  "empresa_cnpj": "00.000.000/0000-00",
+  "empresa_regra_padrao": "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  "cnpj_credenciadora": ""
+}
+</file>
+
+<file path="deployment/SQL/2026-06-14-vendas-tef-controlpay.sql">
+ALTER TABLE vendas
+  ADD COLUMN IF NOT EXISTS nsu_tef text,
+  ADD COLUMN IF NOT EXISTS tef_intencao_id integer;
+</file>
+
+<file path="artifacts/api-server/src/lib/.gitkeep">
+
+</file>
+
+<file path="artifacts/api-server/src/lib/logger.ts">
+import pino from "pino";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    "res.headers['set-cookie']",
+  ],
+  ...(isProduction
+    ? {}
+    : {
+        transport: {
+          target: "pino-pretty",
+          options: { colorize: true },
+        },
+      }),
+});
+</file>
+
+<file path="artifacts/api-server/src/middlewares/.gitkeep">
+
+</file>
+
+<file path="artifacts/api-server/src/routes/health.ts">
+import { Router, type IRouter } from "express";
+import { HealthCheckResponse } from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+router.get("/healthz", (_req, res) => {
+  const data = HealthCheckResponse.parse({ status: "ok" });
+  res.json(data);
+});
+
+export default router;
+</file>
+
+<file path="artifacts/api-server/src/types/escpos.d.ts">
+declare module "escpos";
+declare module "escpos-usb";
 </file>
 
 <file path="artifacts/api-server/build.mjs">
@@ -401,56 +487,6 @@ buildAll().catch((err) => {
 });
 </file>
 
-<file path="artifacts/api-server/src/lib/.gitkeep">
-
-</file>
-
-<file path="artifacts/api-server/src/lib/logger.ts">
-import pino from "pino";
-
-const isProduction = process.env.NODE_ENV === "production";
-
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
-  redact: [
-    "req.headers.authorization",
-    "req.headers.cookie",
-    "res.headers['set-cookie']",
-  ],
-  ...(isProduction
-    ? {}
-    : {
-        transport: {
-          target: "pino-pretty",
-          options: { colorize: true },
-        },
-      }),
-});
-</file>
-
-<file path="artifacts/api-server/src/middlewares/.gitkeep">
-
-</file>
-
-<file path="artifacts/api-server/src/routes/health.ts">
-import { Router, type IRouter } from "express";
-import { HealthCheckResponse } from "@workspace/api-zod";
-
-const router: IRouter = Router();
-
-router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
-});
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/types/escpos.d.ts">
-declare module "escpos";
-declare module "escpos-usb";
-</file>
-
 <file path="artifacts/api-server/tsconfig.json">
 {
   "extends": "../../tsconfig.base.json",
@@ -469,142 +505,6 @@ declare module "escpos-usb";
     }
   ]
 }
-</file>
-
-<file path="artifacts/arvoredo/components.json">
-{
-    "$schema": "https://ui.shadcn.com/schema.json",
-    "style": "new-york",
-    "rsc": false,
-    "tsx": true,
-    "tailwind": {
-      "config": "",
-      "css": "src/index.css",
-      "baseColor": "neutral",
-      "cssVariables": true,
-      "prefix": ""
-    },
-    "aliases": {
-      "components": "@/components",
-      "utils": "@/lib/utils",
-      "ui": "@/components/ui",
-      "lib": "@/lib",
-      "hooks": "@/hooks"
-    }
-}
-</file>
-
-<file path="artifacts/arvoredo/index.html">
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Arvoredo PDV</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
-</file>
-
-<file path="artifacts/arvoredo/src/components/ui-elements.tsx">
-import React, { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
-import { cn } from "@/lib/utils";
-
-export const Button = React.forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost' | 'destructive' | 'kitchen', size?: 'sm' | 'md' | 'lg' | 'icon' }>(
-  ({ className, variant = 'default', size = 'md', children, disabled, ...props }, ref) => {
-    const variants = {
-      default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
-      outline: "border-2 border-input bg-background hover:bg-accent hover:text-accent-foreground",
-      ghost: "hover:bg-accent hover:text-accent-foreground",
-      destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
-      kitchen: "bg-kitchen text-kitchen-foreground hover:bg-kitchen/90 shadow-sm",
-    };
-    const sizes = {
-      sm: "h-9 px-3 text-sm",
-      md: "h-11 px-4 py-2",
-      lg: "h-14 px-8 text-lg font-semibold",
-      icon: "h-11 w-11 flex justify-center items-center",
-    };
-
-    return (
-      <button
-        ref={ref}
-        disabled={disabled}
-        className={cn(
-          "inline-flex items-center justify-center rounded-xl font-medium transition-all duration-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50",
-          variants[variant],
-          sizes[size],
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </button>
-    );
-  }
-);
-Button.displayName = "Button";
-
-export const Input = React.forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, type, ...props }, ref) => {
-    return (
-      <input
-        type={type}
-        className={cn(
-          "flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all",
-          className
-        )}
-        ref={ref}
-        {...props}
-      />
-    );
-  }
-);
-Input.displayName = "Input";
-
-export const Select = React.forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, children, ...props }, ref) => {
-    return (
-      <select
-        ref={ref}
-        className={cn(
-          "flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </select>
-    );
-  }
-);
-Select.displayName = "Select";
-
-export const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: ReactNode }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-card w-full max-w-lg rounded-2xl shadow-xl border border-border flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-xl font-bold text-foreground">{title}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-accent transition-colors">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
-        </div>
-        <div className="p-6 overflow-y-auto">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
 </file>
 
 <file path="artifacts/arvoredo/src/components/ui/accordion.tsx">
@@ -6538,6 +6438,100 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 </file>
 
+<file path="artifacts/arvoredo/src/components/ui-elements.tsx">
+import React, { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
+import { cn } from "@/lib/utils";
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost' | 'destructive' | 'kitchen', size?: 'sm' | 'md' | 'lg' | 'icon' }>(
+  ({ className, variant = 'default', size = 'md', children, disabled, ...props }, ref) => {
+    const variants = {
+      default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+      outline: "border-2 border-input bg-background hover:bg-accent hover:text-accent-foreground",
+      ghost: "hover:bg-accent hover:text-accent-foreground",
+      destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+      kitchen: "bg-kitchen text-kitchen-foreground hover:bg-kitchen/90 shadow-sm",
+    };
+    const sizes = {
+      sm: "h-9 px-3 text-sm",
+      md: "h-11 px-4 py-2",
+      lg: "h-14 px-8 text-lg font-semibold",
+      icon: "h-11 w-11 flex justify-center items-center",
+    };
+
+    return (
+      <button
+        ref={ref}
+        disabled={disabled}
+        className={cn(
+          "inline-flex items-center justify-center rounded-xl font-medium transition-all duration-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50",
+          variants[variant],
+          sizes[size],
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
+);
+Button.displayName = "Button";
+
+export const Input = React.forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Input.displayName = "Input";
+
+export const Select = React.forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <select
+        ref={ref}
+        className={cn(
+          "flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+    );
+  }
+);
+Select.displayName = "Select";
+
+export const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: ReactNode }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-card w-full max-w-lg rounded-2xl shadow-xl border border-border flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <h2 className="text-xl font-bold text-foreground">{title}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-accent transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+</file>
+
 <file path="artifacts/arvoredo/src/hooks/use-estoque.ts">
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -6783,14 +6777,6 @@ function useToast() {
 export { useToast, toast }
 </file>
 
-<file path="artifacts/arvoredo/src/main.tsx">
-import { createRoot } from "react-dom/client";
-import App from "./App";
-import "./index.css";
-
-createRoot(document.getElementById("root")!).render(<App />);
-</file>
-
 <file path="artifacts/arvoredo/src/pages/not-found.tsx">
 import { Link } from "wouter";
 import { AlertCircle } from "lucide-react";
@@ -6816,6 +6802,56 @@ export default function NotFound() {
 }
 </file>
 
+<file path="artifacts/arvoredo/src/main.tsx">
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+createRoot(document.getElementById("root")!).render(<App />);
+</file>
+
+<file path="artifacts/arvoredo/components.json">
+{
+    "$schema": "https://ui.shadcn.com/schema.json",
+    "style": "new-york",
+    "rsc": false,
+    "tsx": true,
+    "tailwind": {
+      "config": "",
+      "css": "src/index.css",
+      "baseColor": "neutral",
+      "cssVariables": true,
+      "prefix": ""
+    },
+    "aliases": {
+      "components": "@/components",
+      "utils": "@/lib/utils",
+      "ui": "@/components/ui",
+      "lib": "@/lib",
+      "hooks": "@/hooks"
+    }
+}
+</file>
+
+<file path="artifacts/arvoredo/index.html">
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>Arvoredo PDV</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+</file>
+
 <file path="artifacts/arvoredo/tsconfig.json">
 {
   "extends": "../../tsconfig.base.json",
@@ -6839,477 +6875,6 @@ export default function NotFound() {
     }
   ]
 }
-</file>
-
-<file path="deployment/GUIAS/GUIA-IMPRESSORA-ELGIN-I7.md">
-# Guia de Conexão da Impressora Elgin i7plus para Arvoredo
-
-## Objetivo
-Este guia descreve como conectar e testar a impressora térmica Elgin i7plus no sistema Arvoredo usando o backend `artifacts/api-server`.
-
-## O que foi implementado
-- Novo backend `POST /api/impressora/teste` para testar a impressora.
-- Novo backend `POST /api/impressora/cupom` para imprimir cupom fiscal de uma venda.
-- Novo backend `POST /api/impressora/sangria` para imprimir relatório de sangria.
-- Impressão via PowerShell usando `Out-Printer` no Windows.
-- Uso de `PRINTER_NAME` no `.env` para indicar o nome exato da impressora instalada.
-
-## Requisitos
-- Windows 10/11
-- Impressora Elgin i7 instalada no Windows e acessível como impressora de sistema
-- Driver de impressora instalado e funcionando
-- Backend `api-server` rodando no Windows
-
-## Configuração necessária
-1. Abra o PowerShell e verifique as impressoras instaladas:
-
-```powershell
-Get-Printer | Select-Object Name,Default
-```
-
-2. Copie o nome exato da impressora Elgin i7 do resultado.
-
-3. No arquivo `.env` do backend, defina a variável:
-
-```env
-PRINTER_NAME=Nome da sua impressora Elgin i7
-```
-
-4. Se `PRINTER_NAME` não for definido, o backend tentará usar a impressora padrão do Windows.
-
-## Como usar
-### Rodar o backend
-No workspace principal execute:
-
-```powershell
-pnpm --filter @workspace/api-server run dev
-```
-
-### Testar a conexão da impressora
-- Use a tela de dispositivos no frontend Arvoredo.
-- Ou faça requisição `POST /api/impressora/teste` diretamente.
-
-Se a impressora estiver correta, ela deve imprimir um cupom de teste simples.
-
-### Imprimir cupom de venda
-- A API recebe o body esperado por `ImprimirCupomBody`.
-- Ela busca a venda e os itens no banco e imprime o texto formatado.
-
-### Imprimir sangria
-- A API recebe o body esperado por `ImprimirSangriaBody`.
-- Ela busca vendas e sangrias no período informado e imprime o relatório.
-
-## Mensagens de erro comuns
-- `Impressora configurada não encontrada`: o nome em `PRINTER_NAME` está errado.
-- `Nenhuma impressora padrão encontrada`: não há impressora padrão no Windows e `PRINTER_NAME` não foi definido.
-- `Erro desconhecido ao testar impressora`: revise a instalação do driver e a conectividade USB.
-
-## Dicas
-- Use o nome exato exibido pelo PowerShell; diferencia maiúsculas de minúsculas não importa, mas espaços e caracteres especiais importam.
-- Se precisar confirmar o nome, execute novamente:
-
-```powershell
-Get-Printer | Select-Object Name,Default
-```
-
-- Para reduzir problemas de impressão, verifique se a impressora está online e sem trabalhos na fila.
-
-## Observações técnicas
-- A impressão é enviada como texto simples para o spooler do Windows via `Out-Printer`.
-- O Elgin i7 deve estar instalado como impressora no Windows, não necessariamente conectado diretamente via USB na aplicação.
-- A largura de impressão atual é configurada como `48` colunas no código.
-
-## Caminho do código
-- `artifacts/api-server/src/routes/impressora.ts`
-- `artifacts/api-server/src/lib/printer.ts`
-- `.env.example`
-</file>
-
-<file path="deployment/GUIAS/GUIA-MAQUININHA-PDV.md">
-# Guia de Integracao de Maquininha no PDV
-
-Este guia foi feito para mercado/lancheria com foco em operacao simples.
-
-## 1) Como funciona no mercado (vida real)
-
-Existem 3 modelos comuns:
-
-1. **Manual (sem integracao direta)**  
-   O operador digita o valor na maquininha, cliente paga, e depois confirma no sistema.
-   - Mais simples de manter.
-   - Menos automatizacao.
-   - Menos risco tecnico.
-
-2. **Integracao por API/Gateway (mais moderno)**  
-   O PDV envia valor e dados do pedido para um servico (gateway/TEF cloud/API do adquirente).
-   - Fluxo mais rapido e com menos erro de digitacao.
-   - Precisa de fornecedor que exponha API.
-   - Normalmente exige homologacao.
-
-3. **Integracao local (USB/serial com bridge/TEF)**  
-   O PDV conversa com software local (bridge) que conversa com a maquininha.
-   - Muito usado com TEF tradicional.
-   - Funciona mesmo sem API publica direta da maquininha.
-   - Exige instalacao e manutencao local.
-
-## 2) API ou USB: qual escolher?
-
-- **Sem saber a marca da maquininha:** comece em **modo manual** ou **modo bridge local**.
-- **Se a empresa de pagamento tiver API oficial:** use **modo API**.
-- **Se a automacao/fornecedor usar TEF local:** use **modo USB com bridge** (o PDV chama o bridge).
-
-## 3) O que foi implementado no sistema
-
-Foi criada uma integracao generica de maquininha:
-
-- Tela `Dispositivos` com configuracao:
-  - Ativo (sim/nao)
-  - Modo (`manual`, `api`, `usb_bridge`)
-  - URL API/Gateway
-  - Token (opcional)
-  - Timeout
-  - Nome/CNPJ/regras da empresa (padrao editavel)
-- No `PDV`, pagamento com:
-  - **Debito**
-  - **Credito**
-  - **PIX**
-- Ao clicar em debito/credito/pix:
-  - O sistema envia automaticamente valor total + itens do carrinho para a integracao.
-  - Se falhar envio, a venda nao conclui.
-  - A confirmacao continua manual no sistema (como voce pediu).
-
-## 4) Fluxo operacional recomendado para seu caso
-
-Como voce ainda nao sabe a marca:
-
-1. Deixe `modo_conexao = manual`.
-2. Teste o fluxo no PDV com debito/credito/pix.
-3. Quando descobrir o fornecedor:
-   - Se tiver API: preencha URL/token e mude para `api`.
-   - Se for TEF local: mude para `usb_bridge` e aponte para o bridge local.
-4. Mantenha confirmacao manual de pagamento ate ter confianca na integracao.
-
-## 5) Integracao em tempo real: o que significa
-
-Em tempo real quer dizer:
-
-- Cliente escolhe forma de pagamento.
-- PDV envia os dados no mesmo instante para o gateway/bridge.
-- Operador executa/aprova na maquininha.
-- (No seu fluxo atual) operador confirma manualmente a venda no sistema.
-
-Importante: nem toda maquininha devolve retorno rico para o PDV sem contrato/homologacao.
-
-## 6) Vale a pena estoque na maquininha?
-
-**Nao.**  
-O ideal e manter estoque e cadastro de produtos no PDV (seu sistema).  
-A maquininha deve ficar focada em pagamento.
-
-## 7) Dados minimos que normalmente sao enviados
-
-- Valor total
-- Tipo de pagamento (debito/credito/pix)
-- Identificador local da venda
-- Lista de itens (nome, quantidade, preco)
-- Dados da empresa (nome/cnpj/regra), quando necessario
-
-## 8) Cuidados para producao
-
-- Sempre testar com valores pequenos.
-- Garantir internet estavel (modo API).
-- Definir rotina de contingencia (manual) quando API/bridge cair.
-- Nao bloquear atendimento por falha de integracao.
-- Registrar logs de tentativa de envio.
-
-## 9) Proximo passo quando voce souber a marca
-
-Com a marca e fornecedor em maos, voce valida:
-
-- Existe API oficial?
-- Existe middleware/bridge homologado?
-- Exige TEF de terceiro?
-- Qual formato de payload e autenticacao?
-- Como tratar estorno/cancelamento?
-
-Depois disso, ajustamos este modulo para a especificacao oficial do fornecedor.
-</file>
-
-<file path="deployment/GUIAS/guia-perguntas-estabelecimento.md">
-# Guia de perguntas para o Contato do Estabelecimento
-
-Objetivo: Coletar todas as informações necessárias para configurar o sistema e emitir notas fiscais.
-
----
-
-## 1) Dados do Estabelecimento (para nota fiscal)
-
-- **Nome fantasia:**
-- **Razão social:**
-- **CNPJ:** (ou CPF se for MEI)
-- **Endereço completo:**
-  - Rua/Av:
-  - Número:
-  - Complemento:
-  - Bairro:
-  - Cidade:
-  - UF:
-  - CEP:
-- **Telefone:**
-- **E-mail:**
-- **Inscrição Estadual:**
-- **Inscrição Municipal:**
-- **CNAE principal:**
-- **Regime Tributário:** ( ) Simples Nacional  ( ) Lucro Presumido  ( ) Lucro Real  ( ) MEI
-- **Contador:** (nome/telefone/email) - opcional
-
----
-
-## 2) Sistema de Produtos
-
-- **Categorias:** Quais categorias de produtos existem? (ex: mercado, cozinha, laticínios, etc.)
-- **Quantidade aproximada deSKUs:**
-- **Como gerencia o estoque?** (primeira nota, controle de validade, etc.)
-- ** Produtos com code de barras?** SIM / NÃO  - Se sim, tem leitor?
-
----
-
-## 3) Vendas e Pagamentos
-
-- **Forma de pagamento aceita:**
-  - Dinheiro
-  - PIX
-  - Cartão de crédito
-  - Cartão de débito
-  - Fiado / Crediário
-- **Maquininha de cartão:** Qual modelo? (ex: Rede, Safra, Stone, Getnet, outra)
-  - Já tem API configurada? SIM / NÃO / NÃO SEI
-- **Descontos:** Costuma dar desconto? Em quais situações?
-- **Ticket médio:**
-- **Média de vendas/dia:**
-
----
-
-## 4) Clientes (Fiado e Nota Fiscal)
-
-- **Clientes fieis tem cadastro?** SIM / NÃO
-- **Quantos clientes cadastrados aproximadamente?**
-- **Guarda histórico de fiado?** SIM / NÃO
-- **Costuma emitir nota fiscal para cliente?** SIM / NÃO  - Se sim, necessidade de emitir NFC-e ou NFSe?
-
----
-
-## 5) Caixa e Operações
-
-- **Caixa:**
-  - Quanto guarda em dinheiro no início do dia?
-  - Faz sangria (retirada) durante o dia? Com que frequência?
-  - Fecha o caixa no fim do dia? Faz reconcialiação?
-- **Impressora térmica:**
-  - Modelo?: (ex: Epson TM-T20, Bematech, Elgin)
-  - Tem papel?: SIM / NÃO
-- **Imprime cupom não fiscal?** (ex: sangria, relatório)
-
----
-
-## 6) Infraestrutura Técnica
-
-- **Onde vai rodar o sistema?**
-  - Desktop (Windows)
-  - Notebook
-- **Sistema operacional:** Windows 10 / 11 / Outro
-- **PostgreSQL:**
-  - Já tem instalado? Qual senha do usuário `postgres`?
-  - Precisa instalar do zero?
-- **Impressora:** Conectada via USB / Rede / Bluetooth
-- **Leitor de código de barras:** SIM / NÃO  - Modelo?
-- **Scanner de mão:** SIM / NÃO
-
----
-
-## 7) Informações Adicionais
-
-- **Horário de funcionamento:**
-- **Número de caixas:**
-- **Funcionários que vão usar o sistema:**
-- **Tem backup?** Onde salva?
-- **Outro sistema em uso?** (ex: outro PDV,-planilha,etc)
-
----
-
-## Checklist do que o sistema oferece
-
-| Módulo | Descrição |
-|--------|-----------|
-| PDV | Cadastro de produtos com código, nome, marca, categoria, preço,custo,estoque |
-| Vendas | Registro de vendas com desconto, forma pagamento, cliente |
-| Caixa | Abertura/fechamento,sangria,relatório |
-| Fiado | Controle de crediário por cliente |
-| Estoque | Movimentos (entrada,saída,ajuste) |
-| Impressão | Cupom térmico (requer impressora USB) |
-| Maquininha | Integração com cartão (requer API) |
-| Backup | Gera Excel diário |
-
----
-
-## Próximos passos após coleta
-
-1. Configurar base dados PostgreSQL
-2. Criar produtos no sistema
-3. Testar impressora
-4. Configurar nota fiscal (seNECESSÁRIO)
-5. Treinar operação básica
-</file>
-
-<file path="deployment/GUIAS/pull-para-outros-pcs.md">
-# Pull para outros PCs (dev, teste e estabelecimento)
-
-## Objetivo
-Este guia explica como abrir o sistema:
-- no **PC de desenvolvimento** agora;
-- no **PC de teste** e no **PC do estabelecimento** depois do `git pull`;
-- e quando pode voltar a abrir apenas clicando em `start_arvoredo.bat`.
-
----
-
-## 1) PC de desenvolvimento (agora)
-
-Na raiz do projeto:
-
-1. Atualize branch e dependencias (depois do seu commit/push):
-   - `git pull`
-   - `pnpm install`
-
-2. Aplique o SQL da nova categoria Feira (uma vez por banco):
-   - Arquivo: `deployment/SQL/2026-04-24-add-categoria-feira.sql`
-   - Execute no banco `arvoredo`.
-
-3. Garanta o `.env` com `DATABASE_URL` valido (raiz do projeto).
-
-4. Inicie:
-   - modo script completo: `.\deployment\iniciar.ps1`
-   - ou clique no atalho: `start_arvoredo.bat`
-
-5. Teste rapido:
-   - `http://localhost:5173`
-   - Impressora: tela Dispositivos > Testar Impressao
-   - PDV: pagamento parcial e item de feira por peso.
-
----
-
-## 2) PC de teste e PC do estabelecimento (depois do pull)
-
-### Primeira vez nesse PC (obrigatorio)
-1. Clonar/abrir repositorio.
-2. Rodar:
-   - `.\deployment\instalar-dependencias.ps1`
-   - `.\deployment\configurar-sistema.ps1 -PgPassword "SUA_SENHA"`
-3. Configurar `.env` com `DATABASE_URL` correto.
-4. Rodar SQL da Feira no banco desse PC:
-   - `deployment/SQL/2026-04-24-add-categoria-feira.sql`
-
-### Atualizacoes futuras (rotina)
-1. Rodar:
-   - `.\deployment\atualizar.ps1 -PgPassword "SUA_SENHA"`
-2. Depois iniciar normalmente:
-   - `start_arvoredo.bat`
-
-> Observacao: `atualizar.ps1` ja faz `git fetch/pull`, `pnpm install`, `db push` e build quando necessario.
-
----
-
-## 3) Posso abrir depois so pelo start_arvoredo.bat?
-
-**Sim**, depois da configuracao inicial e com ambiente correto.
-
-Para funcionar sempre no clique:
-- PostgreSQL precisa estar instalado e funcionando;
-- `.env` precisa estar correto (principalmente `DATABASE_URL`);
-- scripts e dependencias ja precisam ter sido instalados ao menos uma vez;
-- para esta versao, o banco precisa ja ter recebido o SQL da categoria `feira`.
-
-Se isso estiver ok, o fluxo diario pode ser somente:
-- clicar em `start_arvoredo.bat`.
-
----
-
-## 4) Checklist de rollout recomendado
-
-1. Commit/push no dev.
-2. Atualizar PC de teste (`atualizar.ps1`), validar operacao completa.
-3. Atualizar PC do estabelecimento (`atualizar.ps1`).
-4. Confirmar:
-   - impressao vertical com folga final;
-   - pagamento dividido;
-   - venda por peso na Feira.
-</file>
-
-<file path="deployment/GUIAS/ultimos-ajustes.md">
-# Ultimos Ajustes - Entrega Final
-
-## O que foi ajustado neste ciclo
-
-1. **Impressao termica (Elgin i7 plus)**
-   - Layout do cupom centralizado e em largura reduzida para modo retrato.
-   - Quebra de linhas e colunas revisadas para o modelo de referencia.
-   - Folga extra no final da nota (varias linhas em branco) para evitar corte da ultima informacao.
-   - Teste real de impressao executado com sucesso na `ELGIN i7(USB)`.
-
-2. **Pagamento dividido no PDV**
-   - Ao clicar em `Dinheiro`, `PIX`, `Debito` ou `Credito`, abre popup de confirmacao de valor.
-   - Se o valor informado for menor que o restante:
-     - o popup fecha;
-     - a parcela fica registrada;
-     - o total exibido vira apenas o valor restante;
-     - o operador escolhe a proxima forma de pagamento.
-   - Quando o restante chega a zero, a venda e finalizada automaticamente.
-   - O resumo do multipagamento fica gravado na observacao da venda.
-
-3. **Nova categoria Feira (com venda por peso)**
-   - Categoria `feira` adicionada em:
-     - cadastro de produtos;
-     - listagem/filtro de produtos;
-     - PDV;
-     - historico/resumo.
-   - Produto da feira abre modal de pesagem ao clicar no card.
-   - Operacao por gramas (ex: 500g), com conversao para kg e calculo automatico do subtotal.
-
-## Arquivos principais alterados
-
-- `artifacts/api-server/src/lib/print-layout.ts`
-- `artifacts/api-server/src/lib/printer.ts`
-- `artifacts/api-server/src/routes/produtos.ts`
-- `artifacts/api-server/src/routes/vendas.ts`
-- `artifacts/arvoredo/src/pages/pdv.tsx`
-- `artifacts/arvoredo/src/store/use-cart.ts`
-- `artifacts/arvoredo/src/pages/produtos.tsx`
-- `artifacts/arvoredo/src/pages/historico.tsx`
-- `lib/db/src/schema/produtos.ts`
-- `lib/api-zod/src/generated/api.ts`
-- `lib/api-client-react/src/generated/api.schemas.ts`
-- `lib/api-spec/openapi.yaml`
-
-## Validacoes executadas
-
-- Lint/diagnostico dos arquivos alterados: **sem erros**.
-- Validacao de schema zod para categoria `feira`: **ok**.
-- Teste de impressao real com layout novo: **ok**.
-
-## Pendencias de ambiente para producao
-
-1. **Banco de dados (obrigatorio)**
-   - O enum/tipo de categoria no banco precisa aceitar `feira`.
-   - Se seu banco atual ainda estiver com apenas `mercado/cozinha`, rode um ajuste SQL.
-   - Script pronto: `deployment/SQL/2026-04-24-add-categoria-feira.sql`
-
-2. **Porta da API**
-   - Garantir que a porta da API nao esteja ocupada por outro servico (ex.: Apache na `8080`).
-
-3. **Teste operacional final recomendado**
-   - Venda normal (valor integral em uma forma).
-   - Venda dividida (ex.: PIX parcial + Dinheiro restante).
-   - Venda de feira por peso (ex.: 500g).
-   - Impressao de cupom com o novo layout.
 </file>
 
 <file path="deployment/SQL/2026-04-24-add-categoria-feira.sql">
@@ -7846,21 +7411,6 @@ export default defineConfig({
 }
 </file>
 
-<file path="lib/api-zod/package.json">
-{
-  "name": "@workspace/api-zod",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "zod": "catalog:"
-  }
-}
-</file>
-
 <file path="lib/api-zod/src/generated/types/alertasProdutos.ts">
 /**
  * Generated by orval v8.5.3 🍺
@@ -7929,6 +7479,21 @@ export * from "./generated/api";
 export * from "./generated/types";
 </file>
 
+<file path="lib/api-zod/package.json">
+{
+  "name": "@workspace/api-zod",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  }
+}
+</file>
+
 <file path="lib/api-zod/tsconfig.json">
 {
   "extends": "../../tsconfig.base.json",
@@ -7941,6 +7506,25 @@ export * from "./generated/types";
   },
   "include": ["src"]
 }
+</file>
+
+<file path="lib/db/src/index.ts">
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "./schema";
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
+}
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });
+
+export * from "./schema";
 </file>
 
 <file path="lib/db/seed.ts">
@@ -7990,25 +7574,6 @@ seedFiscalConfig()
   });
 </file>
 
-<file path="lib/db/src/index.ts">
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "./schema";
-
-const { Pool } = pg;
-
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
-
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
-
-export * from "./schema";
-</file>
-
 <file path="lib/db/tsconfig.json">
 {
   "extends": "../../tsconfig.base.json",
@@ -8024,139 +7589,9 @@ export * from "./schema";
 }
 </file>
 
-<file path="MODO_TESTE_CARTAO.md">
-"# 🧪 MODO TESTE - Débito/Crédito/PIX sem TEF Real
-
-## O Problema
-Quando você tenta pagar com débito, crédito ou PIX, o sistema tenta enviar dados de cartão para a SEFAZ (`detPag > card`). Como você não tem um serviço TEF (Transferência Eletrônica de Fundos) real integrado, os dados estavam incompletos ou inválidos, causando erro:
-
-```
-O elemento 'detPag' apresenta elemento filho 'xPag' inválido. 
-Lista de possíveis elementos esperados: 'dPag, CNPJPag, card'
-```
-
-## A Solução
-Foi implementado um **MODO TESTE** que permite testar pagamentos com cartão usando dados padrão válidos, **mantendo toda a lógica TEF intacta para uso futuro**.
-
-## Como Funciona
-
-### Dados Padrão Usados (quando não há dados reais):
-```
-CNPJ: 16088083000155      (CNPJ do simulador Stone - substituirá quando TEF real for contratado)
-Bandeira: VISA ou MASTERCARD (mapeado para códigos "01" ou "02")
-Código Auth: 000000       (será preenchido pelo terminal TEF real)
-Tipo: "03" (crédito) ou "04" (débito)
-```
-
-### Fluxo de Funcionamento:
-
-1. **Frontend (arvoredo)**: Usuário clica em "Débito" ou "Crédito"
-2. **API maquininha.ts**: Envia requisição ao Simulador Stone ou Terminal TEF real
-3. **Simulador Stone (simulador-stone.js)**: Retorna dados de pagamento
-4. **API vendas.ts**: Salva dados no banco (cnpj_credenciadora, bandeira_cartao, etc.)
-5. **SEFAZ Service**: Ao gerar NF-e:
-   - Se houver dados reais → usa os dados do terminal
-   - Se não houver → usa dados padrão (MODO TESTE)
-   - Valida bandeira (VISA → "01", MASTERCARD → "02", etc.)
-
-## Arquivo: Função `normalizarBandeira()`
-
-Localizada em `sefaz.service.ts`, essa função mapeia:
-- Nome completo (VISA) → Código (01)
-- Códigos já recebidos → passa direto
-- Bandeiras não mapeadas → 99 (genérico)
-
-**Quando contratar TEF real**: Esta função ainda será usada para garantir que bandeiras estejam no formato correto para a SEFAZ.
-
-## Testando
-
-### Option 1: Usar o Simulador Stone (Recomendado)
-```bash
-node simulador-stone.js
-```
-
-No PDV:
-1. Adicione um produto
-2. Clique em "Débito" ou "Crédito"
-3. Aguarde ~3 segundos (simula digitação de senha)
-4. Pagamento será aprovado com dados simulados
-
-### Option 2: Modo Manual (sem simulador)
-Sem o simulador, o sistema usará dados padrão diretamente, sem chamar nenhuma máquina externa.
-
-## Dados Salvos na Venda
-
-```typescript
-{
-  pagamento: "cartao",
-  tipo_pagamento: "03" (crédito) ou "04" (débito),
-  cnpj_credenciadora: "16088083000155", // padrão
-  bandeira_cartao: "MASTERCARD" ou "VISA",
-  codigo_autorizacao: "000000" ou valor real do simulador,
-}
-```
-
-## Imprimindo Débito/Crédito
-
-O recibo impresso mostrará:
-```
-DÉBITO/CRÉDITO
-NSUA: [número da autorização]
-Bandeira: VISA/MASTERCARD
-Código Auth: 000000
-```
-
-## Quando Contratar um Serviço TEF Real
-
-Você precisará:
-
-1. **Instalar o cliente do TEF** (ex: Stone, cielo, getnet)
-2. **Atualizar `maquininha.ts`**:
-   - Mudar endpoint de `127.0.0.1:4000` para o IP real do terminal
-   - Adicionar autenticação real se necessário
-   - Remover/comentar verificação de `useStoneEmulator`
-
-3. **Os dados reais virão preenchidos** e sobrescreverão os padrão:
-   ```typescript
-   cnpj_credenciadora: resultado_real_da_maquina,
-   bandeira_cartao: resultado_real_da_maquina,
-   codigo_autorizacao: resultado_real_da_maquina,
-   ```
-
-4. **Nenhuma mudança em `sefaz.service.ts`** será necessária:
-   - A função `normalizarBandeira()` continuará validando
-   - Os dados reais serão usados no lugar dos padrão
-
-## Limpando o Modo Teste (Futura Integração Real)
-
-Quando integrar TEF real, você pode remover:
-
-### Em `sefaz.service.ts`:
-1. A função `normalizarBandeira()` (ou deixe, ela continua útil)
-2. Os comentários "MODO TESTE"
-3. As linhas com dados padrão (CNPJ "16088083000155", bandeiras genéricas)
-
-O código então ficará:
-```typescript
-if (venda.pagamento === "cartao") {
-  result.card = {
-    tpIntegra: "1",
-    CNPJ: venda.cnpj_credenciadora, // agora sempre terá valor real
-    tBand: normalizarBandeira(venda.bandeira_cartao),
-    cAut: venda.codigo_autorizacao,
-  };
-}
-```
-
-## Próximos Passos
-
-- ✅ Débito/Crédito/PIX com dados padrão funcionando
-- ⏳ Testar impressão de comprovante
-- ⏳ Quando integrar TEF real: apenas atualizar os endpoints e autenticação
-
----
-
-**Status**: MODO TESTE ativo | TEF real: não integrado | Data: 2026-05-20
+<file path=".npmrc">
+auto-install-peers=false
+strict-peer-dependencies=false
 </file>
 
 <file path="ngc">
@@ -8343,71 +7778,6 @@ testUSBConnection();
     }
   ]
 }
-</file>
-
-<file path="artifacts/api-server/src/app.ts">
-import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import cors from "cors";
-import pinoHttp from "pino-http";
-import router from "./routes";
-import { logger } from "./lib/logger";
-
-const app: Express = express();
-
-app.use(
-  pinoHttp({
-    logger,
-    serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
-      },
-      res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
-      },
-    },
-  }),
-);
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use("/api", router);
-
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  if (err?.code === "23505") {
-    const detail = err?.detail || err?.message || "Registro duplicado";
-    res.status(409).json({ ok: false, message: `Registro duplicado: ${detail}` });
-    return;
-  }
-  if (err?.code === "23502") {
-    const column = err?.column || "desconhecida";
-    res.status(400).json({ ok: false, message: `Campo obrigatorio ausente: coluna "${column}"` });
-    return;
-  }
-  if (err?.code === "23503") {
-    const detail = err?.detail || err?.message || "Referencia invalida";
-    res.status(400).json({ ok: false, message: `Referencia invalida: ${detail}` });
-    return;
-  }
-  if (err?.name === "ZodError") {
-    res.status(400).json({
-      ok: false,
-      message: "Dados invalidos",
-      errors: err.errors?.map((e: any) => `${e.path.join(".")}: ${e.message}`),
-    });
-    return;
-  }
-  const status = err?.status || err?.statusCode || 500;
-  res.status(status).json({ ok: false, message: err?.message || "Erro interno do servidor" });
-});
-
-export default app;
 </file>
 
 <file path="artifacts/api-server/src/lib/printer.ts">
@@ -8606,24 +7976,6 @@ export async function printTextToWindowsPrinter(text: string, printerName?: stri
   } finally {
     await fs.rm(tempFile, { force: true }).catch(() => undefined);
   }
-}
-</file>
-
-<file path="artifacts/api-server/src/migrate.ts">
-import { pool } from "@workspace/db";
-import { logger } from "./lib/logger";
-
-/**
- * Garante colunas esperadas pelo código (ex.: pull em PC que ainda não rodou o SQL manual).
- */
-export async function runStartupMigrations(): Promise<void> {
-  await pool.query(
-    "ALTER TABLE itens_venda ADD COLUMN IF NOT EXISTS unidades real",
-  );
-  await pool.query(
-    "ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cnpj_credenciadora text, ADD COLUMN IF NOT EXISTS codigo_autorizacao text, ADD COLUMN IF NOT EXISTS bandeira_cartao text, ADD COLUMN IF NOT EXISTS tipo_pagamento text",
-  );
-  logger.info("Migrações de startup OK (itens_venda.unidades + vendas pagamentos Stone)");
 }
 </file>
 
@@ -8993,83 +8345,86 @@ router.get("/resumo", async (_req, res) => {
 export default router;
 </file>
 
-<file path="artifacts/arvoredo/package.json">
-{
-  "name": "@workspace/arvoredo",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts",
-    "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "devDependencies": {
-    "@hookform/resolvers": "^3.10.0",
-    "@radix-ui/react-accordion": "^1.2.4",
-    "@radix-ui/react-alert-dialog": "^1.1.7",
-    "@radix-ui/react-aspect-ratio": "^1.1.3",
-    "@radix-ui/react-avatar": "^1.1.4",
-    "@radix-ui/react-checkbox": "^1.1.5",
-    "@radix-ui/react-collapsible": "^1.1.4",
-    "@radix-ui/react-context-menu": "^2.2.7",
-    "@radix-ui/react-dialog": "^1.1.7",
-    "@radix-ui/react-dropdown-menu": "^2.1.7",
-    "@radix-ui/react-hover-card": "^1.1.7",
-    "@radix-ui/react-label": "^2.1.3",
-    "@radix-ui/react-menubar": "^1.1.7",
-    "@radix-ui/react-navigation-menu": "^1.2.6",
-    "@radix-ui/react-popover": "^1.1.7",
-    "@radix-ui/react-progress": "^1.1.3",
-    "@radix-ui/react-radio-group": "^1.2.4",
-    "@radix-ui/react-scroll-area": "^1.2.4",
-    "@radix-ui/react-select": "^2.1.7",
-    "@radix-ui/react-separator": "^1.1.3",
-    "@radix-ui/react-slider": "^1.2.4",
-    "@radix-ui/react-slot": "^1.2.0",
-    "@radix-ui/react-switch": "^1.1.4",
-    "@radix-ui/react-tabs": "^1.1.4",
-    "@radix-ui/react-toast": "^1.2.7",
-    "@radix-ui/react-toggle": "^1.1.3",
-    "@radix-ui/react-toggle-group": "^1.1.3",
-    "@radix-ui/react-tooltip": "^1.2.0",
-    "@tailwindcss/typography": "^0.5.15",
-    "@tailwindcss/vite": "catalog:",
-    "@tanstack/react-query": "catalog:",
-    "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "@workspace/api-client-react": "workspace:*",
-    "class-variance-authority": "catalog:",
-    "clsx": "catalog:",
-    "cmdk": "^1.1.1",
-    "date-fns": "^3.6.0",
-    "embla-carousel-react": "^8.6.0",
-    "framer-motion": "catalog:",
-    "input-otp": "^1.4.2",
-    "lucide-react": "catalog:",
-    "next-themes": "^0.4.6",
-    "react": "catalog:",
-    "react-day-picker": "^9.11.1",
-    "react-dom": "catalog:",
-    "react-hook-form": "^7.55.0",
-    "react-icons": "^5.4.0",
-    "react-resizable-panels": "^2.1.7",
-    "recharts": "^2.15.2",
-    "sonner": "^2.0.7",
-    "tailwind-merge": "catalog:",
-    "tailwindcss": "catalog:",
-    "tw-animate-css": "^1.4.0",
-    "vaul": "^1.1.2",
-    "vite": "catalog:",
-    "wouter": "^3.3.5",
-    "zod": "catalog:"
-  },
-  "dependencies": {
-    "zustand": "^5.0.12"
+<file path="artifacts/api-server/src/app.ts">
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import cors from "cors";
+import pinoHttp from "pino-http";
+import router from "./routes";
+import { logger } from "./lib/logger";
+
+const app: Express = express();
+
+app.use(
+  pinoHttp({
+    logger,
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url?.split("?")[0],
+        };
+      },
+      res(res) {
+        return {
+          statusCode: res.statusCode,
+        };
+      },
+    },
+  }),
+);
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use("/api", router);
+
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  if (err?.code === "23505") {
+    const detail = err?.detail || err?.message || "Registro duplicado";
+    res.status(409).json({ ok: false, message: `Registro duplicado: ${detail}` });
+    return;
   }
+  if (err?.code === "23502") {
+    const column = err?.column || "desconhecida";
+    res.status(400).json({ ok: false, message: `Campo obrigatorio ausente: coluna "${column}"` });
+    return;
+  }
+  if (err?.code === "23503") {
+    const detail = err?.detail || err?.message || "Referencia invalida";
+    res.status(400).json({ ok: false, message: `Referencia invalida: ${detail}` });
+    return;
+  }
+  if (err?.name === "ZodError") {
+    res.status(400).json({
+      ok: false,
+      message: "Dados invalidos",
+      errors: err.errors?.map((e: any) => `${e.path.join(".")}: ${e.message}`),
+    });
+    return;
+  }
+  const status = err?.status || err?.statusCode || 500;
+  res.status(status).json({ ok: false, message: err?.message || "Erro interno do servidor" });
+});
+
+export default app;
+</file>
+
+<file path="artifacts/api-server/src/migrate.ts">
+import { pool } from "@workspace/db";
+import { logger } from "./lib/logger";
+
+/**
+ * Garante colunas esperadas pelo código (ex.: pull em PC que ainda não rodou o SQL manual).
+ */
+export async function runStartupMigrations(): Promise<void> {
+  await pool.query(
+    "ALTER TABLE itens_venda ADD COLUMN IF NOT EXISTS unidades real",
+  );
+  await pool.query(
+    "ALTER TABLE vendas ADD COLUMN IF NOT EXISTS cnpj_credenciadora text, ADD COLUMN IF NOT EXISTS codigo_autorizacao text, ADD COLUMN IF NOT EXISTS bandeira_cartao text, ADD COLUMN IF NOT EXISTS tipo_pagamento text",
+  );
+  logger.info("Migrações de startup OK (itens_venda.unidades + vendas pagamentos Stone)");
 }
 </file>
 
@@ -9082,60 +8437,6 @@ export default router;
   <path d="M50 100 C60 115 80 115 90 100 C100 115 120 115 130 100" stroke="black" stroke-width="5" fill="none"/>
   <path d="M70 140 Q90 155 110 140" stroke="black" stroke-width="10" fill="none"/>
 </svg>
-</file>
-
-<file path="artifacts/arvoredo/src/App.tsx">
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { Layout } from "@/components/layout";
-import Pdv from "@/pages/pdv";
-import Estoque from "@/pages/estoque";
-import Fiado from "@/pages/fiado";
-import Caixa from "@/pages/caixa";
-import Historico from "@/pages/historico";
-import Produtos from "@/pages/produtos";
-import Dispositivos from "@/pages/dispositivos";
-import NotFound from "@/pages/not-found";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    }
-  }
-});
-
-function Router() {
-  return (
-    <Layout>
-      <Switch>
-        <Route path="/" component={Pdv} />
-        <Route path="/estoque" component={Estoque} />
-        <Route path="/fiado" component={Fiado} />
-        <Route path="/caixa" component={Caixa} />
-        <Route path="/historico" component={Historico} />
-        <Route path="/produtos" component={Produtos} />
-        <Route path="/dispositivos" component={Dispositivos} />
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
-  );
-}
-
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <Router />
-      </WouterRouter>
-      <Toaster />
-    </QueryClientProvider>
-  );
-}
-
-export default App;
 </file>
 
 <file path="artifacts/arvoredo/src/hooks/use-caixa.ts">
@@ -9339,13 +8640,14 @@ const BASE = "/api/maquininha";
 
 export type MaquininhaConfig = {
   ativo: boolean;
-  modo_conexao: "manual" | "api" | "usb_bridge";
+  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
   api_url: string;
   api_token: string;
   timeout_ms: number;
   empresa_nome: string;
   empresa_cnpj: string;
   empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
 };
 
 type EnvioMaquininhaInput = {
@@ -9365,7 +8667,7 @@ type EnvioMaquininhaInput = {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init);
   const payload = await res.json();
-  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisicao da maquininha");
+  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
   return payload as T;
 }
 
@@ -9389,15 +8691,20 @@ export function useSalvarMaquininhaConfig() {
 
 export type MaquininhaResponse = {
   ok: boolean;
-  enviado: boolean;
-  mensagem: string;
-  modo: string;
+  aprovado?: boolean;
+  enviado?: boolean;
+  mensagem?: string;
+  modo?: string;
   dados_cartao?: {
     cnpj_credenciadora?: string | null;
     codigo_autorizacao?: string | null;
     bandeira_cartao?: string | null;
     tipo_pagamento?: string | null;
+    nsu_tef?: string | null;
+    tef_intencao_id?: number | null;
   };
+  comprovante_estabelecimento?: string | null;
+  comprovante_cliente?: string | null;
 };
 
 export function useEnviarParaMaquininha() {
@@ -9411,13 +8718,27 @@ export function useEnviarParaMaquininha() {
   });
 }
 
+export function useCancelarPagamento() {
+  return useMutation({
+    mutationFn: (data: { intencao_venda_id: number }) =>
+      request<{ ok: boolean; mensagem: string }>("/cancelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
 export function useTestarMaquininha() {
   return useMutation({
     mutationFn: () =>
-      request<{ ok: boolean; mensagem: string; modo_conexao: string }>("/testar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }),
+      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
+        "/testar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
   });
 }
 </file>
@@ -9536,106 +8857,6 @@ export function useRegistrarVendaWrapper() {
       },
     },
   });
-}
-</file>
-
-<file path="artifacts/arvoredo/src/index.css">
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-@import "tailwindcss";
-
-@theme inline {
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-warning: hsl(var(--warning));
-  --color-warning-foreground: hsl(var(--warning-foreground));
-  --color-kitchen: hsl(var(--kitchen));
-  --color-kitchen-foreground: hsl(var(--kitchen-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-}
-
-:root {
-  /* Clean Light Professional Theme */
-  --background: 210 33% 98%; /* Slate-50 */
-  --foreground: 222 47% 11%;
-  
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  
-  /* Primary Green (cor de árvore / Arvoredo) */
-  --primary: 142 71% 35%;
-  --primary-foreground: 0 0% 100%;
-  
-  /* Secondary / Surface */
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  
-  /* Destructive Red (#DC2626) */
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 210 40% 98%;
-
-  /* Warning / Yellow (#EAB308) */
-  --warning: 45 93% 47%;
-  --warning-foreground: 210 40% 98%;
-
-  /* Kitchen Orange (#EA580C) */
-  --kitchen: 25 95% 53%;
-  --kitchen-foreground: 210 40% 98%;
-  
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 142 71% 35%;
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring;
-  }
-  body {
-    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20;
-  }
-  
-  /* Custom scrollbar for a polished look */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/30 rounded-full;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/50;
-  }
 }
 </file>
 
@@ -9952,6 +9173,240 @@ export default function Estoque() {
 }
 </file>
 
+<file path="artifacts/arvoredo/src/App.tsx">
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { Layout } from "@/components/layout";
+import Pdv from "@/pages/pdv";
+import Estoque from "@/pages/estoque";
+import Fiado from "@/pages/fiado";
+import Caixa from "@/pages/caixa";
+import Historico from "@/pages/historico";
+import Produtos from "@/pages/produtos";
+import Dispositivos from "@/pages/dispositivos";
+import NotFound from "@/pages/not-found";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    }
+  }
+});
+
+function Router() {
+  return (
+    <Layout>
+      <Switch>
+        <Route path="/" component={Pdv} />
+        <Route path="/estoque" component={Estoque} />
+        <Route path="/fiado" component={Fiado} />
+        <Route path="/caixa" component={Caixa} />
+        <Route path="/historico" component={Historico} />
+        <Route path="/produtos" component={Produtos} />
+        <Route path="/dispositivos" component={Dispositivos} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <Router />
+      </WouterRouter>
+      <Toaster />
+    </QueryClientProvider>
+  );
+}
+
+export default App;
+</file>
+
+<file path="artifacts/arvoredo/src/index.css">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-kitchen: hsl(var(--kitchen));
+  --color-kitchen-foreground: hsl(var(--kitchen-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+:root {
+  /* Clean Light Professional Theme */
+  --background: 210 33% 98%; /* Slate-50 */
+  --foreground: 222 47% 11%;
+  
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  
+  /* Primary Green (cor de árvore / Arvoredo) */
+  --primary: 142 71% 35%;
+  --primary-foreground: 0 0% 100%;
+  
+  /* Secondary / Surface */
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  
+  /* Destructive Red (#DC2626) */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* Warning / Yellow (#EAB308) */
+  --warning: 45 93% 47%;
+  --warning-foreground: 210 40% 98%;
+
+  /* Kitchen Orange (#EA580C) */
+  --kitchen: 25 95% 53%;
+  --kitchen-foreground: 210 40% 98%;
+  
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 142 71% 35%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20;
+  }
+  
+  /* Custom scrollbar for a polished look */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+</file>
+
+<file path="artifacts/arvoredo/package.json">
+{
+  "name": "@workspace/arvoredo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.ts --host 0.0.0.0",
+    "build": "vite build --config vite.config.ts",
+    "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@hookform/resolvers": "^3.10.0",
+    "@radix-ui/react-accordion": "^1.2.4",
+    "@radix-ui/react-alert-dialog": "^1.1.7",
+    "@radix-ui/react-aspect-ratio": "^1.1.3",
+    "@radix-ui/react-avatar": "^1.1.4",
+    "@radix-ui/react-checkbox": "^1.1.5",
+    "@radix-ui/react-collapsible": "^1.1.4",
+    "@radix-ui/react-context-menu": "^2.2.7",
+    "@radix-ui/react-dialog": "^1.1.7",
+    "@radix-ui/react-dropdown-menu": "^2.1.7",
+    "@radix-ui/react-hover-card": "^1.1.7",
+    "@radix-ui/react-label": "^2.1.3",
+    "@radix-ui/react-menubar": "^1.1.7",
+    "@radix-ui/react-navigation-menu": "^1.2.6",
+    "@radix-ui/react-popover": "^1.1.7",
+    "@radix-ui/react-progress": "^1.1.3",
+    "@radix-ui/react-radio-group": "^1.2.4",
+    "@radix-ui/react-scroll-area": "^1.2.4",
+    "@radix-ui/react-select": "^2.1.7",
+    "@radix-ui/react-separator": "^1.1.3",
+    "@radix-ui/react-slider": "^1.2.4",
+    "@radix-ui/react-slot": "^1.2.0",
+    "@radix-ui/react-switch": "^1.1.4",
+    "@radix-ui/react-tabs": "^1.1.4",
+    "@radix-ui/react-toast": "^1.2.7",
+    "@radix-ui/react-toggle": "^1.1.3",
+    "@radix-ui/react-toggle-group": "^1.1.3",
+    "@radix-ui/react-tooltip": "^1.2.0",
+    "@tailwindcss/typography": "^0.5.15",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@workspace/api-client-react": "workspace:*",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "cmdk": "^1.1.1",
+    "date-fns": "^3.6.0",
+    "embla-carousel-react": "^8.6.0",
+    "framer-motion": "catalog:",
+    "input-otp": "^1.4.2",
+    "lucide-react": "catalog:",
+    "next-themes": "^0.4.6",
+    "react": "catalog:",
+    "react-day-picker": "^9.11.1",
+    "react-dom": "catalog:",
+    "react-hook-form": "^7.55.0",
+    "react-icons": "^5.4.0",
+    "react-resizable-panels": "^2.1.7",
+    "recharts": "^2.15.2",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "catalog:",
+    "tailwindcss": "catalog:",
+    "tw-animate-css": "^1.4.0",
+    "vaul": "^1.1.2",
+    "vite": "catalog:",
+    "wouter": "^3.3.5",
+    "zod": "catalog:"
+  },
+  "dependencies": {
+    "zustand": "^5.0.12"
+  }
+}
+</file>
+
 <file path="deployment/backup-diario.ps1">
 # Arvoredo PDV - Backup diario
 # Use no Agendador de Tarefas para executar 1x por dia.
@@ -10003,180 +9458,6 @@ Get-ChildItem -Path $BackupDir -Filter "Arvoredo_Backup_*.xlsx" -ErrorAction Sil
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 Write-Host "Backup diario concluido com sucesso." -ForegroundColor Green
-</file>
-
-<file path="deployment/GUIAS/BACKUP-EXCEL.md">
-# Guia de Backup Excel
-
-## Comando manual
-Na raiz do projeto:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\deployment\backup-excel.ps1 -OpenAfter
-```
-
-## Parametros uteis
-- `-PgPassword "SUA_SENHA"`: informa senha sem prompt
-- `-Data "2026-04-14"`: gera backup de uma data especifica
-- `-OutputDir "C:\Arvoredo\Backups"`: pasta de destino
-- `-OpenAfter`: abre o arquivo ao final
-
-Exemplo:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\deployment\backup-excel.ps1 -PgPassword "1234" -Data "2026-04-14" -OutputDir "C:\Arvoredo\Backups" -OpenAfter
-```
-
-## Agendar diario
-No Agendador de Tarefas do Windows:
-- Programa: `powershell.exe`
-- Argumentos:
-```text
--ExecutionPolicy Bypass -File "C:\Arvoredo\deployment\backup-diario.ps1"
-```
-
-O script diario:
-- evita duplicar backup no mesmo dia
-- guarda arquivos em `C:\Arvoredo\Backups`
-- remove backups com mais de 30 dias
-</file>
-
-<file path="deployment/GUIAS/comandos-apos-pull.md">
-# Comandos após um `git pull` (e dia a dia)
-
-Use este roteiro no **PC de desenvolvimento**, no **teste (homologação)** e no **estabelecimento (produção)**. Ajuste caminhos se o repositório não estiver no mesmo local.
-
-## Pré-requisitos
-
-- **Node.js** (LTS) e **pnpm** global (`npm i -g pnpm`).
-- **PostgreSQL** acessível e banco criado.
-- Arquivo **`.env`** na raiz do repositório (copie de `.env.example` e preencha `DATABASE_URL`, `PORT`, e no PDV/Windows `PRINTER_NAME` se for imprimir).
-
-## 1) Depois de cada pull
-
-Na raiz do repositório:
-
-```bash
-pnpm install
-pnpm run typecheck
-```
-
-Se alterou o schema do Drizzle (raro) ou tabelas manuais, rode o SQL em `deployment/SQL/` que ainda não foi aplicado no banco; o **API** também aplica `ALTER TABLE itens_venda ... unidades` na **subida do servidor** (migração de startup), mas manter o SQL no deploy documentado ajuda em auditoria.
-
-## 2) Desenvolvimento (máquina do dev)
-
-```bash
-# variáveis: copiar .env.example -> .env e apontar DATABASE_URL
-
-# API (em um terminal)' 
-cd artifacts/api-server
-pnpm dev
-# (ou: node / tsx conforme o script no package.json do api-server)
-
-# Front PDV (em outro terminal)
-cd artifacts/arvoredo
-pnpm dev
-```
-
-Confirme `PORT` no `.env` (ex.: API `8080`, front geralmente outra porta; o front aponta para a URL da API).
-
-## 3) Teste / homologação
-
-- Mesmos passos de instalação e `typecheck`.
-- Alimente `.env` com **banco de teste** (nunca a mesma URL de produção, se puder).
-- Sobe **API** e **front** como no item 2.
-- Impressão no Windows: confira `PRINTER_NAME` e, só se o cupom sair anormal, `PRINTER_LINE_WIDTH` (veja comentário no `.env.example`).
-
-## 4) Estabelecimento (produção)
-
-- Fazer `pull` em horário seguro, `pnpm install`, aplicar **SQLs pendentes** de `deployment/SQL/`.
-- Atualizar `.env` (segredo de banco, `PORT`, `PRINTER_NAME`).
-- Rebuild e reiniciar o processo servindo a API (PM2, NSSM, tarefa agendada, etc., conforme vocês usarem no local).
-- Front: rebuild estático e copiar `dist` para o servidor, ou o fluxo que vocês já adotam.
-
-## 5) Banco (referência)
-
-- Migrations de startup na API: coluna `itens_venda.unidades` é criada automaticamente se ainda não existir.
-- Scripts em `deployment/SQL/`: continuar versionando e rodando o que ainda não foi aplicado em cada ambiente.
-
-## 6) Checklist rápido pós-pull
-
-- [ ] `pnpm install`
-- [ ] `pnpm run typecheck`
-- [ ] SQLs novos em `deployment/SQL/` aplicados onde ainda faltam
-- [ ] `.env` coerente com o ambiente
-- [ ] API sobe sem erro (log mostra "Migrações de startup OK" e "Server listening")
-- [ ] Teste: registrar uma venda e imprimir cupom (se for o caso no PC)
-
-## 7) Problemas comuns
-
-- **500 ao finalizar venda, insert em itens_venda / unidades**  
-  Suba a **API** após o pull: a migração de startup cria a coluna. Se o Postgres estiver muito antigo e falhar, rode manualmente o script `deployment/SQL/2026-04-24-itens-venda-unidades.sql`.
-- **Cupom “pela metade” da largura**  
-  Não defina `PRINTER_LINE_WIDTH` a menos que precise forçar; a orientação correta é no driver Windows da impressora. Ajuste no `.env` só em último caso.
-</file>
-
-<file path="deployment/GUIAS/GUIA-FEATURES-ADICIONAIS.md">
-# Guia: features adicionais e atualização segura no estabelecimento
-
-Este documento complementa o [GUIA-ESTABELECIMENTO.md](GUIA-ESTABELECIMENTO.md). Use-o quando o repositório ganhar novas funcionalidades (PDV, comandas, produtos, caixa, etc.) e você quiser **atualizar sem perder dados** e **sem “zerar” o banco**.
-
-## O que este guia não faz
-
-- Não substitui backup: continue usando o backup descrito no guia principal.
-- Não pede para apagar o PostgreSQL, o banco `arvoredo`, nem o arquivo `.env`.
-
-## Fluxo recomendado após `git pull`
-
-Checklist completo (parar, pull, install, Drizzle, build, iniciar): [GUIA-ATUALIZACOES.md](GUIA-ATUALIZACOES.md).
-
-1. **Parar o sistema** (se estiver rodando), com o script de parada que você já usa.
-2. **Atualizar o código** (no PC da loja, pasta do projeto, exemplo `C:\Arvoredo`):
-   ```powershell
-   cd C:\Arvoredo
-   git pull
-   ```
-   Ou use o script de atualização do projeto, se aplicável: `.\deployment\atualizar.ps1` (veja a seção 8 do guia de estabelecimento).
-
-3. **Dependências**: se houver mudanças em `package.json` ou na primeira vez após muito tempo sem atualizar:
-   ```powershell
-   pnpm install
-   ```
-
-4. **Banco de dados (quando o código trouxer colunas ou tabelas novas)**  
-   O projeto usa Drizzle com `db push`, o mesmo tipo de passo da instalação inicial: isso **aplica alterações incrementais** ao schema (por exemplo, novos campos em `produtos`) **sem apagar** os dados existentes, desde que o comando seja o `push` padrão e não opções destrutivas.
-
-   Com `DATABASE_URL` disponível (normalmente carregada do `.env` na raiz do projeto):
-   ```powershell
-   cd C:\Arvoredo
-   pnpm --filter @workspace/db push
-   ```
-
-   Se o PowerShell não propagar o `.env`, defina `DATABASE_URL` como no seu `.env` (mesma string usada pela API) e rode o comando acima de novo.
-
-5. **Build** (se o seu fluxo de atualização incluir build de produção):
-   ```powershell
-   pnpm run build
-   ```
-
-6. **Iniciar** API e frontend como de costume, por exemplo:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
-   ```
-
-## Por que rodar `db push` depois de algumas atualizações?
-
-Novas versões podem incluir campos no schema (ex.: validade de produto). O aplicativo e a API passam a **esperar** essas colunas; sincronizar o banco com `pnpm --filter @workspace/db push` evita erros em tempo de execução **sem** recriar o banco do zero.
-
-## Checklist rápido
-
-- [ ] `git pull` (ou script de atualização) concluído sem conflitos graves.
-- [ ] `pnpm install` quando necessário.
-- [ ] `pnpm --filter @workspace/db push` quando a release mencionar mudança de banco ou após erro relacionado a coluna/tabela inexistente.
-- [ ] `.env` intacto com `DATABASE_URL` correto.
-- [ ] Sistema iniciado e `/api/healthz` respondendo (veja o guia principal).
-
-## Em caso de dúvida
-
-Prefira **backup antes** de qualquer operação incomum no banco. Em ambiente de loja, evite comandos manuais de “drop database” ou exclusão de tabelas; o fluxo oficial é pull → dependências → `db push` quando aplicável → subir serviços.
 </file>
 
 <file path="deployment/instalar-dependencias.ps1">
@@ -10314,221 +9595,6 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "  Sistema parado!" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-</file>
-
-<file path="guia.md">
-# Guia de Atualizacao e Operacao Fiscal (UniNFe)
-
-Este guia cobre:
-- como atualizar via `git pull` em **desenvolvimento**, **PC de teste** e **estabelecimento (producao)**;
-- o que configurar para emissao NFC-e via **UniNFe**;
-- onde alterar **homologacao x producao**;
-- checklist de validacao;
-- melhorias futuras (docker, escalabilidade e robustez).
-
-## 1) O que mudou no sistema
-
-- A emissao fiscal passou a usar o padrao de pastas do UniNFe:
-  - grava XML em `.../<CNPJ>/Envio`
-  - aguarda resposta em `.../<CNPJ>/Retorno`
-- O servico fiscal agora gera a chave de acesso, monta XML e processa retorno do UniNFe.
-- Dependencia `node-dfe` foi removida do `api-server`.
-
-## 2) Procedimento padrao apos `git pull` (qualquer ambiente)
-
-No diretorio raiz do projeto:
-
-1. Atualizar codigo:
-   - `git pull`
-2. Atualizar dependencias:
-   - `pnpm install`
-3. Validar compilacao:
-   - `pnpm --filter @workspace/api-server run typecheck`
-   - `pnpm --filter @workspace/api-server run build`
-4. Reiniciar servicos do sistema (backend/frontend e UniNFe se aplicavel).
-
-Se houver mudanca de schema/migration no futuro, incluir tambem o comando de migration antes de subir.
-
-## 3) Pre-requisitos por maquina
-
-## 3.1 Desenvolvimento (seu PC)
-
-- Node e pnpm instalados (versoes compativeis com o projeto).
-- Banco Postgres acessivel pela `DATABASE_URL`.
-- UniNFe instalado e funcionando.
-- Certificado A1 valido.
-- Impressora termica instalada (se for testar impressao local).
-
-## 3.2 PC de teste
-
-- Mesmo checklist do desenvolvimento.
-- Preferencia: certificado e dados dedicados de homologacao.
-- Confirmar que o caminho do UniNFe existe e permite escrita.
-
-## 3.3 Estabelecimento (producao)
-
-- UniNFe instalado como servico/processo estavel.
-- Certificado A1 oficial da empresa.
-- CSC de producao correto.
-- Backup de banco e plano de rollback antes de atualizar.
-
-## 4) Configuracoes obrigatorias
-
-## 4.1 Variaveis de ambiente (`.env`)
-
-Minimo necessario:
-
-- `DATABASE_URL`
-- `PORT`
-- `UNINFE_DIR` (recomendado definir explicitamente)
-  - Exemplo: `UNINFE_DIR=C:\\UniNFe`
-- Impressao (opcional/necessario conforme ambiente):
-  - `PRINTER_NAME` ou `PRINTER_VID`/`PRINTER_PID`
-
-Observacao:
-- O codigo usa por padrao `C:\\UniNFe` caso `UNINFE_DIR` nao esteja definido.
-- Evite versionar senha/caminho de certificado no `.env` do repositorio.
-
-## 4.2 Configuracao fiscal no banco (`config_fiscal`)
-
-A emissao depende dos campos em `config_fiscal`, principalmente:
-
-- dados do emitente (`razao_social`, `cnpj`, `ie`, endereco);
-- `crt`, `cod_municipio`;
-- `csc_id` e `csc_token`;
-- `caminho_certificado` e `senha_certificado`;
-- `ambiente` (`homologacao` ou `producao`).
-
-## 4.3 UniNFe
-
-No UniNFe, garantir:
-
-- empresa/CNPJ configurado corretamente;
-- certificado A1 associado;
-- ambiente correspondente ao desejado;
-- monitoramento das pastas `Envio` e `Retorno` para o CNPJ;
-- permissao de leitura/escrita nas pastas.
-
-## 5) Onde trocar Homologacao x Producao
-
-Trocar em **todos** os pontos abaixo:
-
-1. **Sistema (banco / config fiscal)**  
-   Campo `config_fiscal.ambiente`:
-   - `homologacao` => SEFAZ ambiente 2
-   - `producao` => SEFAZ ambiente 1
-
-2. **UniNFe**  
-   Ambiente da empresa no UniNFe deve coincidir com o ambiente acima.
-
-3. **Credenciais fiscais**
-   - CSC ID/TOKEN corretos para o ambiente.
-   - Certificado valido para o CNPJ emissor.
-
-4. **Dados operacionais**
-   - Em homologacao, usar fluxo de testes.
-   - Em producao, validar numeracao, serie, regras fiscais e contingencia.
-
-Importante:
-- Nao basta trocar so `.env`.
-- O ponto principal do ambiente no codigo atual e `config_fiscal.ambiente` + configuracao equivalente no UniNFe.
-
-## 6) Checklist rapido por ambiente
-
-## 6.1 Desenvolvimento
-
-- [ ] `git pull`
-- [ ] `pnpm install`
-- [ ] `pnpm --filter @workspace/api-server run typecheck`
-- [ ] `pnpm --filter @workspace/api-server run build`
-- [ ] confirmar `UNINFE_DIR`
-- [ ] confirmar CNPJ/pastas `Envio` e `Retorno`
-- [ ] emitir 1 venda de teste
-- [ ] verificar `nfce_logs` com status `autorizada` e XML salvo
-- [ ] validar impressao DANFE simplificado
-
-## 6.2 PC de teste
-
-- [ ] repetir checklist de desenvolvimento
-- [ ] validar ambiente `homologacao` em `config_fiscal`
-- [ ] validar ambiente de homologacao no UniNFe
-- [ ] testar erro controlado (ex: dado invalido) para confirmar retorno de rejeicao
-
-## 6.3 Estabelecimento (producao)
-
-- [ ] backup antes da atualizacao
-- [ ] `git pull`
-- [ ] `pnpm install`
-- [ ] build/typecheck
-- [ ] validar `config_fiscal.ambiente = producao`
-- [ ] validar UniNFe em producao
-- [ ] validar CSC/certificado de producao
-- [ ] emitir venda real de baixo risco
-- [ ] conferir autorizacao e impressao no caixa
-
-## 7) Sobre a impressao (ponto que falta fechar)
-
-O fluxo atual ja retorna:
-- XML autorizado;
-- chave de acesso;
-- URL do QR Code extraida do XML de retorno.
-
-Para estabilizar impressao no RS:
-
-- garantir que a impressora USB esteja correta (`PRINTER_VID`/`PRINTER_PID`);
-- validar layout de DANFE simplificado em bobina real;
-- incluir fallback de reimpressao a partir do `xml_autorizado` salvo;
-- registrar falhas de impressao separadas das falhas de autorizacao.
-
-## 8) Melhorias futuras recomendadas
-
-## 8.1 Infraestrutura e deploy
-
-- **Dockerizar** backend + frontend + banco (ou banco gerenciado) para padronizar ambientes.
-- Criar `docker-compose` para ambiente de teste local.
-- Padronizar script de deploy (pull, install, build, restart, health-check).
-
-## 8.2 Confiabilidade fiscal
-
-- Worker/fila para emissao fiscal (evita bloquear fluxo de venda).
-- Retentativas com backoff no polling de retorno do UniNFe.
-- Job de reconciliacao para notas "processando" pendentes.
-- Alertas para notas com erro/rejeicao.
-
-## 8.3 Observabilidade
-
-- Dashboard de `nfce_logs` (status por periodo, taxa de erro, tempo medio).
-- Correlation ID por venda/emissao.
-- Logs estruturados com motivo de rejeicao e contexto.
-
-## 8.4 Seguranca
-
-- Remover segredos de `.env` versionado.
-- Usar cofre de segredos/variaveis protegidas por ambiente.
-- Rotacionar senha/certificado quando necessario.
-
-## 8.5 Escalabilidade
-
-- Separar servico fiscal em modulo/processo dedicado.
-- Cache de configuracao fiscal com invalidacao controlada.
-- Preparar multiponto de venda (mais de um caixa simultaneo) com controle de concorrencia.
-
-## 9) Plano de validacao final (recomendado)
-
-1. Validar ponta a ponta em desenvolvimento (homologacao).
-2. Repetir no PC de teste com checklist completo.
-3. Executar virada assistida para producao no estabelecimento.
-4. Monitorar primeiras emissões e impressões com log aberto.
-
-Se quiser, o proximo passo pode ser criar um script unico de atualizacao (ex: `update-and-validate.bat`) para reduzir erro operacional nos 3 ambientes.
-
-
-<contexto>
-   Voce é um especialista em pdv digital e nas linguagens que tem nesse sistema, typescript e javascript e outras tecnologias.
-</contexto>
-<fazer>
-   peguei emprestado uma maquininha stone e ja conectei no mesmo wifi do pc e peguei o ip (192.168.0.66), não vou colocar a maquina para ser uma simulador de vendas ou algonp 
-</fazer>
 </file>
 
 <file path="lib/api-client-react/package.json">
@@ -11026,37 +10092,6 @@ export interface SuccessResponse {
 }
 </file>
 
-<file path="lib/db/drizzle.config.cjs">
-const fs = require("fs");
-const path = require("path");
-const { defineConfig } = require("drizzle-kit");
-
-// Raiz do monorepo (lib/db -> ../../)
-const rootEnv = path.join(__dirname, "..", "..", ".env");
-if (!process.env.DATABASE_URL && fs.existsSync(rootEnv)) {
-  const text = fs.readFileSync(rootEnv, "utf8");
-  for (const line of text.split(/\r?\n/)) {
-    const m = line.match(/^\s*DATABASE_URL\s*=\s*(.+)\s*$/);
-    if (m) {
-      process.env.DATABASE_URL = m[1].trim().replace(/^["']|["']$/g, "");
-      break;
-    }
-  }
-}
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
-}
-
-module.exports = defineConfig({
-  schema: "./src/schema/**/*.ts",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL,
-  },
-});
-</file>
-
 <file path="lib/db/src/schema/caixa.ts">
 import { pgTable, serial, real, timestamp, pgEnum, text } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -11141,12 +10176,43 @@ export const nfceLogsTable = pgTable("nfce_logs", {
 });
 </file>
 
+<file path="lib/db/drizzle.config.cjs">
+const fs = require("fs");
+const path = require("path");
+const { defineConfig } = require("drizzle-kit");
+
+// Raiz do monorepo (lib/db -> ../../)
+const rootEnv = path.join(__dirname, "..", "..", ".env");
+if (!process.env.DATABASE_URL && fs.existsSync(rootEnv)) {
+  const text = fs.readFileSync(rootEnv, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*DATABASE_URL\s*=\s*(.+)\s*$/);
+    if (m) {
+      process.env.DATABASE_URL = m[1].trim().replace(/^["']|["']$/g, "");
+      break;
+    }
+  }
+}
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL, ensure the database is provisioned");
+}
+
+module.exports = defineConfig({
+  schema: "./src/schema/**/*.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+});
+</file>
+
 <file path="artifacts/api-server/src/routes/maquininha.ts">
 import { Router, type IRouter } from "express";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-type ModoConexao = "manual" | "api" | "usb_bridge";
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
 
 type MaquininhaConfig = {
   ativo: boolean;
@@ -11157,6 +10223,7 @@ type MaquininhaConfig = {
   empresa_nome: string;
   empresa_cnpj: string;
   empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
 };
 
 const router: IRouter = Router();
@@ -11167,20 +10234,18 @@ const DEFAULT_CONFIG: MaquininhaConfig = {
   modo_conexao: "manual",
   api_url: "",
   api_token: "",
-  timeout_ms: 8000,
+  timeout_ms: 60000,
   empresa_nome: "NOME DA EMPRESA",
   empresa_cnpj: "00.000.000/0000-00",
   empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
 };
 
 async function loadConfig(): Promise<MaquininhaConfig> {
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return {
-      ...DEFAULT_CONFIG,
-      ...parsed,
-    };
+    return { ...DEFAULT_CONFIG, ...parsed };
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -11189,6 +10254,38 @@ async function loadConfig(): Promise<MaquininhaConfig> {
 async function saveConfig(config: MaquininhaConfig): Promise<void> {
   await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
   await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`);
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number = data?.statusId ?? data?.status?.id;
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch {
+      // falha de rede temporária — continua tentando
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
 }
 
 router.get("/config", async (_req, res) => {
@@ -11202,7 +10299,7 @@ router.post("/config", async (req, res) => {
   const merged: MaquininhaConfig = {
     ...current,
     ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 8000)),
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
   };
   await saveConfig(merged);
   res.json({ ok: true, config: merged });
@@ -11214,166 +10311,136 @@ router.post("/enviar", async (req, res) => {
   const payload = req.body as {
     venda_local_id?: string;
     metodo: "debito" | "credito" | "pix";
-    valor_total: number;
-    desconto?: number;
-    itens: Array<{
-      produto_id: number;
-      nome: string;
-      quantidade: number;
-      preco_unit: number;
-      subtotal: number;
-    }>;
-  };
-
-  const envio = {
-    origem: "arvoredo-pdv",
-    enviado_em: new Date().toISOString(),
-    empresa: {
-      nome: config.empresa_nome,
-      cnpj: config.empresa_cnpj,
-      regra: config.empresa_regra_padrao,
-    },
-    pedido: {
-      venda_local_id: payload.venda_local_id ?? null,
-      metodo: payload.metodo,
-      valor_total: payload.valor_total,
-      desconto: payload.desconto ?? 0,
-      itens: payload.itens ?? [],
-    },
+    valor_total: number; // em reais, ex: 10.50
   };
 
   if (!config.ativo) {
-    return res.json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: "Integracao de maquininha esta desativada.",
-    });
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
   }
 
-  if (config.modo_conexao !== "api") {
-    return res.json({
-      ok: true,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem:
-        "Solicitacao preparada. Conexao nao-API exige middleware do fabricante ou uso manual na maquininha.",
-      payload_preview: envio,
-    });
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
   }
 
-  const terminalIp = process.env.STONE_TERMINAL_IP?.trim();
-  const useStoneEmulator = !!terminalIp && (payload.metodo === "debito" || payload.metodo === "credito");
-
-  if (!config.api_url && !useStoneEmulator) {
-    return res.status(400).json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: "Defina a URL da API/gateway da maquininha em Dispositivos ou STONE_TERMINAL_IP no .env.",
-    });
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
   }
 
-  const endpoint = useStoneEmulator
-    ? `http://${terminalIp}/api/v1/pagamentos`
-    : config.api_url;
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+    const motivo = resultado.timeout
+      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
+    return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: pagamento.autorizacao ?? null,
+      bandeira_cartao: pagamento.bandeira ?? null,
+      tipo_pagamento:
+        payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05",
+      nsu_tef: pagamento.nsuTid ?? pagamento.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
 
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(config.api_token && !useStoneEmulator ? { Authorization: `Bearer ${config.api_token}` } : {}),
+    const resp = await fetch(
+      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
       },
-      body: JSON.stringify(
-        useStoneEmulator
-          ? {
-              valor: payload.valor_total,
-              tipo: payload.metodo === "credito" ? "credito" : "debito",
-            }
-          : envio,
-      ),
-      signal: AbortSignal.timeout(config.timeout_ms),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      return res.status(502).json({
-        ok: false,
-        enviado: false,
-        modo: config.modo_conexao,
-        mensagem: `Gateway da maquininha respondeu erro HTTP ${response.status}.`,
-        detalhe: text || null,
-      });
-    }
-
-    const result: any = await response.json().catch(() => ({}));
-    const status = String(result?.status || result?.Status || result?.aprovado || result?.approved || "").toLowerCase();
-    const aprovado = useStoneEmulator
-      ? status === "aprovado" || status === "approved" || status === "true" || status === "ok" || result?.approved === true
-      : true;
-
-    if (useStoneEmulator && !aprovado) {
-      return res.status(502).json({
-        ok: false,
-        enviado: false,
-        modo: "stone-dpos",
-        mensagem: `Pagamento não aprovado pela maquininha Stone: ${JSON.stringify(result)}`,
-        detalhe: result,
-      });
-    }
-
-    const additionalCardData = {
-      cnpj_credenciadora:
-        result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || result?.dados_cartao?.cnpj_credenciadora || result?.dados_cartao?.CNPJ || null,
-      codigo_autorizacao:
-        result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || result?.dados_cartao?.codigo_autorizacao || result?.dados_cartao?.autorizacao || null,
-      bandeira_cartao:
-        result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || result?.dados_cartao?.bandeira_cartao || null,
-      tipo_pagamento:
-        result?.tipo_pagamento || result?.tipoPagamento || result?.tpPagamento || result?.dados_cartao?.tipo_pagamento || null,
-    };
-
-    const dadosCartao = useStoneEmulator
-      ? {
-          cnpj_credenciadora: result?.cnpj_credenciadora || result?.CnpjCredenciadora || result?.CNPJ || result?.cnpj || null,
-          codigo_autorizacao: result?.codigo_autorizacao || result?.CodigoAutorizacao || result?.autorizacao || null,
-          bandeira_cartao: result?.bandeira_cartao || result?.Bandeira || result?.tBand || result?.bandeira || null,
-          tipo_pagamento: payload.metodo === "credito" ? "03" : "04",
-        }
-      : (payload.metodo === "debito" || payload.metodo === "credito")
-        ? additionalCardData
-        : undefined;
-
-    return res.json({
-      ok: true,
-      enviado: true,
-      modo: useStoneEmulator ? "stone-dpos" : config.modo_conexao,
-      mensagem: useStoneEmulator ? "Pagamento aprovado na Stone" : "Pedido enviado para a integracao da maquininha.",
-      dados_cartao: dadosCartao,
-      resultado_maquininha: result,
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Falha de comunicacao com gateway";
-    return res.status(502).json({
-      ok: false,
-      enviado: false,
-      modo: config.modo_conexao,
-      mensagem: msg,
-    });
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
   }
 });
 
 router.post("/testar", async (_req, res) => {
   const config = await loadConfig();
-  res.json({
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
     ok: true,
     ativo: config.ativo,
     modo_conexao: config.modo_conexao,
-    mensagem:
-      config.modo_conexao === "api"
-        ? "Teste de configuracao pronto. Use o PDV para teste real com envio de valor."
-        : "Modo sem API: o sistema prepara os dados e a confirmacao segue manual.",
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
   });
 });
 
@@ -11572,193 +10639,6 @@ export const useCart = create<CartStore>((set, get) => ({
     });
   },
 }));
-</file>
-
-<file path="guia3.md">
-# Guia 3 - Pos Pull / Pos Mudanca Local
-
-Este guia e para executar sempre que voce:
-- fizer `git pull`;
-- ou alterar codigo localmente e quiser validar antes de seguir.
-
-O fluxo esta dividido em 3 etapas: **desenvolvimento**, **teste** e **producao**.
-
----
-
-## 1) Desenvolvimento (sua maquina)
-
-Use esta sequencia apos atualizar o codigo ou terminar uma alteracao local.
-
-### 1.1 Comandos base
-
-```bash
-git pull
-pnpm install
-pnpm --filter @workspace/db run push
-pnpm --filter @workspace/api-server run typecheck
-pnpm --filter @workspace/arvoredo run typecheck
-pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/arvoredo run build
-```
-
-### 1.2 O que cada comando faz
-
-- `git pull`  
-  Atualiza seu codigo local com o que esta no repositorio remoto.
-
-- `pnpm install`  
-  Instala e sincroniza dependencias do workspace conforme `pnpm-lock.yaml`.
-
-- `pnpm --filter @workspace/db run push`  
-  Aplica o schema atual no banco local via Drizzle (`drizzle-kit push`).  
-  Use quando houver mudancas de schema ou quando estiver em duvida.
-
-- `pnpm --filter @workspace/api-server run typecheck`  
-  Valida tipos TypeScript do backend sem gerar build.
-
-- `pnpm --filter @workspace/arvoredo run typecheck`  
-  Valida tipos TypeScript do frontend sem gerar build.
-
-- `pnpm --filter @workspace/api-server run build`  
-  Gera build de producao do backend e valida empacotamento.
-
-- `pnpm --filter @workspace/arvoredo run build`  
-  Gera build de producao do frontend e valida empacotamento.
-
-### 1.3 Subir sistema local
-
-PowerShell (na raiz do projeto):
-
-```powershell
-./deployment/iniciar.ps1
-```
-
-Esse script sobe API + frontend, configura variaveis de ambiente e abre o sistema.
-
-### 1.4 Verificacoes rapidas
-
-- API responde em `http://localhost:8080/api/healthz`
-- Frontend abre em `http://localhost:5173`
-- Venda de teste conclui sem erro
-- Se NFC-e estiver ativa: status autorizado em historico
-- Impressao ocorre conforme esperado (DANFE ou cupom simples)
-
----
-
-## 2) Teste (PC de homologacao)
-
-Mesma base do desenvolvimento, com foco em validar fluxo ponta a ponta.
-
-### 2.1 Comandos
-
-```bash
-git pull
-pnpm install
-pnpm --filter @workspace/db run push
-pnpm --filter @workspace/api-server run typecheck
-pnpm --filter @workspace/arvoredo run typecheck
-pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/arvoredo run build
-```
-
-Depois iniciar:
-
-```powershell
-./deployment/iniciar.ps1
-```
-
-### 2.2 Verificacoes obrigatorias
-
-- Confirmar `config_fiscal.ambiente = homologacao`
-- Confirmar UniNFe em homologacao
-- Emitir pelo menos 1 venda de teste
-- Testar uma venda com falha de NFC-e para validar fallback
-- Validar reimpressao:
-  - com XML autorizado => DANFE
-  - sem XML autorizado => cupom simples
-- Validar mensagem de erro JSON (sem tela HTML 500) em importacao com dado invalido
-
----
-
-## 3) Producao (estabelecimento)
-
-Use este fluxo com cuidado e preferencialmente fora do horario de pico.
-
-### 3.1 Antes de atualizar
-
-- Fazer backup do banco
-- Confirmar que nao ha operacao de caixa critica em andamento
-- Garantir que UniNFe esta operacional
-
-### 3.2 Comandos recomendados
-
-```bash
-git pull
-pnpm install
-pnpm --filter @workspace/db run push
-pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/arvoredo run build
-```
-
-Opcional (fortemente recomendado se houver mudanca maior):
-
-```bash
-pnpm --filter @workspace/api-server run typecheck
-pnpm --filter @workspace/arvoredo run typecheck
-```
-
-Iniciar/reiniciar sistema:
-
-```powershell
-./deployment/iniciar.ps1
-```
-
-### 3.3 Verificacoes de producao
-
-- API e frontend online
-- `config_fiscal.ambiente = producao`
-- UniNFe em producao com certificado valido
-- Emissao real de baixo risco autorizada
-- DANFE/QR Code impressos corretamente
-- Reimpressao funcionando no historico
-
----
-
-## Comandos extras uteis
-
-- `pnpm run typecheck`  
-  Roda typecheck geral do workspace (libs + apps).
-
-- `pnpm run build`  
-  Roda build recursivo no workspace inteiro.
-
-- `pnpm --filter @workspace/db run push-force`  
-  Forca aplicacao de schema no banco.  
-  **Use apenas com cautela**, pois pode aplicar alteracoes destrutivas dependendo do diff.
-
----
-
-## Sequencia curta (cola rapida)
-
-### Pos `git pull` (padrao)
-
-```bash
-git pull
-pnpm install
-pnpm --filter @workspace/db run push
-pnpm --filter @workspace/api-server run typecheck
-pnpm --filter @workspace/api-server run build
-./deployment/iniciar.ps1
-```
-
-### Pos mudanca local (antes de commit/uso)
-
-```bash
-pnpm --filter @workspace/api-server run typecheck
-pnpm --filter @workspace/arvoredo run typecheck
-pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/arvoredo run build
-```
 </file>
 
 <file path="lib/api-client-react/src/generated/api.ts">
@@ -14475,35 +13355,6 @@ export interface Venda {
 }
 </file>
 
-<file path="lib/db/package.json">
-{
-  "name": "@workspace/db",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
-  },
-  "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.cjs",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.cjs"
-  },
-  "dependencies": {
-    "dotenv": "^16.6.1",
-    "drizzle-orm": "catalog:",
-    "drizzle-zod": "^0.8.3",
-    "pg": "^8.20.0",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "@types/pg": "^8.18.0",
-    "drizzle-kit": "^0.31.9"
-  }
-}
-</file>
-
 <file path="lib/db/src/schema/clientes.ts">
 import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -14531,105 +13382,33 @@ export * from "./vendas";
 export * from "./fiscal";
 </file>
 
-<file path=".gitignore">
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
-# compiled output
-dist
-tmp
-out-tsc
-*.tsbuildinfo
-.expo
-.expo-shared
-
-# dependencies
-node_modules
-.pnpm-store
-
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-
-# System Files
-.DS_Store
-Thumbs.db
-
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
-
-# Replit
-.cache/
-.local/
-.replit-artifact/
-
-# Runtime / Local env
-.env
-.env.*
-!.env.example
-Logs/
-repomix-output.xml
-</file>
-
-<file path="artifacts/api-server/src/index.ts">
-process.env.TZ = "America/Sao_Paulo";
-
-import "dotenv/config";
-import app from "./app";
-import { logger } from "./lib/logger";
-import { runStartupMigrations } from "./migrate";
-
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+<file path="lib/db/package.json">
+{
+  "name": "@workspace/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts"
+  },
+  "scripts": {
+    "push": "drizzle-kit push --config ./drizzle.config.cjs",
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.cjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "drizzle-orm": "catalog:",
+    "drizzle-zod": "^0.8.3",
+    "pg": "^8.20.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.18.0",
+    "drizzle-kit": "^0.31.9"
+  }
 }
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-runStartupMigrations()
-  .then(() => {
-    app.listen(port, (err) => {
-      if (err) {
-        logger.error({ err }, "Error listening on port");
-        process.exit(1);
-      }
-
-      logger.info({ now: new Date().toString(), tz: process.env.TZ }, "Timezone configured");
-      logger.info({ port }, "Server listening");
-    });
-  })
-  .catch((err) => {
-    logger.error({ err }, "Falha nas migrações de startup; encerrando");
-    process.exit(1);
-  });
 </file>
 
 <file path="artifacts/api-server/src/routes/nfce.ts">
@@ -14730,6 +13509,46 @@ router.post("/:vendaId/cancelar", async (req, res) => {
 });
 
 export default router;
+</file>
+
+<file path="artifacts/api-server/src/index.ts">
+process.env.TZ = "America/Sao_Paulo";
+
+import { config } from "dotenv";
+import app from "./app";
+import { logger } from "./lib/logger";
+import { runStartupMigrations } from "./migrate";
+
+const rawPort = process.env["PORT"];
+
+if (!rawPort) {
+  throw new Error(
+    "PORT environment variable is required but was not provided.",
+  );
+}
+
+const port = Number(rawPort);
+
+if (Number.isNaN(port) || port <= 0) {
+  throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+runStartupMigrations()
+  .then(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
+
+      logger.info({ now: new Date().toString(), tz: process.env.TZ }, "Timezone configured");
+      logger.info({ port }, "Server listening");
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, "Falha nas migrações de startup; encerrando");
+    process.exit(1);
+  });
 </file>
 
 <file path="artifacts/arvoredo/src/components/layout.tsx">
@@ -15203,14 +14022,15 @@ export default function Dispositivos() {
   const [erroImpressora, setErroImpressora] = useState<string>("");
   const [formMaquininha, setFormMaquininha] = useState({
     ativo: true,
-    modo_conexao: "manual" as "manual" | "api" | "usb_bridge",
+    modo_conexao: "controlpay" as "manual" | "api" | "usb_bridge" | "controlpay",
     api_url: "",
     api_token: "",
-    timeout_ms: 8000,
+    timeout_ms: 60000,
     empresa_nome: "NOME DA EMPRESA",
     empresa_cnpj: "00.000.000/0000-00",
     empresa_regra_padrao:
       "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+    cnpj_credenciadora: "",
   });
 
   useEffect(() => {
@@ -15382,10 +14202,11 @@ export default function Dispositivos() {
                     onChange={(e) =>
                       setFormMaquininha(prev => ({
                         ...prev,
-                        modo_conexao: e.target.value as "manual" | "api" | "usb_bridge",
+                        modo_conexao: e.target.value as "manual" | "api" | "usb_bridge" | "controlpay",
                       }))
                     }
                   >
+                    <option value="controlpay">ControlPay (PayGo ACBr) ← ATIVO</option>
                     <option value="manual">Manual (sem integração direta)</option>
                     <option value="api">API/Gateway</option>
                     <option value="usb_bridge">USB com bridge local</option>
@@ -15420,7 +14241,7 @@ export default function Dispositivos() {
                     className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
                     value={formMaquininha.timeout_ms}
                     onChange={(e) =>
-                      setFormMaquininha(prev => ({ ...prev, timeout_ms: Number(e.target.value || 8000) }))
+                      setFormMaquininha(prev => ({ ...prev, timeout_ms: Number(e.target.value || 60000) }))
                     }
                   />
                 </label>
@@ -15440,6 +14261,16 @@ export default function Dispositivos() {
                     className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
                     value={formMaquininha.empresa_cnpj}
                     onChange={(e) => setFormMaquininha(prev => ({ ...prev, empresa_cnpj: e.target.value }))}
+                  />
+                </label>
+
+                <label className="text-sm">
+                  <span className="block text-muted-foreground mb-1">CNPJ da credenciadora</span>
+                  <input
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="Ex: 16501555000157 (Stone) ou 01425787000104 (Rede)"
+                    value={formMaquininha.cnpj_credenciadora}
+                    onChange={(e) => setFormMaquininha(prev => ({ ...prev, cnpj_credenciadora: e.target.value }))}
                   />
                 </label>
 
@@ -15773,112 +14604,6 @@ Write-Host "Inicie o sistema com: .\deployment\iniciar.ps1 (a partir da raiz do 
 Write-Host ""
 </file>
 
-<file path="deployment/GUIAS/GUIA-ESTABELECIMENTO.md">
-# Guia de Instalacao no PC do Estabelecimento
-
-Objetivo: deixar o sistema rodando localmente no PC da loja, sem hospedagem externa.
-
-## 1) Pre requisitos
-- PostgreSQL instalado (senha do usuario `postgres` anotada)
-- Node.js LTS (22+)
-- pnpm
-- Git (somente se for atualizar por `git pull`)
-
-## 2) Instalar codigo no PC da loja
-Exemplo em `C:\Arvoredo`:
-```powershell
-cd C:\
-git clone https://github.com/C2002G/ArvoredoWEB.git Arvoredo
-cd C:\Arvoredo
-```
-
-## 3) Instalacao inicial (uma vez)
-```powershell
-powershell -ExecutionPolicy Bypass -File .\deployment\instalacao-completa.ps1
-```
-
-O script:
-- valida PostgreSQL
-- instala dependencias (inclui `pnpm install` e `pnpm add -w xlsx pg` para backup Excel)
-- cria banco `arvoredo` se necessario
-- executa `db push`
-- cria `.env`
-
-Se fizer instalacao manual (sem o script), rode:
-```powershell
-pnpm install
-```
-
-## 4) Abrir sistema no dia a dia
-```powershell
-cd C:\Arvoredo
-powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
-```
-
-## 5) Fechar sistema
-```powershell
-cd C:\Arvoredo
-powershell -ExecutionPolicy Bypass -File .\deployment\parar.ps1
-```
-
-## 6) URLs locais
-- Frontend: http://localhost:5173
-- API health: http://localhost:8080/api/healthz
-
-## 7) Backup
-Manual:
-```powershell
-cd C:\Arvoredo
-powershell -ExecutionPolicy Bypass -File .\deployment\backup-excel.ps1 -OpenAfter
-```
-
-Automatico diario (Task Scheduler):
-```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Arvoredo\deployment\backup-diario.ps1"
-```
-
-## 8) Atualizacao do sistema
-```powershell
-cd C:\Arvoredo
-powershell -ExecutionPolicy Bypass -File .\deployment\atualizar.ps1
-```
-
-Detalhe do que fazer em cada atualização (Git, `pnpm`, banco Drizzle, parar/iniciar): veja o [GUIA-ATUALIZACOES.md](GUIA-ATUALIZACOES.md).
-
-## 9) Checklist operacional
-- PostgreSQL rodando no Windows
-- `.env` presente com `DATABASE_URL` correto
-- API responde `/api/healthz`
-- Frontend abre em `5173`
-- Backup diario habilitado
-
-## 10) Solucao rapida de problemas comuns
-Erro `'vite' nao e reconhecido` ou aviso `node_modules missing`:
-```powershell
-cd C:\Arvoredo
-pnpm install
-powershell -ExecutionPolicy Bypass -File .\deployment\iniciar.ps1
-```
-
-Aviso do PowerShell `NativeCommandError` com texto `npm warn` durante instalacao:
-- normalmente e so aviso no stderr; o instalador agora usa `pnpm` para `xlsx`/`pg`.
-- se a instalacao parar mesmo assim, rode `pnpm install` manualmente e depois o script novamente.
-
-Aviso `WARN Issues with peer dependencies` do pnpm:
-- em geral nao impede o sistema de subir; se `pnpm install` termina com sucesso, pode seguir.
-
-Teste rapido da API:
-```powershell
-Invoke-WebRequest http://localhost:8080/api/healthz
-```
-
-Se nao retornar `StatusCode 200`, abra os logs:
-```powershell
-Get-Content .\Logs\api-*.log -Tail 80
-Get-Content .\Logs\frontend-*.log -Tail 80
-```
-</file>
-
 <file path="deployment/iniciar.ps1">
 # Arvoredo PDV - Script de Inicializacao
 # Use este script para iniciar o sistema diariamente
@@ -16094,6 +14819,8 @@ export const vendasTable = pgTable("vendas", {
   codigo_autorizacao: text("codigo_autorizacao"),
   bandeira_cartao: text("bandeira_cartao"),
   tipo_pagamento: text("tipo_pagamento"),
+  nsu_tef: text("nsu_tef"),
+  tef_intencao_id: integer("tef_intencao_id"),
   criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -16339,6 +15066,21 @@ router.post("/sangria", async (req, res) => {
     return res.json({ ok: true, erro: null });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Erro de impressão da sangria";
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/comprovante-tef", async (req, res) => {
+  try {
+    const { via } = req.body as { via: string };
+    if (!via || typeof via !== "string" || via.trim().length === 0) {
+      return res.status(400).json({ ok: false, erro: "Campo 'via' ausente ou vazio." });
+    }
+    const result = await printCupomWithQrCode(via.trim());
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
+    logger.error(`Erro na rota /comprovante-tef: ${message}`);
     return res.status(500).json({ ok: false, erro: message });
   }
 });
@@ -18418,6 +17160,70 @@ components:
         - ok
 </file>
 
+<file path=".gitignore">
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+.pnpm-store
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+.replit-artifact/
+
+# Runtime / Local env
+.env
+.env.*
+!.env.example
+Logs/
+repomix-output.xml
+
+*.md
+!README.md
+</file>
+
 <file path="artifacts/api-server/src/routes/produtos.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -18596,7 +17402,7 @@ export default router;
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -19052,6 +17858,44 @@ export default function Historico() {
 }
 </file>
 
+<file path="lib/db/src/schema/produtos.ts">
+import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
+
+export const produtosTable = pgTable(
+  "produtos",
+  {
+    id: serial("id").primaryKey(),
+    codigo: text("codigo"),
+    nome: text("nome").notNull(),
+    marca: text("marca"),
+    categoria: categoriaEnum("categoria").notNull().default("mercado"),
+    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
+    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
+    cest: text("cest"), // Código Especificador da Substituição Tributária
+    cst: text("cst"),
+    preco: real("preco").notNull(),
+    custo: real("custo").notNull().default(0),
+    estoque: real("estoque").notNull().default(0),
+    estoque_min: real("estoque_min").notNull().default(5),
+    unidade: text("unidade").notNull().default("un"),
+    validade: text("validade"),
+    ativo: boolean("ativo").notNull().default(true),
+    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
+  })
+);
+
+export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
+export type InsertProduto = z.infer<typeof insertProdutoSchema>;
+export type Produto = typeof produtosTable.$inferSelect;
+</file>
+
 <file path="lib/api-zod/src/generated/api.ts">
 /**
  * Generated by orval v8.5.3 🍺
@@ -19309,6 +18153,8 @@ export const RegistrarVendaBody = zod.object({
   codigo_autorizacao: zod.string().nullish(),
   bandeira_cartao: zod.string().nullish(),
   tipo_pagamento: zod.string().nullish(),
+  nsu_tef: zod.string().nullish(),
+  tef_intencao_id: zod.number().nullish(),
   itens: zod.array(
     zod.object({
       produto_id: zod.number(),
@@ -19621,392 +18467,6 @@ export const TestImpressoraResponse = zod.object({
   ok: zod.boolean(),
   erro: zod.string().nullish(),
 });
-</file>
-
-<file path="lib/db/src/schema/produtos.ts">
-import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-
-export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
-
-export const produtosTable = pgTable(
-  "produtos",
-  {
-    id: serial("id").primaryKey(),
-    codigo: text("codigo"),
-    nome: text("nome").notNull(),
-    marca: text("marca"),
-    categoria: categoriaEnum("categoria").notNull().default("mercado"),
-    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
-    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
-    cest: text("cest"), // Código Especificador da Substituição Tributária
-    cst: text("cst"),
-    preco: real("preco").notNull(),
-    custo: real("custo").notNull().default(0),
-    estoque: real("estoque").notNull().default(0),
-    estoque_min: real("estoque_min").notNull().default(5),
-    unidade: text("unidade").notNull().default("un"),
-    validade: text("validade"),
-    ativo: boolean("ativo").notNull().default(true),
-    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
-  })
-);
-
-export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
-export type InsertProduto = z.infer<typeof insertProdutoSchema>;
-export type Produto = typeof produtosTable.$inferSelect;
-</file>
-
-<file path="lib/api-client-react/src/generated/api.schemas.ts">
-/**
- * Generated by orval v8.5.3 🍺
- * Do not edit manually.
- * Api
- * Arvoredo PDV API
- * OpenAPI spec version: 0.2.0
- */
-export interface HealthStatus {
-  status: string;
-}
-
-export interface SuccessResponse {
-  ok: boolean;
-  message?: string;
-}
-
-export type ProdutoCategoria =
-  (typeof ProdutoCategoria)[keyof typeof ProdutoCategoria];
-
-export const ProdutoCategoria = {
-  mercado: "mercado",
-  cozinha: "cozinha",
-  feira: "feira",
-} as const;
-
-export interface Produto {
-  id: number;
-  codigo?: string | null;
-  nome: string;
-  marca?: string | null;
-  categoria: ProdutoCategoria;
-  ncm?: string | null;
-  cst?: string | null;
-  preco: number;
-  custo: number;
-  estoque: number;
-  estoque_min: number;
-  unidade: string;
-  validade?: string | null;
-  ativo: boolean;
-  criado_em: string;
-}
-
-export interface AlertasProdutos {
-  estoque_baixo: Produto[];
-  vencendo: Produto[];
-  vencidos: Produto[];
-  total_alertas: number;
-}
-
-export type CriarProdutoInputCategoria =
-  (typeof CriarProdutoInputCategoria)[keyof typeof CriarProdutoInputCategoria];
-
-export const CriarProdutoInputCategoria = {
-  mercado: "mercado",
-  cozinha: "cozinha",
-  feira: "feira",
-} as const;
-
-export interface CriarProdutoInput {
-  codigo?: string | null;
-  nome: string;
-  marca?: string | null;
-  categoria: CriarProdutoInputCategoria;
-  ncm?: string | null;
-  cst?: string | null;
-  preco: number;
-  custo?: number;
-  estoque?: number;
-  estoque_min?: number;
-  unidade?: string;
-  validade?: string | null;
-}
-
-export type EditarProdutoInputCategoria =
-  (typeof EditarProdutoInputCategoria)[keyof typeof EditarProdutoInputCategoria];
-
-export const EditarProdutoInputCategoria = {
-  mercado: "mercado",
-  cozinha: "cozinha",
-  feira: "feira",
-} as const;
-
-export interface EditarProdutoInput {
-  codigo?: string | null;
-  nome?: string;
-  marca?: string | null;
-  categoria?: EditarProdutoInputCategoria;
-  ncm?: string | null;
-  cst?: string | null;
-  preco?: number;
-  custo?: number;
-  estoque?: number;
-  estoque_min?: number;
-  unidade?: string;
-  validade?: string | null;
-  ativo?: boolean;
-}
-
-export interface ItemVendaInput {
-  produto_id: number;
-  quantidade: number;
-  preco_unit: number;
-  /** Feira: peças; quantidade = peso em kg */
-  unidades?: number;
-}
-
-export type RegistrarVendaInputCategoria =
-  (typeof RegistrarVendaInputCategoria)[keyof typeof RegistrarVendaInputCategoria];
-
-export const RegistrarVendaInputCategoria = {
-  mercado: "mercado",
-  cozinha: "cozinha",
-  feira: "feira",
-} as const;
-
-export type RegistrarVendaInputPagamento =
-  (typeof RegistrarVendaInputPagamento)[keyof typeof RegistrarVendaInputPagamento];
-
-export const RegistrarVendaInputPagamento = {
-  dinheiro: "dinheiro",
-  pix: "pix",
-  cartao: "cartao",
-  fiado: "fiado",
-} as const;
-
-export interface RegistrarVendaInput {
-  categoria: RegistrarVendaInputCategoria;
-  desconto?: number;
-  pagamento: RegistrarVendaInputPagamento;
-  cliente_id?: number | null;
-  observacao?: string | null;
-  cpf_nota?: string | null;
-  cnpj_credenciadora?: string | null;
-  codigo_autorizacao?: string | null;
-  bandeira_cartao?: string | null;
-  tipo_pagamento?: string | null;
-  itens: ItemVendaInput[];
-}
-
-export interface ItemVenda {
-  id: number;
-  venda_id: number;
-  produto_id: number;
-  nome_snap: string;
-  quantidade: number;
-  unidades?: number | null;
-  preco_unit: number;
-  subtotal: number;
-}
-
-export interface Venda {
-  id: number;
-  sessao_id?: number | null;
-  categoria: string;
-  total: number;
-  desconto: number;
-  pagamento: string;
-  cliente_id?: number | null;
-  cliente_nome?: string | null;
-  observacao?: string | null;
-  criado_em: string;
-  danfe_impresso?: boolean;
-}
-
-export interface ResumoVendas {
-  total: number;
-  total_dinheiro: number;
-  total_pix: number;
-  total_cartao: number;
-  total_fiado: number;
-  num_vendas: number;
-  mercado: number;
-  cozinha: number;
-  feira?: number;
-}
-
-export type MovimentoEstoqueInputTipo =
-  (typeof MovimentoEstoqueInputTipo)[keyof typeof MovimentoEstoqueInputTipo];
-
-export const MovimentoEstoqueInputTipo = {
-  entrada: "entrada",
-  saida: "saida",
-  ajuste: "ajuste",
-} as const;
-
-export interface MovimentoEstoqueInput {
-  produto_id: number;
-  tipo: MovimentoEstoqueInputTipo;
-  quantidade: number;
-  motivo?: string | null;
-}
-
-export interface MovimentoEstoque {
-  id: number;
-  produto_id: number;
-  produto_nome?: string | null;
-  tipo: string;
-  quantidade: number;
-  motivo?: string | null;
-  criado_em: string;
-}
-
-export interface Cliente {
-  id: number;
-  nome: string;
-  apelido?: string | null;
-  telefone?: string | null;
-  cpf?: string | null;
-  observacao?: string | null;
-  criado_em: string;
-}
-
-export interface CriarClienteInput {
-  nome: string;
-  apelido?: string | null;
-  telefone?: string | null;
-  cpf?: string | null;
-  observacao?: string | null;
-}
-
-export interface FiadoItem {
-  id: number;
-  venda_id?: number | null;
-  valor: number;
-  pago: boolean;
-  pago_em?: string | null;
-  criado_em: string;
-}
-
-export interface ExtratoCliente {
-  cliente: Cliente;
-  fiados: FiadoItem[];
-  total_aberto: number;
-}
-
-export interface PagarFiadoInput {
-  valor: number;
-}
-
-export interface ResumoFiado {
-  cliente: Cliente;
-  total_aberto: number;
-}
-
-export type SessaoCaixaStatus =
-  (typeof SessaoCaixaStatus)[keyof typeof SessaoCaixaStatus];
-
-export const SessaoCaixaStatus = {
-  aberto: "aberto",
-  fechado: "fechado",
-} as const;
-
-export interface SessaoCaixa {
-  id: number;
-  aberto_em: string;
-  fechado_em?: string | null;
-  fundo_inicial: number;
-  total_dinheiro: number;
-  total_pix: number;
-  total_cartao: number;
-  total_fiado: number;
-  total_sangria: number;
-  status: SessaoCaixaStatus;
-}
-
-export interface StatusCaixa {
-  aberto: boolean;
-  sessao?: SessaoCaixa | null;
-}
-
-export interface AbrirCaixaInput {
-  fundo_inicial?: number;
-}
-
-export interface Sangria {
-  id: number;
-  sessao_id: number;
-  valor: number;
-  motivo?: string | null;
-  criado_em: string;
-}
-
-export interface SangriaInput {
-  valor: number;
-  motivo?: string | null;
-}
-
-export interface ImprimirCupomInput {
-  venda_id: number;
-}
-
-export interface ImprimirSangriaInput {
-  data_inicio: string;
-  data_fim: string;
-  sessao_id?: number | null;
-}
-
-export interface ImpressaoResponse {
-  ok: boolean;
-  erro?: string | null;
-}
-
-export type ListarProdutosParams = {
-  q?: string;
-  categoria?: ListarProdutosCategoria;
-};
-
-export type ListarProdutosCategoria =
-  (typeof ListarProdutosCategoria)[keyof typeof ListarProdutosCategoria];
-
-export const ListarProdutosCategoria = {
-  mercado: "mercado",
-  cozinha: "cozinha",
-  feira: "feira",
-} as const;
-
-export type BuscarProdutoParams = {
-  codigo?: string;
-  nome?: string;
-  q?: string;
-};
-
-export type ListarVendasParams = {
-  data?: string;
-  data_inicio?: string;
-  data_fim?: string;
-  categoria?: string;
-  limit?: number;
-  page?: number;
-  q?: string;
-};
-
-export type ListarMovimentosParams = {
-  produto_id?: number;
-  limit?: number;
-};
-
-export type ListarClientesParams = {
-  q?: string;
-};
-
-export type ListarSangriasParams = {
-  sessao_id?: number;
-};
 </file>
 
 <file path="artifacts/arvoredo/src/pages/produtos.tsx">
@@ -20897,6 +19357,354 @@ export default function Produtos() {
 }
 </file>
 
+<file path="lib/api-client-react/src/generated/api.schemas.ts">
+/**
+ * Generated by orval v8.5.3 🍺
+ * Do not edit manually.
+ * Api
+ * Arvoredo PDV API
+ * OpenAPI spec version: 0.2.0
+ */
+export interface HealthStatus {
+  status: string;
+}
+
+export interface SuccessResponse {
+  ok: boolean;
+  message?: string;
+}
+
+export type ProdutoCategoria =
+  (typeof ProdutoCategoria)[keyof typeof ProdutoCategoria];
+
+export const ProdutoCategoria = {
+  mercado: "mercado",
+  cozinha: "cozinha",
+  feira: "feira",
+} as const;
+
+export interface Produto {
+  id: number;
+  codigo?: string | null;
+  nome: string;
+  marca?: string | null;
+  categoria: ProdutoCategoria;
+  ncm?: string | null;
+  cst?: string | null;
+  preco: number;
+  custo: number;
+  estoque: number;
+  estoque_min: number;
+  unidade: string;
+  validade?: string | null;
+  ativo: boolean;
+  criado_em: string;
+}
+
+export interface AlertasProdutos {
+  estoque_baixo: Produto[];
+  vencendo: Produto[];
+  vencidos: Produto[];
+  total_alertas: number;
+}
+
+export type CriarProdutoInputCategoria =
+  (typeof CriarProdutoInputCategoria)[keyof typeof CriarProdutoInputCategoria];
+
+export const CriarProdutoInputCategoria = {
+  mercado: "mercado",
+  cozinha: "cozinha",
+  feira: "feira",
+} as const;
+
+export interface CriarProdutoInput {
+  codigo?: string | null;
+  nome: string;
+  marca?: string | null;
+  categoria: CriarProdutoInputCategoria;
+  ncm?: string | null;
+  cst?: string | null;
+  preco: number;
+  custo?: number;
+  estoque?: number;
+  estoque_min?: number;
+  unidade?: string;
+  validade?: string | null;
+}
+
+export type EditarProdutoInputCategoria =
+  (typeof EditarProdutoInputCategoria)[keyof typeof EditarProdutoInputCategoria];
+
+export const EditarProdutoInputCategoria = {
+  mercado: "mercado",
+  cozinha: "cozinha",
+  feira: "feira",
+} as const;
+
+export interface EditarProdutoInput {
+  codigo?: string | null;
+  nome?: string;
+  marca?: string | null;
+  categoria?: EditarProdutoInputCategoria;
+  ncm?: string | null;
+  cst?: string | null;
+  preco?: number;
+  custo?: number;
+  estoque?: number;
+  estoque_min?: number;
+  unidade?: string;
+  validade?: string | null;
+  ativo?: boolean;
+}
+
+export interface ItemVendaInput {
+  produto_id: number;
+  quantidade: number;
+  preco_unit: number;
+  /** Feira: peças; quantidade = peso em kg */
+  unidades?: number;
+}
+
+export type RegistrarVendaInputCategoria =
+  (typeof RegistrarVendaInputCategoria)[keyof typeof RegistrarVendaInputCategoria];
+
+export const RegistrarVendaInputCategoria = {
+  mercado: "mercado",
+  cozinha: "cozinha",
+  feira: "feira",
+} as const;
+
+export type RegistrarVendaInputPagamento =
+  (typeof RegistrarVendaInputPagamento)[keyof typeof RegistrarVendaInputPagamento];
+
+export const RegistrarVendaInputPagamento = {
+  dinheiro: "dinheiro",
+  pix: "pix",
+  cartao: "cartao",
+  fiado: "fiado",
+} as const;
+
+export interface RegistrarVendaInput {
+  categoria: RegistrarVendaInputCategoria;
+  desconto?: number;
+  pagamento: RegistrarVendaInputPagamento;
+  cliente_id?: number | null;
+  observacao?: string | null;
+  cpf_nota?: string | null;
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+  itens: ItemVendaInput[];
+}
+
+export interface ItemVenda {
+  id: number;
+  venda_id: number;
+  produto_id: number;
+  nome_snap: string;
+  quantidade: number;
+  unidades?: number | null;
+  preco_unit: number;
+  subtotal: number;
+}
+
+export interface Venda {
+  id: number;
+  sessao_id?: number | null;
+  categoria: string;
+  total: number;
+  desconto: number;
+  pagamento: string;
+  cliente_id?: number | null;
+  cliente_nome?: string | null;
+  observacao?: string | null;
+  criado_em: string;
+  danfe_impresso?: boolean;
+}
+
+export interface ResumoVendas {
+  total: number;
+  total_dinheiro: number;
+  total_pix: number;
+  total_cartao: number;
+  total_fiado: number;
+  num_vendas: number;
+  mercado: number;
+  cozinha: number;
+  feira?: number;
+}
+
+export type MovimentoEstoqueInputTipo =
+  (typeof MovimentoEstoqueInputTipo)[keyof typeof MovimentoEstoqueInputTipo];
+
+export const MovimentoEstoqueInputTipo = {
+  entrada: "entrada",
+  saida: "saida",
+  ajuste: "ajuste",
+} as const;
+
+export interface MovimentoEstoqueInput {
+  produto_id: number;
+  tipo: MovimentoEstoqueInputTipo;
+  quantidade: number;
+  motivo?: string | null;
+}
+
+export interface MovimentoEstoque {
+  id: number;
+  produto_id: number;
+  produto_nome?: string | null;
+  tipo: string;
+  quantidade: number;
+  motivo?: string | null;
+  criado_em: string;
+}
+
+export interface Cliente {
+  id: number;
+  nome: string;
+  apelido?: string | null;
+  telefone?: string | null;
+  cpf?: string | null;
+  observacao?: string | null;
+  criado_em: string;
+}
+
+export interface CriarClienteInput {
+  nome: string;
+  apelido?: string | null;
+  telefone?: string | null;
+  cpf?: string | null;
+  observacao?: string | null;
+}
+
+export interface FiadoItem {
+  id: number;
+  venda_id?: number | null;
+  valor: number;
+  pago: boolean;
+  pago_em?: string | null;
+  criado_em: string;
+}
+
+export interface ExtratoCliente {
+  cliente: Cliente;
+  fiados: FiadoItem[];
+  total_aberto: number;
+}
+
+export interface PagarFiadoInput {
+  valor: number;
+}
+
+export interface ResumoFiado {
+  cliente: Cliente;
+  total_aberto: number;
+}
+
+export type SessaoCaixaStatus =
+  (typeof SessaoCaixaStatus)[keyof typeof SessaoCaixaStatus];
+
+export const SessaoCaixaStatus = {
+  aberto: "aberto",
+  fechado: "fechado",
+} as const;
+
+export interface SessaoCaixa {
+  id: number;
+  aberto_em: string;
+  fechado_em?: string | null;
+  fundo_inicial: number;
+  total_dinheiro: number;
+  total_pix: number;
+  total_cartao: number;
+  total_fiado: number;
+  total_sangria: number;
+  status: SessaoCaixaStatus;
+}
+
+export interface StatusCaixa {
+  aberto: boolean;
+  sessao?: SessaoCaixa | null;
+}
+
+export interface AbrirCaixaInput {
+  fundo_inicial?: number;
+}
+
+export interface Sangria {
+  id: number;
+  sessao_id: number;
+  valor: number;
+  motivo?: string | null;
+  criado_em: string;
+}
+
+export interface SangriaInput {
+  valor: number;
+  motivo?: string | null;
+}
+
+export interface ImprimirCupomInput {
+  venda_id: number;
+}
+
+export interface ImprimirSangriaInput {
+  data_inicio: string;
+  data_fim: string;
+  sessao_id?: number | null;
+}
+
+export interface ImpressaoResponse {
+  ok: boolean;
+  erro?: string | null;
+}
+
+export type ListarProdutosParams = {
+  q?: string;
+  categoria?: ListarProdutosCategoria;
+};
+
+export type ListarProdutosCategoria =
+  (typeof ListarProdutosCategoria)[keyof typeof ListarProdutosCategoria];
+
+export const ListarProdutosCategoria = {
+  mercado: "mercado",
+  cozinha: "cozinha",
+  feira: "feira",
+} as const;
+
+export type BuscarProdutoParams = {
+  codigo?: string;
+  nome?: string;
+  q?: string;
+};
+
+export type ListarVendasParams = {
+  data?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  categoria?: string;
+  limit?: number;
+  page?: number;
+  q?: string;
+};
+
+export type ListarMovimentosParams = {
+  produto_id?: number;
+  limit?: number;
+};
+
+export type ListarClientesParams = {
+  q?: string;
+};
+
+export type ListarSangriasParams = {
+  sessao_id?: number;
+};
+</file>
+
 <file path="artifacts/api-server/src/routes/vendas.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -21042,6 +19850,8 @@ router.post("/", async (req, res) => {
       codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
       bandeira_cartao: (data as any).bandeira_cartao ?? null,
       tipo_pagamento: (data as any).tipo_pagamento ?? null,
+      nsu_tef: (data as any).nsu_tef ?? null,
+      tef_intencao_id: (data as any).tef_intencao_id ?? null,
     } as any)
     .returning();
 
@@ -21942,7 +20752,7 @@ function wrapText(text: string, w: number): string[] {
     return out;
 }
 
-function parseDocumentoNota(observacao?: string) {
+function parseDocumentoNota(observacao?: string | null) {
   const match = observacao?.match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
   if (!match) return null;
   const documento = match[1];
@@ -22137,7 +20947,7 @@ import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
 import { useCaixaStatus } from "@/hooks/use-caixa";
 import { useFiadoClientes } from "@/hooks/use-fiado";
 import { useImprimirCupom } from "@/hooks/use-impressora";
-import { useEnviarParaMaquininha } from "@/hooks/use-maquininha";
+import { useEnviarParaMaquininha, useCancelarPagamento } from "@/hooks/use-maquininha";
 import { formatMoney } from "@/lib/utils";
 import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer, UserCheck, X } from "lucide-react";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
@@ -22315,6 +21125,8 @@ export default function Pdv() {
   const registrarVenda = useRegistrarVendaWrapper();
   const imprimirCupom = useImprimirCupom();
   const enviarMaquininha = useEnviarParaMaquininha();
+  const cancelarPagamento = useCancelarPagamento();
+  const [tefStatus, setTefStatus] = useState<"idle" | "aguardando" | "aprovado" | "negado">("idle");
   const { toast } = useToast();
   const { data: clientes = [] } = useFiadoClientes();
 
@@ -22429,6 +21241,7 @@ export default function Pdv() {
     } | null = null;
 
     if (tipoMaquininha) {
+      setTefStatus("aguardando");
       try {
         const resposta = await enviarMaquininha.mutateAsync({
           venda_local_id: `local-${Date.now()}`,
@@ -22443,23 +21256,37 @@ export default function Pdv() {
             subtotal: item.subtotal,
           })),
         });
+
+        if (!resposta?.aprovado) {
+          setTefStatus("negado");
+          toast({
+            title: "Pagamento não aprovado",
+            description: resposta?.mensagem ?? "Tente novamente.",
+            variant: "destructive",
+          });
+          setTefStatus("idle");
+          return;
+        }
+
+        setTefStatus("aprovado");
         toast({
-          title: "Maquininha acionada",
-          description: resposta.mensagem,
-          className: "bg-blue-600 text-white",
+          title: "Pagamento aprovado ✓",
+          description: `Autorização: ${resposta.dados_cartao?.codigo_autorizacao ?? "TEF"}`,
+          className: "bg-green-600 text-white",
         });
         if (resposta?.dados_cartao) {
           dadosCartao = resposta.dados_cartao;
         }
       } catch (error) {
-        const msg = error instanceof Error ? error.message : "Falha ao enviar para maquininha";
-        console.warn("[maquininha] falhou mas venda continua:", error);
+        setTefStatus("negado");
+        const msg = error instanceof Error ? error.message : "Falha ao processar pagamento";
         toast({
-          title: "Aviso: maquininha não acionada",
-          description: `${msg} — venda registrada normalmente.`,
+          title: "Pagamento recusado",
+          description: msg,
           variant: "destructive",
         });
-        // SEM return aqui — venda continua
+        setTefStatus("idle");
+        return;
       }
     }
 
@@ -22487,19 +21314,22 @@ export default function Pdv() {
           ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CNPJ_NA_NOTA:${cpfDigits}`
           : observacaoFinal;
 
+    const registrarVendaData = {
+      categoria: saleCategory,
+      pagamento: pagamentoVenda,
+      desconto: cart.desconto,
+      cliente_id: clienteId,
+      observacao: observacaoComCpf,
+      cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
+      itens: cart.getPayloadItens(),
+      ...dadosCartao,
+    } as any;
+
     registrarVenda.mutate({
-      data: {
-        categoria: saleCategory,
-        pagamento: pagamentoVenda,
-        desconto: cart.desconto,
-        cliente_id: clienteId,
-        observacao: observacaoComCpf,
-        cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
-        itens: cart.getPayloadItens(),
-        ...dadosCartao,
-      }
+      data: registrarVendaData,
     }, {
       onSuccess: (venda) => {
+        setTefStatus("idle");
         toast({ title: "✓ Venda Finalizada", description: "Imprimindo cupom...", className: "bg-green-600 text-white" });
         cart.clearCart();
         setClienteNota(null);
@@ -22594,8 +21424,23 @@ export default function Pdv() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full">
-      {/* Left Area - Products */}
+    <>
+      {tefStatus === "aguardando" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
+            <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+            <h2 className="text-xl font-bold text-foreground">Aguardando maquininha...</h2>
+            <p className="text-sm text-muted-foreground text-center">
+              Peça ao cliente para aproximar, inserir ou passar o cartão e digitar a senha na maquininha.
+            </p>
+            <p className="text-xs text-muted-foreground/60 text-center">
+              Não feche nem atualize o sistema enquanto o pagamento é processado.
+            </p>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-col lg:flex-row h-full">
+        {/* Left Area - Products */}
       <div className="flex-1 flex flex-col h-full bg-secondary/30 p-6 overflow-hidden">
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="relative flex-1">
@@ -22988,13 +21833,11 @@ export default function Pdv() {
               className="flex-1"
               onClick={() => {
                 if (!pendingVenda) return;
-                processVenda(
-                  pendingVenda.method,
-                  pendingVenda.clienteId,
-                  pendingVenda.observacaoDinheiro,
-                  pendingVenda.pagamentosOverride,
-                  null,
-                );
+                const venda = pendingVenda;
+                setCpfModalOpen(false);
+                setPendingVenda(null);
+                setCpfInput("");
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, null);
               }}
             >
               Nao
@@ -23003,13 +21846,12 @@ export default function Pdv() {
               className="flex-1"
               onClick={() => {
                 if (!pendingVenda) return;
-                processVenda(
-                  pendingVenda.method,
-                  pendingVenda.clienteId,
-                  pendingVenda.observacaoDinheiro,
-                  pendingVenda.pagamentosOverride,
-                  cpfInput,
-                );
+                const venda = pendingVenda;
+                const cpf = cpfInput;
+                setCpfModalOpen(false);
+                setPendingVenda(null);
+                setCpfInput("");
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, cpf);
               }}
             >
               Sim
@@ -23032,6 +21874,7 @@ export default function Pdv() {
         )}
       </Modal>
     </div>
+    </>
   );
 }
 </file>

@@ -5,7 +5,7 @@ import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
 import { useCaixaStatus } from "@/hooks/use-caixa";
 import { useFiadoClientes } from "@/hooks/use-fiado";
 import { useImprimirCupom } from "@/hooks/use-impressora";
-import { useEnviarParaMaquininha } from "@/hooks/use-maquininha";
+import { useEnviarParaMaquininha, useCancelarPagamento } from "@/hooks/use-maquininha";
 import { formatMoney } from "@/lib/utils";
 import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer, UserCheck, X } from "lucide-react";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
@@ -183,6 +183,8 @@ export default function Pdv() {
   const registrarVenda = useRegistrarVendaWrapper();
   const imprimirCupom = useImprimirCupom();
   const enviarMaquininha = useEnviarParaMaquininha();
+  const cancelarPagamento = useCancelarPagamento();
+  const [tefStatus, setTefStatus] = useState<"idle" | "aguardando" | "aprovado" | "negado">("idle");
   const { toast } = useToast();
   const { data: clientes = [] } = useFiadoClientes();
 
@@ -297,6 +299,7 @@ export default function Pdv() {
     } | null = null;
 
     if (tipoMaquininha) {
+      setTefStatus("aguardando");
       try {
         const resposta = await enviarMaquininha.mutateAsync({
           venda_local_id: `local-${Date.now()}`,
@@ -311,23 +314,37 @@ export default function Pdv() {
             subtotal: item.subtotal,
           })),
         });
+
+        if (!resposta?.aprovado) {
+          setTefStatus("negado");
+          toast({
+            title: "Pagamento não aprovado",
+            description: resposta?.mensagem ?? "Tente novamente.",
+            variant: "destructive",
+          });
+          setTefStatus("idle");
+          return;
+        }
+
+        setTefStatus("aprovado");
         toast({
-          title: "Maquininha acionada",
-          description: resposta.mensagem,
-          className: "bg-blue-600 text-white",
+          title: "Pagamento aprovado ✓",
+          description: `Autorização: ${resposta.dados_cartao?.codigo_autorizacao ?? "TEF"}`,
+          className: "bg-green-600 text-white",
         });
         if (resposta?.dados_cartao) {
           dadosCartao = resposta.dados_cartao;
         }
       } catch (error) {
-        const msg = error instanceof Error ? error.message : "Falha ao enviar para maquininha";
-        console.warn("[maquininha] falhou mas venda continua:", error);
+        setTefStatus("negado");
+        const msg = error instanceof Error ? error.message : "Falha ao processar pagamento";
         toast({
-          title: "Aviso: maquininha não acionada",
-          description: `${msg} — venda registrada normalmente.`,
+          title: "Pagamento recusado",
+          description: msg,
           variant: "destructive",
         });
-        // SEM return aqui — venda continua
+        setTefStatus("idle");
+        return;
       }
     }
 
@@ -355,19 +372,22 @@ export default function Pdv() {
           ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CNPJ_NA_NOTA:${cpfDigits}`
           : observacaoFinal;
 
+    const registrarVendaData = {
+      categoria: saleCategory,
+      pagamento: pagamentoVenda,
+      desconto: cart.desconto,
+      cliente_id: clienteId,
+      observacao: observacaoComCpf,
+      cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
+      itens: cart.getPayloadItens(),
+      ...dadosCartao,
+    } as any;
+
     registrarVenda.mutate({
-      data: {
-        categoria: saleCategory,
-        pagamento: pagamentoVenda,
-        desconto: cart.desconto,
-        cliente_id: clienteId,
-        observacao: observacaoComCpf,
-        cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
-        itens: cart.getPayloadItens(),
-        ...dadosCartao,
-      }
+      data: registrarVendaData,
     }, {
       onSuccess: (venda) => {
+        setTefStatus("idle");
         toast({ title: "✓ Venda Finalizada", description: "Imprimindo cupom...", className: "bg-green-600 text-white" });
         cart.clearCart();
         setClienteNota(null);
@@ -462,8 +482,23 @@ export default function Pdv() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full">
-      {/* Left Area - Products */}
+    <>
+      {tefStatus === "aguardando" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
+            <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+            <h2 className="text-xl font-bold text-foreground">Aguardando maquininha...</h2>
+            <p className="text-sm text-muted-foreground text-center">
+              Peça ao cliente para aproximar, inserir ou passar o cartão e digitar a senha na maquininha.
+            </p>
+            <p className="text-xs text-muted-foreground/60 text-center">
+              Não feche nem atualize o sistema enquanto o pagamento é processado.
+            </p>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-col lg:flex-row h-full">
+        {/* Left Area - Products */}
       <div className="flex-1 flex flex-col h-full bg-secondary/30 p-6 overflow-hidden">
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="relative flex-1">
@@ -856,13 +891,11 @@ export default function Pdv() {
               className="flex-1"
               onClick={() => {
                 if (!pendingVenda) return;
-                processVenda(
-                  pendingVenda.method,
-                  pendingVenda.clienteId,
-                  pendingVenda.observacaoDinheiro,
-                  pendingVenda.pagamentosOverride,
-                  null,
-                );
+                const venda = pendingVenda;
+                setCpfModalOpen(false);
+                setPendingVenda(null);
+                setCpfInput("");
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, null);
               }}
             >
               Nao
@@ -871,13 +904,12 @@ export default function Pdv() {
               className="flex-1"
               onClick={() => {
                 if (!pendingVenda) return;
-                processVenda(
-                  pendingVenda.method,
-                  pendingVenda.clienteId,
-                  pendingVenda.observacaoDinheiro,
-                  pendingVenda.pagamentosOverride,
-                  cpfInput,
-                );
+                const venda = pendingVenda;
+                const cpf = cpfInput;
+                setCpfModalOpen(false);
+                setPendingVenda(null);
+                setCpfInput("");
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, cpf);
               }}
             >
               Sim
@@ -900,5 +932,6 @@ export default function Pdv() {
         )}
       </Modal>
     </div>
+    </>
   );
 }

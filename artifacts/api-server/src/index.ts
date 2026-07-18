@@ -1,6 +1,6 @@
 process.env.TZ = "America/Sao_Paulo";
 
-import "dotenv/config";
+import { config } from "dotenv";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runStartupMigrations } from "./migrate";
