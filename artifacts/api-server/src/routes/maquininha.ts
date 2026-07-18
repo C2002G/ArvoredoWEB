@@ -65,10 +65,15 @@ async function pollingIntencao(
   while (Date.now() - inicio < timeoutMs) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
-      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`);
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+      });
       if (!resp.ok) continue;
       const data = (await resp.json()) as any;
-      const status: number = data?.statusId ?? data?.status?.id;
+      const status: number =
+        data?.intencaoVenda?.intencaoVendaStatus?.id ??
+        data?.statusId ??
+        data?.status?.id;
       if (status === STATUS_APROVADO) return { aprovado: true, data };
       if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
     } catch {
@@ -130,7 +135,10 @@ router.post("/enviar", async (req, res) => {
       `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
         body: JSON.stringify({
           aguardarTefIniciarTransacao: true,
           formaPagamentoId,
@@ -145,7 +153,7 @@ router.post("/enviar", async (req, res) => {
       return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
     }
     const criarData = (await criarResp.json()) as any;
-    intencaoVendaId = criarData?.intencaoVendaId ?? criarData?.id;
+    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
     if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
   } catch (err: any) {
     return res.status(502).json({ ok: false, mensagem: err.message });
@@ -161,6 +169,7 @@ router.post("/enviar", async (req, res) => {
   }
 
   const pagamento =
+    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
     resultado.data?.pagamentosExternos?.[0] ??
     resultado.data?.pagamentoExterno ??
     {};
@@ -191,9 +200,12 @@ router.post("/cancelar", async (req, res) => {
   try {
     const resp = await fetch(
       `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
-      {   
+      {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
         body: JSON.stringify({
           intencaoVendaId: intencao_venda_id,
           aguardarTefIniciarTransacao: true,

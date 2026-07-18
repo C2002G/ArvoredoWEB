@@ -302,12 +302,6 @@ This section contains the contents of the repository's files.
 }
 </file>
 
-<file path="deployment/SQL/2026-06-14-vendas-tef-controlpay.sql">
-ALTER TABLE vendas
-  ADD COLUMN IF NOT EXISTS nsu_tef text,
-  ADD COLUMN IF NOT EXISTS tef_intencao_id integer;
-</file>
-
 <file path="artifacts/api-server/src/lib/.gitkeep">
 
 </file>
@@ -6905,6 +6899,12 @@ ALTER TABLE vendas
   ADD COLUMN IF NOT EXISTS tipo_pagamento text;
 </file>
 
+<file path="deployment/SQL/2026-06-14-vendas-tef-controlpay.sql">
+ALTER TABLE vendas
+  ADD COLUMN IF NOT EXISTS nsu_tef text,
+  ADD COLUMN IF NOT EXISTS tef_intencao_id integer;
+</file>
+
 <file path="deployment/SQL/criar-banco.sql">
 -- Arvoredo PDV - Script de Criacao do Banco de Dados
 -- Execute este script no pgAdmin para criar o banco de dados
@@ -8633,116 +8633,6 @@ export function useTestarImpressora() {
 }
 </file>
 
-<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
-import { useMutation, useQuery } from "@tanstack/react-query";
-
-const BASE = "/api/maquininha";
-
-export type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
-
-type EnvioMaquininhaInput = {
-  venda_local_id?: string;
-  metodo: "debito" | "credito" | "pix";
-  valor_total: number;
-  desconto?: number;
-  itens: Array<{
-    produto_id: number;
-    nome: string;
-    quantidade: number;
-    preco_unit: number;
-    subtotal: number;
-  }>;
-};
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
-  const payload = await res.json();
-  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
-  return payload as T;
-}
-
-export function useMaquininhaConfig() {
-  return useQuery({
-    queryKey: ["maquininha", "config"],
-    queryFn: () => request<MaquininhaConfig>("/config"),
-  });
-}
-
-export function useSalvarMaquininhaConfig() {
-  return useMutation({
-    mutationFn: (data: Partial<MaquininhaConfig>) =>
-      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export type MaquininhaResponse = {
-  ok: boolean;
-  aprovado?: boolean;
-  enviado?: boolean;
-  mensagem?: string;
-  modo?: string;
-  dados_cartao?: {
-    cnpj_credenciadora?: string | null;
-    codigo_autorizacao?: string | null;
-    bandeira_cartao?: string | null;
-    tipo_pagamento?: string | null;
-    nsu_tef?: string | null;
-    tef_intencao_id?: number | null;
-  };
-  comprovante_estabelecimento?: string | null;
-  comprovante_cliente?: string | null;
-};
-
-export function useEnviarParaMaquininha() {
-  return useMutation({
-    mutationFn: (data: EnvioMaquininhaInput) =>
-      request<MaquininhaResponse>("/enviar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useCancelarPagamento() {
-  return useMutation({
-    mutationFn: (data: { intencao_venda_id: number }) =>
-      request<{ ok: boolean; mensagem: string }>("/cancelar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useTestarMaquininha() {
-  return useMutation({
-    mutationFn: () =>
-      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
-        "/testar",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
-  });
-}
-</file>
-
 <file path="artifacts/arvoredo/src/hooks/use-produtos.ts">
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -10207,16 +10097,14 @@ module.exports = defineConfig({
 });
 </file>
 
-<file path="artifacts/api-server/src/routes/maquininha.ts">
-import { Router, type IRouter } from "express";
-import { promises as fs } from "node:fs";
-import path from "node:path";
+<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
+import { useMutation, useQuery } from "@tanstack/react-query";
 
-type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
+const BASE = "/api/maquininha";
 
-type MaquininhaConfig = {
+export type MaquininhaConfig = {
   ativo: boolean;
-  modo_conexao: ModoConexao;
+  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
   api_url: string;
   api_token: string;
   timeout_ms: number;
@@ -10226,225 +10114,97 @@ type MaquininhaConfig = {
   cnpj_credenciadora: string;
 };
 
-const router: IRouter = Router();
-
-const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  ativo: true,
-  modo_conexao: "manual",
-  api_url: "",
-  api_token: "",
-  timeout_ms: 60000,
-  empresa_nome: "NOME DA EMPRESA",
-  empresa_cnpj: "00.000.000/0000-00",
-  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  cnpj_credenciadora: "",
+type EnvioMaquininhaInput = {
+  venda_local_id?: string;
+  metodo: "debito" | "credito" | "pix";
+  valor_total: number;
+  desconto?: number;
+  itens: Array<{
+    produto_id: number;
+    nome: string;
+    quantidade: number;
+    preco_unit: number;
+    subtotal: number;
+  }>;
 };
 
-async function loadConfig(): Promise<MaquininhaConfig> {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, init);
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
+  return payload as T;
 }
 
-async function saveConfig(config: MaquininhaConfig): Promise<void> {
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+export function useMaquininhaConfig() {
+  return useQuery({
+    queryKey: ["maquininha", "config"],
+    queryFn: () => request<MaquininhaConfig>("/config"),
+  });
 }
 
-const FORMA_PAGAMENTO: Record<string, number> = {
-  credito: 21,
-  debito: 22,
-  pix: 25,
+export function useSalvarMaquininhaConfig() {
+  return useMutation({
+    mutationFn: (data: Partial<MaquininhaConfig>) =>
+      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export type MaquininhaResponse = {
+  ok: boolean;
+  aprovado?: boolean;
+  enviado?: boolean;
+  mensagem?: string;
+  modo?: string;
+  dados_cartao?: {
+    cnpj_credenciadora?: string | null;
+    codigo_autorizacao?: string | null;
+    bandeira_cartao?: string | null;
+    tipo_pagamento?: string | null;
+    nsu_tef?: string | null;
+    tef_intencao_id?: number | null;
+  };
+  comprovante_estabelecimento?: string | null;
+  comprovante_cliente?: string | null;
 };
 
-const STATUS_APROVADO = 10;
-const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
-
-async function pollingIntencao(
-  baseUrl: string,
-  key: string,
-  intencaoVendaId: number,
-  timeoutMs: number,
-): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
-  const inicio = Date.now();
-  while (Date.now() - inicio < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    try {
-      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`);
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as any;
-      const status: number = data?.statusId ?? data?.status?.id;
-      if (status === STATUS_APROVADO) return { aprovado: true, data };
-      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
-    } catch {
-      // falha de rede temporária — continua tentando
-    }
-  }
-  return { aprovado: false, data: null, timeout: true };
+export function useEnviarParaMaquininha() {
+  return useMutation({
+    mutationFn: (data: EnvioMaquininhaInput) =>
+      request<MaquininhaResponse>("/enviar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
 }
 
-router.get("/config", async (_req, res) => {
-  const config = await loadConfig();
-  res.json(config);
-});
-
-router.post("/config", async (req, res) => {
-  const current = await loadConfig();
-  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
-  const merged: MaquininhaConfig = {
-    ...current,
-    ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
-  };
-  await saveConfig(merged);
-  res.json({ ok: true, config: merged });
-});
-
-router.post("/enviar", async (req, res) => {
-  const config = await loadConfig();
-
-  const payload = req.body as {
-    venda_local_id?: string;
-    metodo: "debito" | "credito" | "pix";
-    valor_total: number; // em reais, ex: 10.50
-  };
-
-  if (!config.ativo) {
-    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
-  }
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
-
-  if (!key) {
-    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
-  }
-
-  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
-  if (!formaPagamentoId) {
-    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
-  }
-
-  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
-
-  let intencaoVendaId: number;
-  try {
-    const criarResp = await fetch(
-      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
-      {
+export function useCancelarPagamento() {
+  return useMutation({
+    mutationFn: (data: { intencao_venda_id: number }) =>
+      request<{ ok: boolean; mensagem: string }>("/cancelar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          aguardarTefIniciarTransacao: true,
-          formaPagamentoId,
-          valorTotalVendido: valorStr,
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!criarResp.ok) {
-      const txt = await criarResp.text();
-      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
-    }
-    const criarData = (await criarResp.json()) as any;
-    intencaoVendaId = criarData?.intencaoVendaId ?? criarData?.id;
-    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-
-  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
-
-  if (!resultado.aprovado) {
-    const motivo = resultado.timeout
-      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
-      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
-    return res.status(402).json({ ok: false, mensagem: motivo });
-  }
-
-  const pagamento =
-    resultado.data?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentoExterno ??
-    {};
-
-  return res.json({
-    ok: true,
-    aprovado: true,
-    dados_cartao: {
-      cnpj_credenciadora: config.cnpj_credenciadora || null,
-      codigo_autorizacao: pagamento.autorizacao ?? null,
-      bandeira_cartao: pagamento.bandeira ?? null,
-      tipo_pagamento:
-        payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05",
-      nsu_tef: pagamento.nsuTid ?? pagamento.nsu ?? null,
-      tef_intencao_id: intencaoVendaId,
-    },
-    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
-    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+        body: JSON.stringify(data),
+      }),
   });
-});
+}
 
-router.post("/cancelar", async (req, res) => {
-  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          intencaoVendaId: intencao_venda_id,
-          aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159",
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    const data = (await resp.json()) as any;
-    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-});
-
-router.post("/testar", async (_req, res) => {
-  const config = await loadConfig();
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  let paygoOnline = false;
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    paygoOnline = resp.ok;
-  } catch {
-    paygoOnline = false;
-  }
-
-  return res.json({
-    ok: true,
-    ativo: config.ativo,
-    modo_conexao: config.modo_conexao,
-    paygo_online: paygoOnline,
-    mensagem: paygoOnline
-      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
-      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
+export function useTestarMaquininha() {
+  return useMutation({
+    mutationFn: () =>
+      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
+        "/testar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
   });
-});
-
-export default router;
+}
 </file>
 
 <file path="artifacts/arvoredo/src/store/use-cart.ts">
@@ -13411,6 +13171,260 @@ export * from "./fiscal";
 }
 </file>
 
+<file path="artifacts/api-server/src/routes/maquininha.ts">
+import { Router, type IRouter } from "express";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
+
+type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: ModoConexao;
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+const router: IRouter = Router();
+
+const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  ativo: true,
+  modo_conexao: "manual",
+  api_url: "",
+  api_token: "",
+  timeout_ms: 60000,
+  empresa_nome: "NOME DA EMPRESA",
+  empresa_cnpj: "00.000.000/0000-00",
+  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
+};
+
+async function loadConfig(): Promise<MaquininhaConfig> {
+  try {
+    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function saveConfig(config: MaquininhaConfig): Promise<void> {
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number =
+        data?.intencaoVenda?.intencaoVendaStatus?.id ??
+        data?.statusId ??
+        data?.status?.id;
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch {
+      // falha de rede temporária — continua tentando
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
+}
+
+router.get("/config", async (_req, res) => {
+  const config = await loadConfig();
+  res.json(config);
+});
+
+router.post("/config", async (req, res) => {
+  const current = await loadConfig();
+  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
+  const merged: MaquininhaConfig = {
+    ...current,
+    ...body,
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
+  };
+  await saveConfig(merged);
+  res.json({ ok: true, config: merged });
+});
+
+router.post("/enviar", async (req, res) => {
+  const config = await loadConfig();
+
+  const payload = req.body as {
+    venda_local_id?: string;
+    metodo: "debito" | "credito" | "pix";
+    valor_total: number; // em reais, ex: 10.50
+  };
+
+  if (!config.ativo) {
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
+  }
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
+  }
+
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
+  }
+
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+          terminalId,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+    const motivo = resultado.timeout
+      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
+    return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: pagamento.autorizacao ?? null,
+      bandeira_cartao: pagamento.bandeira ?? null,
+      tipo_pagamento:
+        payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05",
+      nsu_tef: pagamento.nsuTid ?? pagamento.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+});
+
+router.post("/testar", async (_req, res) => {
+  const config = await loadConfig();
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
+    ok: true,
+    ativo: config.ativo,
+    modo_conexao: config.modo_conexao,
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
+  });
+});
+
+export default router;
+</file>
+
 <file path="artifacts/api-server/src/routes/nfce.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -13509,46 +13523,6 @@ router.post("/:vendaId/cancelar", async (req, res) => {
 });
 
 export default router;
-</file>
-
-<file path="artifacts/api-server/src/index.ts">
-process.env.TZ = "America/Sao_Paulo";
-
-import { config } from "dotenv";
-import app from "./app";
-import { logger } from "./lib/logger";
-import { runStartupMigrations } from "./migrate";
-
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-runStartupMigrations()
-  .then(() => {
-    app.listen(port, (err) => {
-      if (err) {
-        logger.error({ err }, "Error listening on port");
-        process.exit(1);
-      }
-
-      logger.info({ now: new Date().toString(), tz: process.env.TZ }, "Timezone configured");
-      logger.info({ port }, "Server listening");
-    });
-  })
-  .catch((err) => {
-    logger.error({ err }, "Falha nas migrações de startup; encerrando");
-    process.exit(1);
-  });
 </file>
 
 <file path="artifacts/arvoredo/src/components/layout.tsx">
@@ -13977,6 +13951,471 @@ export default function Caixa() {
     </div>
   );
 }
+</file>
+
+<file path="deployment/atualizar.ps1">
+# Arvoredo PDV - Script de Atualizacao
+# Execute este script para atualizar o sistema via Git
+
+param(
+    [string]$PgPassword = "",
+    [switch]$ForceRebuild
+)
+
+$ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = (Get-Item $ScriptDir).Parent.FullName
+
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host "  Arvoredo PDV - Atualizando Sistema" -ForegroundColor Cyan
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Verificar se e um repositorio git
+if (-not (Test-Path (Join-Path $ProjectRoot ".git"))) {
+    Write-Host "ERRO: Este diretorio nao e um repositorio Git" -ForegroundColor Red
+    Write-Host "O sistema deve ter sido clonado via Git para funcionar" -ForegroundColor Yellow
+    exit 1
+}
+
+# Preferir DATABASE_URL completa do .env (necessario para drizzle-kit push)
+$envFile = Join-Path $ProjectRoot ".env"
+if ([string]::IsNullOrEmpty($env:DATABASE_URL) -and (Test-Path $envFile)) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*DATABASE_URL\s*=\s*(.+)\s*$') {
+            $raw = $Matches[1].Trim().Trim('"').Trim("'")
+            if (-not [string]::IsNullOrEmpty($raw)) {
+                $env:DATABASE_URL = $raw
+            }
+        }
+    }
+}
+
+# Configurar DATABASE_URL se necessario
+if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        # Tentar ler senha do .env (fallback se nao houver DATABASE_URL)
+        if (Test-Path $envFile) {
+            $envContent = Get-Content $envFile -Raw
+            if ($envContent -match "postgres:([^@]+)@") {
+                $PgPassword = $Matches[1]
+            }
+        }
+    }
+    
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
+        $PgPassword = Read-Host
+    }
+    
+    $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
+}
+
+# 1. Verificar conexao com Git remote
+Write-Host "[1/7] Verificando conexao com Git..." -ForegroundColor Yellow
+Set-Location $ProjectRoot
+git remote -v | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "      ERRO: Problema com repositorio Git" -ForegroundColor Red
+    exit 1
+}
+Write-Host "      Git OK" -ForegroundColor Green
+
+# 2. Buscar atualizacoes
+Write-Host "[2/7] Buscando atualizacoes..." -ForegroundColor Yellow
+git fetch origin 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "      AVISO: Nao foi possivel buscar atualizacoes (verifique internet)" -ForegroundColor Yellow
+} else {
+    Write-Host "      Busca OK" -ForegroundColor Green
+}
+
+# 3. Verificar se ha atualizacoes
+Write-Host "[3/7] Verificando atualizacoes..." -ForegroundColor Yellow
+$branch = git branch --show-current
+if ([string]::IsNullOrEmpty($branch)) {
+    $branch = "main"
+}
+
+$localCommit = git rev-parse HEAD
+$remoteCommit = git rev-parse "origin/$branch"
+
+if ($localCommit -eq $remoteCommit) {
+    Write-Host "      Sistema ja esta na versao mais recente" -ForegroundColor Green
+    $hasUpdates = $false
+} else {
+    Write-Host "      Ha atualizacoes disponiveis!" -ForegroundColor Green
+    $hasUpdates = $true
+}
+
+# 4. Pull se houver atualizacoes
+if ($hasUpdates) {
+    Write-Host "[4/7] Baixando atualizacoes..." -ForegroundColor Yellow
+    git pull origin $branch 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "      ERRO no git pull. Voce pode ter mudancas locais." -ForegroundColor Red
+        Write-Host "      Use 'git status' para ver conflitos" -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host "      Atualizacoes baixadas!" -ForegroundColor Green
+}
+
+# 5. Dependencias (apos pull, alinhar lockfile e pacotes)
+Write-Host "[5/7] Dependencias..." -ForegroundColor Yellow
+if ($hasUpdates -or $ForceRebuild) {
+    Write-Host "      Executando pnpm install..." -ForegroundColor Gray
+    pnpm install 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "      ERRO na instalacao de dependencias" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      Dependencias OK" -ForegroundColor Green
+} else {
+    Write-Host "      Nada a instalar (ja na ultima versao)" -ForegroundColor Gray
+}
+
+# 6. Schema do banco (Drizzle push) — evita erro de colunas faltando na API
+Write-Host "[6/7] Banco de dados (Drizzle push)..." -ForegroundColor Yellow
+if ($hasUpdates -or $ForceRebuild) {
+    if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
+        Write-Host "      ERRO: DATABASE_URL nao definido. Confira .env na raiz do projeto." -ForegroundColor Red
+        exit 1
+    }
+    pnpm --filter @workspace/db push 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "      ERRO no db push. Verifique PostgreSQL e DATABASE_URL no .env." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      Schema sincronizado" -ForegroundColor Green
+} else {
+    Write-Host "      Pulado (sem atualizacoes)" -ForegroundColor Gray
+}
+
+# 7. Rebuild se necessario
+if ($hasUpdates -or $ForceRebuild) {
+    Write-Host "[7/7] Rebuild do sistema..." -ForegroundColor Yellow
+    
+    # Parar processos antigos
+    Write-Host "      Parando processos antigos..." -ForegroundColor Gray
+    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    
+    # Rebuild
+    pnpm run build 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "      ERRO no build. Verifique o log acima." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      Build OK" -ForegroundColor Green
+} else {
+    Write-Host "[7/7] Build nao necessario (sem atualizacoes)" -ForegroundColor Gray
+}
+
+Write-Host ""
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host "  Atualizacao concluida!" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Inicie o sistema com: .\deployment\iniciar.ps1 (a partir da raiz do projeto)" -ForegroundColor Cyan
+Write-Host ""
+</file>
+
+<file path="deployment/iniciar.ps1">
+# Arvoredo PDV - Script de Inicializacao
+# Use este script para iniciar o sistema diariamente
+
+param(
+    [string]$PgPassword = "",
+    [switch]$SkipBrowser
+)
+
+$ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = (Get-Item $ScriptDir).Parent.FullName
+
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host "  Arvoredo PDV - Iniciando Sistema" -ForegroundColor Cyan
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Configurar DATABASE_URL se nao existir
+if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        # Tentar ler do .env
+        $envFile = Join-Path $ProjectRoot ".env"
+        if (Test-Path $envFile) {
+            $envContent = Get-Content $envFile -Raw
+            if ($envContent -match "postgres:([^@]+)@") {
+                $PgPassword = $Matches[1]
+            }
+        }
+    }
+    
+    if ([string]::IsNullOrEmpty($PgPassword)) {
+        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
+        $PgPassword = Read-Host
+    }
+    
+    $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
+}
+
+# Parar processos anteriores se existirem
+Write-Host "[1/5] Verificando processos anteriores..." -ForegroundColor Yellow
+$nodeProcesses = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -like "*api-server*" -or $_.CommandLine -like "*vite*"
+}
+if ($nodeProcesses) {
+    Write-Host "      Parando processos anteriores..." -ForegroundColor Yellow
+    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
+# Verificar PostgreSQL
+Write-Host "[2/5] Verificando PostgreSQL..." -ForegroundColor Yellow
+$pgService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Running" }
+if (-not $pgService) {
+    Write-Host "      PostgreSQL nao esta rodando. Tentando iniciar..." -ForegroundColor Yellow
+    try {
+        Start-Service -Name "postgresql-x64-18" -ErrorAction Stop
+        Write-Host "      PostgreSQL iniciado!" -ForegroundColor Green
+    } catch {
+        Write-Host "      ERRO: Nao foi possivel iniciar o PostgreSQL" -ForegroundColor Red
+        Write-Host "      Inicie manualmente pelo Gerenciador de Servicos" -ForegroundColor Yellow
+        exit 1
+    }
+} else {
+    Write-Host "      PostgreSQL OK" -ForegroundColor Green
+}
+
+# Criar pasta de logs se nao existir
+$logsDir = Join-Path $ProjectRoot "Logs"
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir | Out-Null
+}
+
+# Iniciar API em background
+Write-Host "[3/5] Iniciando API (porta 8080)..." -ForegroundColor Yellow
+$apiLog = Join-Path $logsDir "api-$(Get-Date -Format yyyyMMdd-HHmmss).log"
+
+$env:TZ = "America/Sao_Paulo"
+$env:PORT = "8080"
+
+$apiJob = Start-Job -ScriptBlock {
+    param($WorkDir, $LogFile, $DbUrl, $Port)
+    $env:DATABASE_URL = $DbUrl
+    $env:TZ = "America/Sao_Paulo"
+    $env:PORT = $Port
+    Set-Location $WorkDir
+    pnpm --filter @workspace/api-server run dev 2>&1 | Tee-Object -FilePath $LogFile
+} -ArgumentList $ProjectRoot, $apiLog, $env:DATABASE_URL, $env:PORT
+
+Write-Host "      API iniciando em background..." -ForegroundColor Cyan
+Write-Host "      Log: $apiLog" -ForegroundColor Gray
+
+# Aguardar API iniciar
+Write-Host "[4/5] Aguardando API ficar pronta..." -ForegroundColor Yellow
+$maxWait = 30
+$waited = 0
+$apiReady = $false
+
+while ($waited -lt $maxWait) {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8080/api/healthz" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) {
+            $apiReady = $true
+            break
+        }
+    } catch { }
+    Start-Sleep -Seconds 1
+    $waited++
+    Write-Host -NoNewline "`r      Aguardando... $waited/$maxWait s" -ForegroundColor Gray
+}
+
+if ($apiReady) {
+    Write-Host "`r      API pronta! (${waited}s)" -ForegroundColor Green
+} else {
+    Write-Host "`r      AVISO: API pode estar iniciando ainda..." -ForegroundColor Yellow
+}
+
+# Iniciar Frontend
+Write-Host "[5/5] Iniciando Frontend (porta 5173)..." -ForegroundColor Yellow
+$frontendLog = Join-Path $logsDir "frontend-$(Get-Date -Format yyyyMMdd-HHmmss).log"
+
+$frontendJob = Start-Job -ScriptBlock {
+    param($WorkDir, $LogFile, $DbUrl)
+    $env:DATABASE_URL = $DbUrl
+    $env:PORT = "5173"
+    Set-Location $WorkDir
+    pnpm --filter @workspace/arvoredo run dev 2>&1 | Tee-Object -FilePath $LogFile
+} -ArgumentList $ProjectRoot, $frontendLog, $env:DATABASE_URL
+
+Write-Host "      Frontend iniciando em background..." -ForegroundColor Cyan
+Write-Host "      Log: $frontendLog" -ForegroundColor Gray
+
+# Aguardar Frontend iniciar
+Write-Host "      Aguardando Frontend..." -ForegroundColor Yellow
+$maxWait = 20
+$waited = 0
+
+while ($waited -lt $maxWait) {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:5173" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) {
+            break
+        }
+    } catch { }
+    Start-Sleep -Seconds 1
+    $waited++
+}
+
+Write-Host "      Frontend pronto!" -ForegroundColor Green
+
+# Abrir navegador
+if (-not $SkipBrowser) {
+    Write-Host ""
+    Write-Host "Abrindo navegador..." -ForegroundColor Cyan
+    Start-Process "http://localhost:5173"
+}
+
+Write-Host ""
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host "  Sistema Arvoredo PDV Online!" -ForegroundColor Green
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  - Frontend: http://localhost:5173" -ForegroundColor White
+Write-Host "  - API:      http://localhost:8080/api/healthz" -ForegroundColor White
+Write-Host ""
+Write-Host "Pressione Ctrl+C para parar o sistema" -ForegroundColor Yellow
+Write-Host ""
+
+# Manter script rodando
+try {
+    while ($true) {
+        Start-Sleep -Seconds 5
+        
+        # Verificar se API ainda esta rodando
+        try {
+            Invoke-WebRequest -Uri "http://localhost:8080/api/healthz" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null
+        } catch {
+            Write-Host ""
+            Write-Host "AVISO: API parece ter parado. Verifique os logs." -ForegroundColor Yellow
+        }
+    }
+} finally {
+    Write-Host ""
+    Write-Host "Parando sistema..." -ForegroundColor Yellow
+    Stop-Job -Job $apiJob -ErrorAction SilentlyContinue
+    Stop-Job -Job $frontendJob -ErrorAction SilentlyContinue
+    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
+    Write-Host "Sistema parado." -ForegroundColor Green
+}
+</file>
+
+<file path="pnpm-workspace.yaml">
+packages:
+  - artifacts/*
+  - lib/*
+
+autoInstallPeers: false
+
+catalog:
+  '@tailwindcss/vite': ^4.1.14
+  '@tanstack/react-query': ^5.90.21
+  '@types/node': ^25.3.3
+  '@types/react': ^19.2.0
+  '@types/react-dom': ^19.2.0
+  '@vitejs/plugin-react': ^5.0.4
+  class-variance-authority: ^0.7.1
+  clsx: 2.1.1
+  drizzle-orm: ^0.45.1
+  framer-motion: ^12.23.24
+  lucide-react: 0.545.0
+  react: 19.1.0
+  react-dom: 19.1.0
+  tailwind-merge: 3.5.0
+  tailwindcss: ^4.1.14
+  tsx: ^4.21.0
+  vite: ^7.3.0
+  zod: ^3.25.76
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - msw
+  - node-expat
+  - unrs-resolver
+  - usb
+
+overrides:
+  '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
+strictPeerDependencies: false
+</file>
+
+<file path="artifacts/api-server/src/routes/index.ts">
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import produtosRouter from "./produtos";
+import vendasRouter from "./vendas";
+import estoqueRouter from "./estoque";
+import fiadoRouter from "./fiado";
+import caixaRouter from "./caixa";
+import maquininhaRouter from "./maquininha";
+import impressoraRouter from "./impressora";
+import nfceRouter from "./nfce";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use("/produtos", produtosRouter);
+router.use("/vendas", vendasRouter);
+router.use("/estoque", estoqueRouter);
+router.use("/fiado", fiadoRouter);
+router.use("/caixa", caixaRouter);
+router.use("/maquininha", maquininhaRouter);
+router.use("/impressora", impressoraRouter);
+router.use("/nfce", nfceRouter);
+
+export default router;
+</file>
+
+<file path="artifacts/api-server/src/index.ts">
+process.env.TZ = "America/Sao_Paulo";
+
+import { config } from "dotenv";
+import app from "./app";
+import { logger } from "./lib/logger";
+import { runStartupMigrations } from "./migrate";
+
+const rawPort = process.env["PORT"];
+
+if (!rawPort) {
+  throw new Error(
+    "PORT environment variable is required but was not provided.",
+  );
+}
+
+const port = Number(rawPort);
+
+if (Number.isNaN(port) || port <= 0) {
+  throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+runStartupMigrations()
+  .then(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
+
+      logger.info({ now: new Date().toString(), tz: process.env.TZ }, "Timezone configured");
+      logger.info({ port }, "Server listening");
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, "Falha nas migrações de startup; encerrando");
+    process.exit(1);
+  });
 </file>
 
 <file path="artifacts/arvoredo/src/pages/dispositivos.tsx">
@@ -14435,684 +14874,6 @@ function BarcodeTester() {
     </div>
   );
 }
-</file>
-
-<file path="deployment/atualizar.ps1">
-# Arvoredo PDV - Script de Atualizacao
-# Execute este script para atualizar o sistema via Git
-
-param(
-    [string]$PgPassword = "",
-    [switch]$ForceRebuild
-)
-
-$ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = (Get-Item $ScriptDir).Parent.FullName
-
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "  Arvoredo PDV - Atualizando Sistema" -ForegroundColor Cyan
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host ""
-
-# Verificar se e um repositorio git
-if (-not (Test-Path (Join-Path $ProjectRoot ".git"))) {
-    Write-Host "ERRO: Este diretorio nao e um repositorio Git" -ForegroundColor Red
-    Write-Host "O sistema deve ter sido clonado via Git para funcionar" -ForegroundColor Yellow
-    exit 1
-}
-
-# Preferir DATABASE_URL completa do .env (necessario para drizzle-kit push)
-$envFile = Join-Path $ProjectRoot ".env"
-if ([string]::IsNullOrEmpty($env:DATABASE_URL) -and (Test-Path $envFile)) {
-    Get-Content $envFile | ForEach-Object {
-        if ($_ -match '^\s*DATABASE_URL\s*=\s*(.+)\s*$') {
-            $raw = $Matches[1].Trim().Trim('"').Trim("'")
-            if (-not [string]::IsNullOrEmpty($raw)) {
-                $env:DATABASE_URL = $raw
-            }
-        }
-    }
-}
-
-# Configurar DATABASE_URL se necessario
-if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
-    if ([string]::IsNullOrEmpty($PgPassword)) {
-        # Tentar ler senha do .env (fallback se nao houver DATABASE_URL)
-        if (Test-Path $envFile) {
-            $envContent = Get-Content $envFile -Raw
-            if ($envContent -match "postgres:([^@]+)@") {
-                $PgPassword = $Matches[1]
-            }
-        }
-    }
-    
-    if ([string]::IsNullOrEmpty($PgPassword)) {
-        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
-        $PgPassword = Read-Host
-    }
-    
-    $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
-}
-
-# 1. Verificar conexao com Git remote
-Write-Host "[1/7] Verificando conexao com Git..." -ForegroundColor Yellow
-Set-Location $ProjectRoot
-git remote -v | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "      ERRO: Problema com repositorio Git" -ForegroundColor Red
-    exit 1
-}
-Write-Host "      Git OK" -ForegroundColor Green
-
-# 2. Buscar atualizacoes
-Write-Host "[2/7] Buscando atualizacoes..." -ForegroundColor Yellow
-git fetch origin 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "      AVISO: Nao foi possivel buscar atualizacoes (verifique internet)" -ForegroundColor Yellow
-} else {
-    Write-Host "      Busca OK" -ForegroundColor Green
-}
-
-# 3. Verificar se ha atualizacoes
-Write-Host "[3/7] Verificando atualizacoes..." -ForegroundColor Yellow
-$branch = git branch --show-current
-if ([string]::IsNullOrEmpty($branch)) {
-    $branch = "main"
-}
-
-$localCommit = git rev-parse HEAD
-$remoteCommit = git rev-parse "origin/$branch"
-
-if ($localCommit -eq $remoteCommit) {
-    Write-Host "      Sistema ja esta na versao mais recente" -ForegroundColor Green
-    $hasUpdates = $false
-} else {
-    Write-Host "      Ha atualizacoes disponiveis!" -ForegroundColor Green
-    $hasUpdates = $true
-}
-
-# 4. Pull se houver atualizacoes
-if ($hasUpdates) {
-    Write-Host "[4/7] Baixando atualizacoes..." -ForegroundColor Yellow
-    git pull origin $branch 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "      ERRO no git pull. Voce pode ter mudancas locais." -ForegroundColor Red
-        Write-Host "      Use 'git status' para ver conflitos" -ForegroundColor Yellow
-        exit 1
-    }
-    Write-Host "      Atualizacoes baixadas!" -ForegroundColor Green
-}
-
-# 5. Dependencias (apos pull, alinhar lockfile e pacotes)
-Write-Host "[5/7] Dependencias..." -ForegroundColor Yellow
-if ($hasUpdates -or $ForceRebuild) {
-    Write-Host "      Executando pnpm install..." -ForegroundColor Gray
-    pnpm install 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "      ERRO na instalacao de dependencias" -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "      Dependencias OK" -ForegroundColor Green
-} else {
-    Write-Host "      Nada a instalar (ja na ultima versao)" -ForegroundColor Gray
-}
-
-# 6. Schema do banco (Drizzle push) — evita erro de colunas faltando na API
-Write-Host "[6/7] Banco de dados (Drizzle push)..." -ForegroundColor Yellow
-if ($hasUpdates -or $ForceRebuild) {
-    if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
-        Write-Host "      ERRO: DATABASE_URL nao definido. Confira .env na raiz do projeto." -ForegroundColor Red
-        exit 1
-    }
-    pnpm --filter @workspace/db push 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "      ERRO no db push. Verifique PostgreSQL e DATABASE_URL no .env." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "      Schema sincronizado" -ForegroundColor Green
-} else {
-    Write-Host "      Pulado (sem atualizacoes)" -ForegroundColor Gray
-}
-
-# 7. Rebuild se necessario
-if ($hasUpdates -or $ForceRebuild) {
-    Write-Host "[7/7] Rebuild do sistema..." -ForegroundColor Yellow
-    
-    # Parar processos antigos
-    Write-Host "      Parando processos antigos..." -ForegroundColor Gray
-    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    
-    # Rebuild
-    pnpm run build 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "      ERRO no build. Verifique o log acima." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "      Build OK" -ForegroundColor Green
-} else {
-    Write-Host "[7/7] Build nao necessario (sem atualizacoes)" -ForegroundColor Gray
-}
-
-Write-Host ""
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "  Atualizacao concluida!" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Inicie o sistema com: .\deployment\iniciar.ps1 (a partir da raiz do projeto)" -ForegroundColor Cyan
-Write-Host ""
-</file>
-
-<file path="deployment/iniciar.ps1">
-# Arvoredo PDV - Script de Inicializacao
-# Use este script para iniciar o sistema diariamente
-
-param(
-    [string]$PgPassword = "",
-    [switch]$SkipBrowser
-)
-
-$ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = (Get-Item $ScriptDir).Parent.FullName
-
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "  Arvoredo PDV - Iniciando Sistema" -ForegroundColor Cyan
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host ""
-
-# Configurar DATABASE_URL se nao existir
-if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
-    if ([string]::IsNullOrEmpty($PgPassword)) {
-        # Tentar ler do .env
-        $envFile = Join-Path $ProjectRoot ".env"
-        if (Test-Path $envFile) {
-            $envContent = Get-Content $envFile -Raw
-            if ($envContent -match "postgres:([^@]+)@") {
-                $PgPassword = $Matches[1]
-            }
-        }
-    }
-    
-    if ([string]::IsNullOrEmpty($PgPassword)) {
-        Write-Host "Digite a senha do PostgreSQL: " -NoNewline -ForegroundColor Cyan
-        $PgPassword = Read-Host
-    }
-    
-    $env:DATABASE_URL = "postgresql://postgres:${PgPassword}@localhost:5432/arvoredo"
-}
-
-# Parar processos anteriores se existirem
-Write-Host "[1/5] Verificando processos anteriores..." -ForegroundColor Yellow
-$nodeProcesses = Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object {
-    $_.CommandLine -like "*api-server*" -or $_.CommandLine -like "*vite*"
-}
-if ($nodeProcesses) {
-    Write-Host "      Parando processos anteriores..." -ForegroundColor Yellow
-    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-}
-
-# Verificar PostgreSQL
-Write-Host "[2/5] Verificando PostgreSQL..." -ForegroundColor Yellow
-$pgService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Running" }
-if (-not $pgService) {
-    Write-Host "      PostgreSQL nao esta rodando. Tentando iniciar..." -ForegroundColor Yellow
-    try {
-        Start-Service -Name "postgresql-x64-18" -ErrorAction Stop
-        Write-Host "      PostgreSQL iniciado!" -ForegroundColor Green
-    } catch {
-        Write-Host "      ERRO: Nao foi possivel iniciar o PostgreSQL" -ForegroundColor Red
-        Write-Host "      Inicie manualmente pelo Gerenciador de Servicos" -ForegroundColor Yellow
-        exit 1
-    }
-} else {
-    Write-Host "      PostgreSQL OK" -ForegroundColor Green
-}
-
-# Criar pasta de logs se nao existir
-$logsDir = Join-Path $ProjectRoot "Logs"
-if (-not (Test-Path $logsDir)) {
-    New-Item -ItemType Directory -Path $logsDir | Out-Null
-}
-
-# Iniciar API em background
-Write-Host "[3/5] Iniciando API (porta 8080)..." -ForegroundColor Yellow
-$apiLog = Join-Path $logsDir "api-$(Get-Date -Format yyyyMMdd-HHmmss).log"
-
-$env:TZ = "America/Sao_Paulo"
-$env:PORT = "8080"
-
-$apiJob = Start-Job -ScriptBlock {
-    param($WorkDir, $LogFile, $DbUrl, $Port)
-    $env:DATABASE_URL = $DbUrl
-    $env:TZ = "America/Sao_Paulo"
-    $env:PORT = $Port
-    Set-Location $WorkDir
-    pnpm --filter @workspace/api-server run dev 2>&1 | Tee-Object -FilePath $LogFile
-} -ArgumentList $ProjectRoot, $apiLog, $env:DATABASE_URL, $env:PORT
-
-Write-Host "      API iniciando em background..." -ForegroundColor Cyan
-Write-Host "      Log: $apiLog" -ForegroundColor Gray
-
-# Aguardar API iniciar
-Write-Host "[4/5] Aguardando API ficar pronta..." -ForegroundColor Yellow
-$maxWait = 30
-$waited = 0
-$apiReady = $false
-
-while ($waited -lt $maxWait) {
-    try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8080/api/healthz" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
-            $apiReady = $true
-            break
-        }
-    } catch { }
-    Start-Sleep -Seconds 1
-    $waited++
-    Write-Host -NoNewline "`r      Aguardando... $waited/$maxWait s" -ForegroundColor Gray
-}
-
-if ($apiReady) {
-    Write-Host "`r      API pronta! (${waited}s)" -ForegroundColor Green
-} else {
-    Write-Host "`r      AVISO: API pode estar iniciando ainda..." -ForegroundColor Yellow
-}
-
-# Iniciar Frontend
-Write-Host "[5/5] Iniciando Frontend (porta 5173)..." -ForegroundColor Yellow
-$frontendLog = Join-Path $logsDir "frontend-$(Get-Date -Format yyyyMMdd-HHmmss).log"
-
-$frontendJob = Start-Job -ScriptBlock {
-    param($WorkDir, $LogFile, $DbUrl)
-    $env:DATABASE_URL = $DbUrl
-    $env:PORT = "5173"
-    Set-Location $WorkDir
-    pnpm --filter @workspace/arvoredo run dev 2>&1 | Tee-Object -FilePath $LogFile
-} -ArgumentList $ProjectRoot, $frontendLog, $env:DATABASE_URL
-
-Write-Host "      Frontend iniciando em background..." -ForegroundColor Cyan
-Write-Host "      Log: $frontendLog" -ForegroundColor Gray
-
-# Aguardar Frontend iniciar
-Write-Host "      Aguardando Frontend..." -ForegroundColor Yellow
-$maxWait = 20
-$waited = 0
-
-while ($waited -lt $maxWait) {
-    try {
-        $response = Invoke-WebRequest -Uri "http://localhost:5173" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
-            break
-        }
-    } catch { }
-    Start-Sleep -Seconds 1
-    $waited++
-}
-
-Write-Host "      Frontend pronto!" -ForegroundColor Green
-
-# Abrir navegador
-if (-not $SkipBrowser) {
-    Write-Host ""
-    Write-Host "Abrindo navegador..." -ForegroundColor Cyan
-    Start-Process "http://localhost:5173"
-}
-
-Write-Host ""
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "  Sistema Arvoredo PDV Online!" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  - Frontend: http://localhost:5173" -ForegroundColor White
-Write-Host "  - API:      http://localhost:8080/api/healthz" -ForegroundColor White
-Write-Host ""
-Write-Host "Pressione Ctrl+C para parar o sistema" -ForegroundColor Yellow
-Write-Host ""
-
-# Manter script rodando
-try {
-    while ($true) {
-        Start-Sleep -Seconds 5
-        
-        # Verificar se API ainda esta rodando
-        try {
-            Invoke-WebRequest -Uri "http://localhost:8080/api/healthz" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null
-        } catch {
-            Write-Host ""
-            Write-Host "AVISO: API parece ter parado. Verifique os logs." -ForegroundColor Yellow
-        }
-    }
-} finally {
-    Write-Host ""
-    Write-Host "Parando sistema..." -ForegroundColor Yellow
-    Stop-Job -Job $apiJob -ErrorAction SilentlyContinue
-    Stop-Job -Job $frontendJob -ErrorAction SilentlyContinue
-    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
-    Write-Host "Sistema parado." -ForegroundColor Green
-}
-</file>
-
-<file path="lib/db/src/schema/vendas.ts">
-import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-import { sessoesCaixaTable } from "./caixa";
-import { clientesTable } from "./clientes";
-import { produtosTable } from "./produtos";
-
-export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
-export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
-
-export const vendasTable = pgTable("vendas", {
-  id: serial("id").primaryKey(),
-  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
-  categoria: text("categoria").notNull(),
-  total: real("total").notNull(),
-  desconto: real("desconto").notNull().default(0),
-  pagamento: pagamentoEnum("pagamento").notNull(),
-  cliente_id: integer("cliente_id").references(() => clientesTable.id),
-  observacao: text("observacao"),
-  cnpj_credenciadora: text("cnpj_credenciadora"),
-  codigo_autorizacao: text("codigo_autorizacao"),
-  bandeira_cartao: text("bandeira_cartao"),
-  tipo_pagamento: text("tipo_pagamento"),
-  nsu_tef: text("nsu_tef"),
-  tef_intencao_id: integer("tef_intencao_id"),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const itensVendaTable = pgTable("itens_venda", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  nome_snap: text("nome_snap").notNull(),
-  quantidade: real("quantidade").notNull(),
-  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
-  unidades: real("unidades"),
-  preco_unit: real("preco_unit").notNull(),
-  subtotal: real("subtotal").notNull(),
-});
-
-export const fiadosTable = pgTable("fiados", {
-  id: serial("id").primaryKey(),
-  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
-  venda_id: integer("venda_id").references(() => vendasTable.id),
-  valor: real("valor").notNull(),
-  pago: boolean("pago").notNull().default(false),
-  pago_em: timestamp("pago_em", { withTimezone: true }),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
-  id: serial("id").primaryKey(),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  tipo: tipoMovimentoEnum("tipo").notNull(),
-  quantidade: real("quantidade").notNull(),
-  motivo: text("motivo"),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
-export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
-export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
-export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
-
-export type Venda = typeof vendasTable.$inferSelect;
-export type ItemVenda = typeof itensVendaTable.$inferSelect;
-export type Fiado = typeof fiadosTable.$inferSelect;
-export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
-export type InsertVenda = z.infer<typeof insertVendaSchema>;
-export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
-</file>
-
-<file path="pnpm-workspace.yaml">
-packages:
-  - artifacts/*
-  - lib/*
-
-autoInstallPeers: false
-
-catalog:
-  '@tailwindcss/vite': ^4.1.14
-  '@tanstack/react-query': ^5.90.21
-  '@types/node': ^25.3.3
-  '@types/react': ^19.2.0
-  '@types/react-dom': ^19.2.0
-  '@vitejs/plugin-react': ^5.0.4
-  class-variance-authority: ^0.7.1
-  clsx: 2.1.1
-  drizzle-orm: ^0.45.1
-  framer-motion: ^12.23.24
-  lucide-react: 0.545.0
-  react: 19.1.0
-  react-dom: 19.1.0
-  tailwind-merge: 3.5.0
-  tailwindcss: ^4.1.14
-  tsx: ^4.21.0
-  vite: ^7.3.0
-  zod: ^3.25.76
-
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
-  - msw
-  - node-expat
-  - unrs-resolver
-  - usb
-
-overrides:
-  '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
-strictPeerDependencies: false
-</file>
-
-<file path="artifacts/api-server/src/routes/impressora.ts">
-import { Router } from "express";
-import { db } from "@workspace/db";
-import { ImprimirCupomBody, ImprimirSangriaBody } from "@workspace/api-zod";
-import {
-  vendasTable,
-  itensVendaTable,
-  clientesTable,
-  sangriasTable,
-  nfceLogsTable,
-} from "@workspace/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
-import { printTextToWindowsPrinter, resolvePrinterName } from "../lib/printer";
-import { buildCupomText, buildSangriaText } from "../lib/print-layout";
-import { logger } from "../lib/logger";
-
-const router = Router();
-
-/**
- * Tenta imprimir via USB/ESCpos (para suportar QR code).
- * Se falhar, usa o fallback para impressão de texto via PowerShell.
- */
-async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
-  try {
-    const escpos = (await import("escpos")).default;
-    const escposUsbMod = await import("escpos-usb");
-    const UsbDevice = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
-    escpos.USB = UsbDevice;
-    const device = new escpos.USB();
-    const printer = new escpos.Printer(device);
-
-    await new Promise<void>((resolve, reject) => {
-      device.open((err: Error | null) => {
-        if (err) {
-          return reject(new Error(`Falha ao abrir impressora USB: ${err.message}`));
-        }
-        
-        try {
-          printer.font("a").align("ct").style("normal").size(1, 1);
-          // O texto já vem formatado com quebras de linha corretas (\r\n)
-          printer.text(text);
-          
-          if (qrCodeUrl) {
-            printer.align("ct").qrcode(qrCodeUrl, 2, 6, "M");
-          }
-          
-          printer.cut().close((closeErr: Error | null) => {
-            if (closeErr) {
-              return reject(new Error(`Falha ao fechar impressora: ${closeErr.message}`));
-            }
-            resolve();
-          });
-        } catch (printError) {
-          reject(printError);
-        }
-      });
-    });
-
-    logger.info("Cupom impresso com sucesso via USB (com QR Code).");
-    return { ok: true, erro: null, metodo: "usb" };
-  } catch (usbError: any) {
-    logger.warn(`Falha ao imprimir via USB/ESCpos: ${usbError.message}. Tentando fallback via PowerShell.`);
-    await printTextToWindowsPrinter(text);
-    logger.info("Cupom impresso via fallback (PowerShell, sem QR Code).");
-    // Retorna sucesso, mas informa que o QR Code não foi impresso.
-    return { ok: true, erro: "QR Code não impresso (fallback de impressão).", metodo: "fallback" };
-  }
-}
-
-router.post("/teste", async (_req, res) => {
-  try {
-    const printerName = await resolvePrinterName();
-    const text = `ARVOREDO\r\nTeste de Impressao\r\nImpressora: ${printerName}\r\nHorario: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\r\n\r\nSe o cupom sair, a impressora esta conectada.`;
-    const result = await printCupomWithQrCode(text);
-    return res.json({ ...result, impressora: printerName });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro desconhecido ao testar impressora";
-    logger.error(`Erro na rota /teste: ${message}`);
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-router.post("/cupom", async (req, res) => {
-  try {
-    const payload = ImprimirCupomBody.parse(req.body);
-    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, payload.venda_id));
-
-    if (!venda) {
-      return res.status(404).json({ ok: false, erro: "Venda não encontrada" });
-    }
-
-    const itens = await db
-      .select()
-      .from(itensVendaTable)
-      .where(eq(itensVendaTable.venda_id, payload.venda_id));
-
-    let clienteNome: string | undefined;
-    if (venda.cliente_id) {
-      const [cliente] = await db
-        .select()
-        .from(clientesTable)
-        .where(eq(clientesTable.id, venda.cliente_id));
-      clienteNome = cliente?.nome;
-    }
-
-    let qrUrl: string | undefined;
-    let chaveAcesso: string | undefined;
-    try {
-      const [nfceLog] = await db
-        .select()
-        .from(nfceLogsTable)
-        .where(eq(nfceLogsTable.venda_id, payload.venda_id))
-        .orderBy(desc(nfceLogsTable.id))
-        .limit(1);
-
-      if (nfceLog?.status === "autorizada" && nfceLog.chave_acesso) {
-        chaveAcesso = nfceLog.chave_acesso;
-        // URL padrão SEFAZ RS para consulta NFC-e
-        qrUrl = `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${nfceLog.chave_acesso}|3|2`;
-      }
-    } catch {
-      // sem NFC-e autorizada — imprime sem QR
-    }
-
-    const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso, qrUrl);
-    const result = await printCupomWithQrCode(text, qrUrl);
-    
-    return res.json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro de impressão do cupom";
-    logger.error(`Erro na rota /cupom: ${message}`);
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-router.post("/sangria", async (req, res) => {
-  try {
-    const payload = ImprimirSangriaBody.parse(req.body);
-    const start = new Date(payload.data_inicio);
-    const end = new Date(payload.data_fim);
-    end.setHours(23, 59, 59, 999);
-
-    const conditions = [gte(vendasTable.criado_em, start), lte(vendasTable.criado_em, end)];
-    if (payload.sessao_id != null) {
-      conditions.push(eq(vendasTable.sessao_id, payload.sessao_id));
-    }
-
-    const vendas = await db.select().from(vendasTable).where(and(...conditions));
-    const sangrias = await db
-      .select()
-      .from(sangriasTable)
-      .where(and(gte(sangriasTable.criado_em, start), lte(sangriasTable.criado_em, end)));
-
-    const text = buildSangriaText(payload, vendas, sangrias);
-    await printTextToWindowsPrinter(text);
-    return res.json({ ok: true, erro: null });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro de impressão da sangria";
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-router.post("/comprovante-tef", async (req, res) => {
-  try {
-    const { via } = req.body as { via: string };
-    if (!via || typeof via !== "string" || via.trim().length === 0) {
-      return res.status(400).json({ ok: false, erro: "Campo 'via' ausente ou vazio." });
-    }
-    const result = await printCupomWithQrCode(via.trim());
-    return res.json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
-    logger.error(`Erro na rota /comprovante-tef: ${message}`);
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/routes/index.ts">
-import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import produtosRouter from "./produtos";
-import vendasRouter from "./vendas";
-import estoqueRouter from "./estoque";
-import fiadoRouter from "./fiado";
-import caixaRouter from "./caixa";
-import maquininhaRouter from "./maquininha";
-import impressoraRouter from "./impressora";
-import nfceRouter from "./nfce";
-
-const router: IRouter = Router();
-
-router.use(healthRouter);
-router.use("/produtos", produtosRouter);
-router.use("/vendas", vendasRouter);
-router.use("/estoque", estoqueRouter);
-router.use("/fiado", fiadoRouter);
-router.use("/caixa", caixaRouter);
-router.use("/maquininha", maquininhaRouter);
-router.use("/impressora", impressoraRouter);
-router.use("/nfce", nfceRouter);
-
-export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/pages/fiado.tsx">
@@ -17160,6 +16921,79 @@ components:
         - ok
 </file>
 
+<file path="lib/db/src/schema/vendas.ts">
+import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { sessoesCaixaTable } from "./caixa";
+import { clientesTable } from "./clientes";
+import { produtosTable } from "./produtos";
+
+export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
+export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
+
+export const vendasTable = pgTable("vendas", {
+  id: serial("id").primaryKey(),
+  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
+  categoria: text("categoria").notNull(),
+  total: real("total").notNull(),
+  desconto: real("desconto").notNull().default(0),
+  pagamento: pagamentoEnum("pagamento").notNull(),
+  cliente_id: integer("cliente_id").references(() => clientesTable.id),
+  observacao: text("observacao"),
+  cnpj_credenciadora: text("cnpj_credenciadora"),
+  codigo_autorizacao: text("codigo_autorizacao"),
+  bandeira_cartao: text("bandeira_cartao"),
+  tipo_pagamento: text("tipo_pagamento"),
+  nsu_tef: text("nsu_tef"),
+  tef_intencao_id: integer("tef_intencao_id"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const itensVendaTable = pgTable("itens_venda", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  nome_snap: text("nome_snap").notNull(),
+  quantidade: real("quantidade").notNull(),
+  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
+  unidades: real("unidades"),
+  preco_unit: real("preco_unit").notNull(),
+  subtotal: real("subtotal").notNull(),
+});
+
+export const fiadosTable = pgTable("fiados", {
+  id: serial("id").primaryKey(),
+  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
+  venda_id: integer("venda_id").references(() => vendasTable.id),
+  valor: real("valor").notNull(),
+  pago: boolean("pago").notNull().default(false),
+  pago_em: timestamp("pago_em", { withTimezone: true }),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
+  id: serial("id").primaryKey(),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  tipo: tipoMovimentoEnum("tipo").notNull(),
+  quantidade: real("quantidade").notNull(),
+  motivo: text("motivo"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
+export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
+export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
+export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
+
+export type Venda = typeof vendasTable.$inferSelect;
+export type ItemVenda = typeof itensVendaTable.$inferSelect;
+export type Fiado = typeof fiadosTable.$inferSelect;
+export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
+export type InsertVenda = z.infer<typeof insertVendaSchema>;
+export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
+</file>
+
 <file path=".gitignore">
 # See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
@@ -17222,6 +17056,186 @@ repomix-output.xml
 
 *.md
 !README.md
+</file>
+
+<file path="artifacts/api-server/src/routes/impressora.ts">
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { ImprimirCupomBody, ImprimirSangriaBody } from "@workspace/api-zod";
+import {
+  vendasTable,
+  itensVendaTable,
+  clientesTable,
+  sangriasTable,
+  nfceLogsTable,
+} from "@workspace/db/schema";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { printTextToWindowsPrinter, resolvePrinterName } from "../lib/printer";
+import { buildCupomText, buildSangriaText } from "../lib/print-layout";
+import { logger } from "../lib/logger";
+
+const router = Router();
+
+/**
+ * Tenta imprimir via USB/ESCpos (para suportar QR code).
+ * Se falhar, usa o fallback para impressão de texto via PowerShell.
+ */
+async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
+  try {
+    const escpos = (await import("escpos")).default;
+    const escposUsbMod = await import("escpos-usb");
+    const UsbDevice = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
+    escpos.USB = UsbDevice;
+    const device = new escpos.USB();
+    const printer = new escpos.Printer(device);
+
+    await new Promise<void>((resolve, reject) => {
+      device.open((err: Error | null) => {
+        if (err) {
+          return reject(new Error(`Falha ao abrir impressora USB: ${err.message}`));
+        }
+        
+        try {
+          printer.font("a").align("ct").style("normal").size(1, 1);
+          // O texto já vem formatado com quebras de linha corretas (\r\n)
+          printer.text(text);
+          
+          if (qrCodeUrl) {
+            printer.align("ct").qrcode(qrCodeUrl, 2, 6, "M");
+          }
+          
+          printer.cut().close((closeErr: Error | null) => {
+            if (closeErr) {
+              return reject(new Error(`Falha ao fechar impressora: ${closeErr.message}`));
+            }
+            resolve();
+          });
+        } catch (printError) {
+          reject(printError);
+        }
+      });
+    });
+
+    logger.info("Cupom impresso com sucesso via USB (com QR Code).");
+    return { ok: true, erro: null, metodo: "usb" };
+  } catch (usbError: any) {
+    logger.warn(`Falha ao imprimir via USB/ESCpos: ${usbError.message}. Tentando fallback via PowerShell.`);
+    await printTextToWindowsPrinter(text);
+    logger.info("Cupom impresso via fallback (PowerShell, sem QR Code).");
+    // Retorna sucesso, mas informa que o QR Code não foi impresso.
+    return { ok: true, erro: "QR Code não impresso (fallback de impressão).", metodo: "fallback" };
+  }
+}
+
+router.post("/teste", async (_req, res) => {
+  try {
+    const printerName = await resolvePrinterName();
+    const text = `ARVOREDO\r\nTeste de Impressao\r\nImpressora: ${printerName}\r\nHorario: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\r\n\r\nSe o cupom sair, a impressora esta conectada.`;
+    const result = await printCupomWithQrCode(text);
+    return res.json({ ...result, impressora: printerName });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido ao testar impressora";
+    logger.error(`Erro na rota /teste: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/cupom", async (req, res) => {
+  try {
+    const payload = ImprimirCupomBody.parse(req.body);
+    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, payload.venda_id));
+
+    if (!venda) {
+      return res.status(404).json({ ok: false, erro: "Venda não encontrada" });
+    }
+
+    const itens = await db
+      .select()
+      .from(itensVendaTable)
+      .where(eq(itensVendaTable.venda_id, payload.venda_id));
+
+    let clienteNome: string | undefined;
+    if (venda.cliente_id) {
+      const [cliente] = await db
+        .select()
+        .from(clientesTable)
+        .where(eq(clientesTable.id, venda.cliente_id));
+      clienteNome = cliente?.nome;
+    }
+
+    let qrUrl: string | undefined;
+    let chaveAcesso: string | undefined;
+    try {
+      const [nfceLog] = await db
+        .select()
+        .from(nfceLogsTable)
+        .where(eq(nfceLogsTable.venda_id, payload.venda_id))
+        .orderBy(desc(nfceLogsTable.id))
+        .limit(1);
+
+      if (nfceLog?.status === "autorizada" && nfceLog.chave_acesso) {
+        chaveAcesso = nfceLog.chave_acesso;
+        // URL padrão SEFAZ RS para consulta NFC-e
+        qrUrl = `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${nfceLog.chave_acesso}|3|2`;
+      }
+    } catch {
+      // sem NFC-e autorizada — imprime sem QR
+    }
+
+    const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso, qrUrl);
+    const result = await printCupomWithQrCode(text, qrUrl);
+    
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro de impressão do cupom";
+    logger.error(`Erro na rota /cupom: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/sangria", async (req, res) => {
+  try {
+    const payload = ImprimirSangriaBody.parse(req.body);
+    const start = new Date(payload.data_inicio);
+    const end = new Date(payload.data_fim);
+    end.setHours(23, 59, 59, 999);
+
+    const conditions = [gte(vendasTable.criado_em, start), lte(vendasTable.criado_em, end)];
+    if (payload.sessao_id != null) {
+      conditions.push(eq(vendasTable.sessao_id, payload.sessao_id));
+    }
+
+    const vendas = await db.select().from(vendasTable).where(and(...conditions));
+    const sangrias = await db
+      .select()
+      .from(sangriasTable)
+      .where(and(gte(sangriasTable.criado_em, start), lte(sangriasTable.criado_em, end)));
+
+    const text = buildSangriaText(payload, vendas, sangrias);
+    await printTextToWindowsPrinter(text);
+    return res.json({ ok: true, erro: null });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro de impressão da sangria";
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/comprovante-tef", async (req, res) => {
+  try {
+    const { via } = req.body as { via: string };
+    if (!via || typeof via !== "string" || via.trim().length === 0) {
+      return res.status(400).json({ ok: false, erro: "Campo 'via' ausente ou vazio." });
+    }
+    const result = await printCupomWithQrCode(via.trim());
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
+    logger.error(`Erro na rota /comprovante-tef: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+export default router;
 </file>
 
 <file path="artifacts/api-server/src/routes/produtos.ts">
@@ -17392,48 +17406,6 @@ export default router;
     "typescript": "~5.9.2"
   },
   "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
-}
-</file>
-
-<file path="artifacts/api-server/package.json">
-{
-  "name": "@workspace/api-server",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch --env-file=../../.env src/index.ts",
-    "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@workspace/api-zod": "workspace:*",
-    "@workspace/db": "workspace:*",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2",
-    "dotenv": "^16.3.1",
-    "drizzle-orm": "catalog:",
-    "escpos": "3.0.0-alpha.6",
-    "escpos-usb": "3.0.0-alpha.4",
-    "express": "^5",
-    "fast-xml-parser": "^5.3.0",
-    "pino": "^9",
-    "pino-http": "^10",
-    "qrcode": "^1.5.4"
-  },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "catalog:",
-    "@types/qrcode": "^1.5.6",
-    "esbuild": "^0.27.3",
-    "esbuild-plugin-pino": "^2.3.3",
-    "pino-pretty": "^13",
-    "thread-stream": "3.1.0",
-    "tsx": "^4.21.0"
-  }
 }
 </file>
 
@@ -17896,577 +17868,46 @@ export type InsertProduto = z.infer<typeof insertProdutoSchema>;
 export type Produto = typeof produtosTable.$inferSelect;
 </file>
 
-<file path="lib/api-zod/src/generated/api.ts">
-/**
- * Generated by orval v8.5.3 🍺
- * Do not edit manually.
- * Api
- * Arvoredo PDV API
- * OpenAPI spec version: 0.2.0
- */
-import * as zod from "zod";
-
-/**
- * @summary Health check
- */
-export const HealthCheckResponse = zod.object({
-  status: zod.string(),
-});
-
-/**
- * @summary Listar produtos
- */
-export const ListarProdutosQueryParams = zod.object({
-  q: zod.coerce.string().optional(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
-});
-
-export const ListarProdutosResponseItem = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
-});
-export const ListarProdutosResponse = zod.array(ListarProdutosResponseItem);
-
-/**
- * @summary Criar produto
- */
-export const criarProdutoBodyCustoDefault = 0;
-export const criarProdutoBodyEstoqueDefault = 0;
-export const criarProdutoBodyEstoqueMinDefault = 5;
-export const criarProdutoBodyUnidadeDefault = `un`;
-
-export const CriarProdutoBody = zod.object({
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number().default(criarProdutoBodyCustoDefault),
-  estoque: zod.number().default(criarProdutoBodyEstoqueDefault),
-  estoque_min: zod.number().default(criarProdutoBodyEstoqueMinDefault),
-  unidade: zod.string().default(criarProdutoBodyUnidadeDefault),
-  validade: zod.string().nullish(),
-});
-
-/**
- * @summary Buscar produto por código ou nome
- */
-export const BuscarProdutoQueryParams = zod.object({
-  codigo: zod.coerce.string().optional(),
-  nome: zod.coerce.string().optional(),
-  q: zod.coerce.string().optional(),
-});
-
-export const BuscarProdutoResponseItem = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
-});
-export const BuscarProdutoResponse = zod.array(BuscarProdutoResponseItem);
-
-/**
- * @summary Produtos com estoque baixo ou vencendo
- */
-export const AlertasEstoqueResponse = zod.object({
-  estoque_baixo: zod.array(
-    zod.object({
-      id: zod.number(),
-      codigo: zod.string().nullish(),
-      nome: zod.string(),
-      marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha", "feira"]),
-      ncm: zod.string().nullish(),
-      cst: zod.string().nullish(),
-      preco: zod.number(),
-      custo: zod.number(),
-      estoque: zod.number(),
-      estoque_min: zod.number(),
-      unidade: zod.string(),
-      validade: zod.string().nullish(),
-      ativo: zod.boolean(),
-      criado_em: zod.string(),
-    }),
-  ),
-  vencendo: zod.array(
-    zod.object({
-      id: zod.number(),
-      codigo: zod.string().nullish(),
-      nome: zod.string(),
-      marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha", "feira"]),
-      ncm: zod.string().nullish(),
-      cst: zod.string().nullish(),
-      preco: zod.number(),
-      custo: zod.number(),
-      estoque: zod.number(),
-      estoque_min: zod.number(),
-      unidade: zod.string(),
-      validade: zod.string().nullish(),
-      ativo: zod.boolean(),
-      criado_em: zod.string(),
-    }),
-  ),
-  vencidos: zod.array(
-    zod.object({
-      id: zod.number(),
-      codigo: zod.string().nullish(),
-      nome: zod.string(),
-      marca: zod.string().nullish(),
-      categoria: zod.enum(["mercado", "cozinha", "feira"]),
-      ncm: zod.string().nullish(),
-      cst: zod.string().nullish(),
-      preco: zod.number(),
-      custo: zod.number(),
-      estoque: zod.number(),
-      estoque_min: zod.number(),
-      unidade: zod.string(),
-      validade: zod.string().nullish(),
-      ativo: zod.boolean(),
-      criado_em: zod.string(),
-    }),
-  ),
-  total_alertas: zod.number(),
-});
-
-/**
- * @summary Editar produto
- */
-export const EditarProdutoParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const EditarProdutoBody = zod.object({
-  codigo: zod.string().nullish(),
-  nome: zod.string().optional(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number().optional(),
-  custo: zod.number().optional(),
-  estoque: zod.number().optional(),
-  estoque_min: zod.number().optional(),
-  unidade: zod.string().optional(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean().optional(),
-});
-
-export const EditarProdutoResponse = zod.object({
-  id: zod.number(),
-  codigo: zod.string().nullish(),
-  nome: zod.string(),
-  marca: zod.string().nullish(),
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  ncm: zod.string().nullish(),
-  cst: zod.string().nullish(),
-  preco: zod.number(),
-  custo: zod.number(),
-  estoque: zod.number(),
-  estoque_min: zod.number(),
-  unidade: zod.string(),
-  validade: zod.string().nullish(),
-  ativo: zod.boolean(),
-  criado_em: zod.string(),
-});
-
-/**
- * @summary Soft delete produto
- */
-export const DeletarProdutoParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const DeletarProdutoResponse = zod.object({
-  ok: zod.boolean(),
-  message: zod.string().optional(),
-});
-
-/**
- * @summary Listar vendas
- */
-export const listarVendasQueryLimitDefault = 50;
-
-export const ListarVendasQueryParams = zod.object({
-  data: zod.coerce.string().optional(),
-  data_inicio: zod.coerce.string().optional(),
-  data_fim: zod.coerce.string().optional(),
-  categoria: zod.coerce.string().optional(),
-  limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
-  page: zod.coerce.number().default(1),
-  q: zod.coerce.string().optional(),
-});
-
-export const ListarVendasResponseItem = zod.object({
-  id: zod.number(),
-  sessao_id: zod.number().nullish(),
-  categoria: zod.string(),
-  total: zod.number(),
-  desconto: zod.number(),
-  pagamento: zod.string(),
-  cliente_id: zod.number().nullish(),
-  cliente_nome: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarVendasResponse = zod.array(ListarVendasResponseItem);
-
-/**
- * @summary Registrar venda
- */
-export const registrarVendaBodyDescontoDefault = 0;
-
-export const RegistrarVendaBody = zod.object({
-  categoria: zod.enum(["mercado", "cozinha", "feira"]),
-  desconto: zod.number().default(registrarVendaBodyDescontoDefault),
-  pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
-  cliente_id: zod.number().nullish(),
-  observacao: zod.string().nullish(),
-  cpf_nota: zod.string().nullish(),
-  cnpj_credenciadora: zod.string().nullish(),
-  codigo_autorizacao: zod.string().nullish(),
-  bandeira_cartao: zod.string().nullish(),
-  tipo_pagamento: zod.string().nullish(),
-  nsu_tef: zod.string().nullish(),
-  tef_intencao_id: zod.number().nullish(),
-  itens: zod.array(
-    zod.object({
-      produto_id: zod.number(),
-      quantidade: zod.number(),
-      preco_unit: zod.number(),
-      unidades: zod.number().optional(),
-    }),
-  ),
-});
-
-/**
- * @summary Resumo das vendas de hoje
- */
-export const ResumoHojeResponse = zod.object({
-  total: zod.number(),
-  total_dinheiro: zod.number(),
-  total_pix: zod.number(),
-  total_cartao: zod.number(),
-  total_fiado: zod.number(),
-  num_vendas: zod.number(),
-  mercado: zod.number(),
-  cozinha: zod.number(),
-  feira: zod.number().optional(),
-});
-
-/**
- * @summary Itens de uma venda
- */
-export const ItensDaVendaParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const ItensDaVendaResponseItem = zod.object({
-  id: zod.number(),
-  venda_id: zod.number(),
-  produto_id: zod.number(),
-  nome_snap: zod.string(),
-  quantidade: zod.number(),
-  unidades: zod.number().nullish(),
-  preco_unit: zod.number(),
-  subtotal: zod.number(),
-});
-export const ItensDaVendaResponse = zod.array(ItensDaVendaResponseItem);
-
-/**
- * @summary Registrar movimento de estoque
- */
-export const MovimentarEstoqueBody = zod.object({
-  produto_id: zod.number(),
-  tipo: zod.enum(["entrada", "saida", "ajuste"]),
-  quantidade: zod.number(),
-  motivo: zod.string().nullish(),
-});
-
-/**
- * @summary Histórico de movimentos de estoque
- */
-export const listarMovimentosQueryLimitDefault = 100;
-
-export const ListarMovimentosQueryParams = zod.object({
-  produto_id: zod.coerce.number().optional(),
-  limit: zod.coerce.number().default(listarMovimentosQueryLimitDefault),
-});
-
-export const ListarMovimentosResponseItem = zod.object({
-  id: zod.number(),
-  produto_id: zod.number(),
-  produto_nome: zod.string().nullish(),
-  tipo: zod.string(),
-  quantidade: zod.number(),
-  motivo: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarMovimentosResponse = zod.array(ListarMovimentosResponseItem);
-
-/**
- * @summary Listar clientes
- */
-export const ListarClientesQueryParams = zod.object({
-  q: zod.coerce.string().optional(),
-});
-
-export const ListarClientesResponseItem = zod.object({
-  id: zod.number(),
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarClientesResponse = zod.array(ListarClientesResponseItem);
-
-/**
- * @summary Criar cliente
- */
-export const CriarClienteBody = zod.object({
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-});
-
-/**
- * @summary Editar cliente
- */
-export const EditarClienteParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const EditarClienteBody = zod.object({
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-});
-
-export const EditarClienteResponse = zod.object({
-  id: zod.number(),
-  nome: zod.string(),
-  apelido: zod.string().nullish(),
-  telefone: zod.string().nullish(),
-  cpf: zod.string().nullish(),
-  observacao: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-
-/**
- * @summary Extrato do cliente
- */
-export const ExtratoClienteParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const ExtratoClienteResponse = zod.object({
-  cliente: zod.object({
-    id: zod.number(),
-    nome: zod.string(),
-    apelido: zod.string().nullish(),
-    telefone: zod.string().nullish(),
-    cpf: zod.string().nullish(),
-    observacao: zod.string().nullish(),
-    criado_em: zod.string(),
-  }),
-  fiados: zod.array(
-    zod.object({
-      id: zod.number(),
-      venda_id: zod.number().nullish(),
-      valor: zod.number(),
-      pago: zod.boolean(),
-      pago_em: zod.string().nullish(),
-      criado_em: zod.string(),
-    }),
-  ),
-  total_aberto: zod.number(),
-});
-
-/**
- * @summary Registrar pagamento de fiado
- */
-export const PagarFiadoParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const PagarFiadoBody = zod.object({
-  valor: zod.number(),
-});
-
-export const PagarFiadoResponse = zod.object({
-  ok: zod.boolean(),
-  message: zod.string().optional(),
-});
-
-/**
- * @summary Clientes com dívida em aberto
- */
-export const ResumoFiadoResponseItem = zod.object({
-  cliente: zod.object({
-    id: zod.number(),
-    nome: zod.string(),
-    apelido: zod.string().nullish(),
-    telefone: zod.string().nullish(),
-    cpf: zod.string().nullish(),
-    observacao: zod.string().nullish(),
-    criado_em: zod.string(),
-  }),
-  total_aberto: zod.number(),
-});
-export const ResumoFiadoResponse = zod.array(ResumoFiadoResponseItem);
-
-/**
- * @summary Status atual do caixa
- */
-export const StatusCaixaResponse = zod.object({
-  aberto: zod.boolean(),
-  sessao: zod
-    .object({
-      id: zod.number(),
-      aberto_em: zod.string(),
-      fechado_em: zod.string().nullish(),
-      fundo_inicial: zod.number(),
-      total_dinheiro: zod.number(),
-      total_pix: zod.number(),
-      total_cartao: zod.number(),
-      total_fiado: zod.number(),
-      total_sangria: zod.number(),
-      status: zod.enum(["aberto", "fechado"]),
-    })
-    .nullish(),
-});
-
-/**
- * @summary Abrir sessão de caixa
- */
-export const abrirCaixaBodyFundoInicialDefault = 300;
-
-export const AbrirCaixaBody = zod.object({
-  fundo_inicial: zod.number().default(abrirCaixaBodyFundoInicialDefault),
-});
-
-/**
- * @summary Fechar sessão de caixa
- */
-export const FecharCaixaResponse = zod.object({
-  id: zod.number(),
-  aberto_em: zod.string(),
-  fechado_em: zod.string().nullish(),
-  fundo_inicial: zod.number(),
-  total_dinheiro: zod.number(),
-  total_pix: zod.number(),
-  total_cartao: zod.number(),
-  total_fiado: zod.number(),
-  total_sangria: zod.number(),
-  status: zod.enum(["aberto", "fechado"]),
-});
-
-/**
- * @summary Registrar sangria
- */
-export const RegistrarSangriaBody = zod.object({
-  valor: zod.number(),
-  motivo: zod.string().nullish(),
-});
-
-/**
- * @summary Listar sangrias
- */
-export const ListarSangriasQueryParams = zod.object({
-  sessao_id: zod.coerce.number().optional(),
-});
-
-export const ListarSangriasResponseItem = zod.object({
-  id: zod.number(),
-  sessao_id: zod.number(),
-  valor: zod.number(),
-  motivo: zod.string().nullish(),
-  criado_em: zod.string(),
-});
-export const ListarSangriasResponse = zod.array(ListarSangriasResponseItem);
-
-/**
- * @summary Histórico de sessões
- */
-export const HistoricoCaixaResponseItem = zod.object({
-  id: zod.number(),
-  aberto_em: zod.string(),
-  fechado_em: zod.string().nullish(),
-  fundo_inicial: zod.number(),
-  total_dinheiro: zod.number(),
-  total_pix: zod.number(),
-  total_cartao: zod.number(),
-  total_fiado: zod.number(),
-  total_sangria: zod.number(),
-  status: zod.enum(["aberto", "fechado"]),
-});
-export const HistoricoCaixaResponse = zod.array(HistoricoCaixaResponseItem);
-
-/**
- * @summary Imprimir cupom de venda
- */
-export const ImprimirCupomBody = zod.object({
-  venda_id: zod.number(),
-});
-
-export const ImprimirCupomResponse = zod.object({
-  ok: zod.boolean(),
-  erro: zod.string().nullish(),
-});
-
-/**
- * @summary Imprimir relatório de sangria/vendas por período
- */
-export const ImprimirSangriaBody = zod.object({
-  data_inicio: zod.string(),
-  data_fim: zod.string(),
-  sessao_id: zod.number().nullish(),
-});
-
-export const ImprimirSangriaResponse = zod.object({
-  ok: zod.boolean(),
-  erro: zod.string().nullish(),
-});
-
-/**
- * @summary Testar impressora
- */
-export const TestImpressoraResponse = zod.object({
-  ok: zod.boolean(),
-  erro: zod.string().nullish(),
-});
+<file path="artifacts/api-server/package.json">
+{
+  "name": "@workspace/api-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "build": "node ./build.mjs",
+    "start": "node --enable-source-maps ./dist/index.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/api-zod": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "catalog:",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-usb": "3.0.0-alpha.4",
+    "express": "^5",
+    "fast-xml-parser": "^5.3.0",
+    "pino": "^9",
+    "pino-http": "^10",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.27.3",
+    "esbuild-plugin-pino": "^2.3.3",
+    "pino-pretty": "^13",
+    "thread-stream": "3.1.0",
+    "tsx": "^4.21.0"
+  }
+}
 </file>
 
 <file path="artifacts/arvoredo/src/pages/produtos.tsx">
@@ -19703,6 +19144,579 @@ export type ListarClientesParams = {
 export type ListarSangriasParams = {
   sessao_id?: number;
 };
+</file>
+
+<file path="lib/api-zod/src/generated/api.ts">
+/**
+ * Generated by orval v8.5.3 🍺
+ * Do not edit manually.
+ * Api
+ * Arvoredo PDV API
+ * OpenAPI spec version: 0.2.0
+ */
+import * as zod from "zod";
+
+/**
+ * @summary Health check
+ */
+export const HealthCheckResponse = zod.object({
+  status: zod.string(),
+});
+
+/**
+ * @summary Listar produtos
+ */
+export const ListarProdutosQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
+});
+
+export const ListarProdutosResponseItem = zod.object({
+  id: zod.number(),
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number(),
+  estoque: zod.number(),
+  estoque_min: zod.number(),
+  unidade: zod.string(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean(),
+  criado_em: zod.string(),
+});
+export const ListarProdutosResponse = zod.array(ListarProdutosResponseItem);
+
+/**
+ * @summary Criar produto
+ */
+export const criarProdutoBodyCustoDefault = 0;
+export const criarProdutoBodyEstoqueDefault = 0;
+export const criarProdutoBodyEstoqueMinDefault = 5;
+export const criarProdutoBodyUnidadeDefault = `un`;
+
+export const CriarProdutoBody = zod.object({
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number().default(criarProdutoBodyCustoDefault),
+  estoque: zod.number().default(criarProdutoBodyEstoqueDefault),
+  estoque_min: zod.number().default(criarProdutoBodyEstoqueMinDefault),
+  unidade: zod.string().default(criarProdutoBodyUnidadeDefault),
+  validade: zod.string().nullish(),
+});
+
+/**
+ * @summary Buscar produto por código ou nome
+ */
+export const BuscarProdutoQueryParams = zod.object({
+  codigo: zod.coerce.string().optional(),
+  nome: zod.coerce.string().optional(),
+  q: zod.coerce.string().optional(),
+});
+
+export const BuscarProdutoResponseItem = zod.object({
+  id: zod.number(),
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number(),
+  estoque: zod.number(),
+  estoque_min: zod.number(),
+  unidade: zod.string(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean(),
+  criado_em: zod.string(),
+});
+export const BuscarProdutoResponse = zod.array(BuscarProdutoResponseItem);
+
+/**
+ * @summary Produtos com estoque baixo ou vencendo
+ */
+export const AlertasEstoqueResponse = zod.object({
+  estoque_baixo: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
+      ncm: zod.string().nullish(),
+      cst: zod.string().nullish(),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  vencendo: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
+      ncm: zod.string().nullish(),
+      cst: zod.string().nullish(),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  vencidos: zod.array(
+    zod.object({
+      id: zod.number(),
+      codigo: zod.string().nullish(),
+      nome: zod.string(),
+      marca: zod.string().nullish(),
+      categoria: zod.enum(["mercado", "cozinha", "feira"]),
+      ncm: zod.string().nullish(),
+      cst: zod.string().nullish(),
+      preco: zod.number(),
+      custo: zod.number(),
+      estoque: zod.number(),
+      estoque_min: zod.number(),
+      unidade: zod.string(),
+      validade: zod.string().nullish(),
+      ativo: zod.boolean(),
+      criado_em: zod.string(),
+    }),
+  ),
+  total_alertas: zod.number(),
+});
+
+/**
+ * @summary Editar produto
+ */
+export const EditarProdutoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const EditarProdutoBody = zod.object({
+  codigo: zod.string().nullish(),
+  nome: zod.string().optional(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]).optional(),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number().optional(),
+  custo: zod.number().optional(),
+  estoque: zod.number().optional(),
+  estoque_min: zod.number().optional(),
+  unidade: zod.string().optional(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean().optional(),
+});
+
+export const EditarProdutoResponse = zod.object({
+  id: zod.number(),
+  codigo: zod.string().nullish(),
+  nome: zod.string(),
+  marca: zod.string().nullish(),
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  ncm: zod.string().nullish(),
+  cst: zod.string().nullish(),
+  preco: zod.number(),
+  custo: zod.number(),
+  estoque: zod.number(),
+  estoque_min: zod.number(),
+  unidade: zod.string(),
+  validade: zod.string().nullish(),
+  ativo: zod.boolean(),
+  criado_em: zod.string(),
+});
+
+/**
+ * @summary Soft delete produto
+ */
+export const DeletarProdutoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeletarProdutoResponse = zod.object({
+  ok: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Listar vendas
+ */
+export const listarVendasQueryLimitDefault = 50;
+
+export const ListarVendasQueryParams = zod.object({
+  data: zod.coerce.string().optional(),
+  data_inicio: zod.coerce.string().optional(),
+  data_fim: zod.coerce.string().optional(),
+  categoria: zod.coerce.string().optional(),
+  limit: zod.coerce.number().default(listarVendasQueryLimitDefault),
+  page: zod.coerce.number().default(1),
+  q: zod.coerce.string().optional(),
+});
+
+export const ListarVendasResponseItem = zod.object({
+  id: zod.number(),
+  sessao_id: zod.number().nullish(),
+  categoria: zod.string(),
+  total: zod.number(),
+  desconto: zod.number(),
+  pagamento: zod.string(),
+  cliente_id: zod.number().nullish(),
+  cliente_nome: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarVendasResponse = zod.array(ListarVendasResponseItem);
+
+/**
+ * @summary Registrar venda
+ */
+export const registrarVendaBodyDescontoDefault = 0;
+
+export const RegistrarVendaBody = zod.object({
+  categoria: zod.enum(["mercado", "cozinha", "feira"]),
+  desconto: zod.number().default(registrarVendaBodyDescontoDefault),
+  pagamento: zod.enum(["dinheiro", "pix", "cartao", "fiado"]),
+  cliente_id: zod.number().nullish(),
+  observacao: zod.string().nullish(),
+  cpf_nota: zod.string().nullish(),
+  cnpj_credenciadora: zod.string().nullish(),
+  codigo_autorizacao: zod.string().nullish(),
+  bandeira_cartao: zod.string().nullish(),
+  tipo_pagamento: zod.string().nullish(),
+  nsu_tef: zod.string().nullish(),
+  tef_intencao_id: zod.number().nullish(),
+  itens: zod.array(
+    zod.object({
+      produto_id: zod.number(),
+      quantidade: zod.number(),
+      preco_unit: zod.number(),
+      unidades: zod.number().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Resumo das vendas de hoje
+ */
+export const ResumoHojeResponse = zod.object({
+  total: zod.number(),
+  total_dinheiro: zod.number(),
+  total_pix: zod.number(),
+  total_cartao: zod.number(),
+  total_fiado: zod.number(),
+  num_vendas: zod.number(),
+  mercado: zod.number(),
+  cozinha: zod.number(),
+  feira: zod.number().optional(),
+});
+
+/**
+ * @summary Itens de uma venda
+ */
+export const ItensDaVendaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ItensDaVendaResponseItem = zod.object({
+  id: zod.number(),
+  venda_id: zod.number(),
+  produto_id: zod.number(),
+  nome_snap: zod.string(),
+  quantidade: zod.number(),
+  unidades: zod.number().nullish(),
+  preco_unit: zod.number(),
+  subtotal: zod.number(),
+});
+export const ItensDaVendaResponse = zod.array(ItensDaVendaResponseItem);
+
+/**
+ * @summary Registrar movimento de estoque
+ */
+export const MovimentarEstoqueBody = zod.object({
+  produto_id: zod.number(),
+  tipo: zod.enum(["entrada", "saida", "ajuste"]),
+  quantidade: zod.number(),
+  motivo: zod.string().nullish(),
+});
+
+/**
+ * @summary Histórico de movimentos de estoque
+ */
+export const listarMovimentosQueryLimitDefault = 100;
+
+export const ListarMovimentosQueryParams = zod.object({
+  produto_id: zod.coerce.number().optional(),
+  limit: zod.coerce.number().default(listarMovimentosQueryLimitDefault),
+});
+
+export const ListarMovimentosResponseItem = zod.object({
+  id: zod.number(),
+  produto_id: zod.number(),
+  produto_nome: zod.string().nullish(),
+  tipo: zod.string(),
+  quantidade: zod.number(),
+  motivo: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarMovimentosResponse = zod.array(ListarMovimentosResponseItem);
+
+/**
+ * @summary Listar clientes
+ */
+export const ListarClientesQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+});
+
+export const ListarClientesResponseItem = zod.object({
+  id: zod.number(),
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarClientesResponse = zod.array(ListarClientesResponseItem);
+
+/**
+ * @summary Criar cliente
+ */
+export const CriarClienteBody = zod.object({
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+});
+
+/**
+ * @summary Editar cliente
+ */
+export const EditarClienteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const EditarClienteBody = zod.object({
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+});
+
+export const EditarClienteResponse = zod.object({
+  id: zod.number(),
+  nome: zod.string(),
+  apelido: zod.string().nullish(),
+  telefone: zod.string().nullish(),
+  cpf: zod.string().nullish(),
+  observacao: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+
+/**
+ * @summary Extrato do cliente
+ */
+export const ExtratoClienteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ExtratoClienteResponse = zod.object({
+  cliente: zod.object({
+    id: zod.number(),
+    nome: zod.string(),
+    apelido: zod.string().nullish(),
+    telefone: zod.string().nullish(),
+    cpf: zod.string().nullish(),
+    observacao: zod.string().nullish(),
+    criado_em: zod.string(),
+  }),
+  fiados: zod.array(
+    zod.object({
+      id: zod.number(),
+      venda_id: zod.number().nullish(),
+      valor: zod.number(),
+      pago: zod.boolean(),
+      pago_em: zod.string().nullish(),
+      criado_em: zod.string(),
+    }),
+  ),
+  total_aberto: zod.number(),
+});
+
+/**
+ * @summary Registrar pagamento de fiado
+ */
+export const PagarFiadoParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PagarFiadoBody = zod.object({
+  valor: zod.number(),
+});
+
+export const PagarFiadoResponse = zod.object({
+  ok: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Clientes com dívida em aberto
+ */
+export const ResumoFiadoResponseItem = zod.object({
+  cliente: zod.object({
+    id: zod.number(),
+    nome: zod.string(),
+    apelido: zod.string().nullish(),
+    telefone: zod.string().nullish(),
+    cpf: zod.string().nullish(),
+    observacao: zod.string().nullish(),
+    criado_em: zod.string(),
+  }),
+  total_aberto: zod.number(),
+});
+export const ResumoFiadoResponse = zod.array(ResumoFiadoResponseItem);
+
+/**
+ * @summary Status atual do caixa
+ */
+export const StatusCaixaResponse = zod.object({
+  aberto: zod.boolean(),
+  sessao: zod
+    .object({
+      id: zod.number(),
+      aberto_em: zod.string(),
+      fechado_em: zod.string().nullish(),
+      fundo_inicial: zod.number(),
+      total_dinheiro: zod.number(),
+      total_pix: zod.number(),
+      total_cartao: zod.number(),
+      total_fiado: zod.number(),
+      total_sangria: zod.number(),
+      status: zod.enum(["aberto", "fechado"]),
+    })
+    .nullish(),
+});
+
+/**
+ * @summary Abrir sessão de caixa
+ */
+export const abrirCaixaBodyFundoInicialDefault = 300;
+
+export const AbrirCaixaBody = zod.object({
+  fundo_inicial: zod.number().default(abrirCaixaBodyFundoInicialDefault),
+});
+
+/**
+ * @summary Fechar sessão de caixa
+ */
+export const FecharCaixaResponse = zod.object({
+  id: zod.number(),
+  aberto_em: zod.string(),
+  fechado_em: zod.string().nullish(),
+  fundo_inicial: zod.number(),
+  total_dinheiro: zod.number(),
+  total_pix: zod.number(),
+  total_cartao: zod.number(),
+  total_fiado: zod.number(),
+  total_sangria: zod.number(),
+  status: zod.enum(["aberto", "fechado"]),
+});
+
+/**
+ * @summary Registrar sangria
+ */
+export const RegistrarSangriaBody = zod.object({
+  valor: zod.number(),
+  motivo: zod.string().nullish(),
+});
+
+/**
+ * @summary Listar sangrias
+ */
+export const ListarSangriasQueryParams = zod.object({
+  sessao_id: zod.coerce.number().optional(),
+});
+
+export const ListarSangriasResponseItem = zod.object({
+  id: zod.number(),
+  sessao_id: zod.number(),
+  valor: zod.number(),
+  motivo: zod.string().nullish(),
+  criado_em: zod.string(),
+});
+export const ListarSangriasResponse = zod.array(ListarSangriasResponseItem);
+
+/**
+ * @summary Histórico de sessões
+ */
+export const HistoricoCaixaResponseItem = zod.object({
+  id: zod.number(),
+  aberto_em: zod.string(),
+  fechado_em: zod.string().nullish(),
+  fundo_inicial: zod.number(),
+  total_dinheiro: zod.number(),
+  total_pix: zod.number(),
+  total_cartao: zod.number(),
+  total_fiado: zod.number(),
+  total_sangria: zod.number(),
+  status: zod.enum(["aberto", "fechado"]),
+});
+export const HistoricoCaixaResponse = zod.array(HistoricoCaixaResponseItem);
+
+/**
+ * @summary Imprimir cupom de venda
+ */
+export const ImprimirCupomBody = zod.object({
+  venda_id: zod.number(),
+});
+
+export const ImprimirCupomResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+
+/**
+ * @summary Imprimir relatório de sangria/vendas por período
+ */
+export const ImprimirSangriaBody = zod.object({
+  data_inicio: zod.string(),
+  data_fim: zod.string(),
+  sessao_id: zod.number().nullish(),
+});
+
+export const ImprimirSangriaResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
+
+/**
+ * @summary Testar impressora
+ */
+export const TestImpressoraResponse = zod.object({
+  ok: zod.boolean(),
+  erro: zod.string().nullish(),
+});
 </file>
 
 <file path="artifacts/api-server/src/routes/vendas.ts">
