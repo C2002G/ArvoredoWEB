@@ -4,8 +4,8 @@
   "api_url": "https://sandbox.controlpay.com.br",
   "api_token": "ItHktKa3hqNqKJlS0fJC7TVBi3LFXUdHzkXRFLhxNcujnOujlmlvb59PzaZlRQGJNWIwoE59btDygfx9ugb5mS4KjUuckd2%2b083iJZqPHx%2bboklwxyE%2fHoTGrvkIu50%2b",
   "timeout_ms": 60000,
-  "empresa_nome": "NOME DA EMPRESA",
-  "empresa_cnpj": "00.000.000/0000-00",
+  "empresa_nome": "Mercado Arvoredo Ltda",
+  "empresa_cnpj": "60242783000141",
   "empresa_regra_padrao": "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  "cnpj_credenciadora": ""
+  "cnpj_credenciadora": "16501555000157"
 }

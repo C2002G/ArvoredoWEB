@@ -6,6 +6,7 @@ import { reimprimirDanfeSimplificado } from "../services/danfe.service";
 
 const router: IRouter = Router();
 
+// Rota para consultar o status da NFC-e
 router.get("/status/:vendaId", async (req, res) => {
   const vendaId = Number(req.params.vendaId);
   if (!Number.isFinite(vendaId)) {
@@ -27,6 +28,7 @@ router.get("/status/:vendaId", async (req, res) => {
   res.json({ ok: true, status: log.status, log });
 });
 
+// Rota para reimprimir o cupom ou DANFE
 router.post("/:vendaId/reimprimir", async (req, res) => {
   const vendaId = Number(req.params.vendaId);
   if (!Number.isFinite(vendaId)) {
@@ -65,33 +67,61 @@ router.post("/:vendaId/reimprimir", async (req, res) => {
   res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
 });
 
+// Rota de Cancelamento Integrada (Maquininha + Banco de Dados)
 router.post("/:vendaId/cancelar", async (req, res) => {
   const vendaId = Number(req.params.vendaId);
   if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
+    return res.status(400).json({ ok: false, message: "vendaId invalido" });
   }
 
-  const [lastLog] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
+  try {
+    // 1. Buscar a venda no banco para pegar o tef_intencao_id
+    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+    
+    if (!venda) {
+      return res.status(404).json({ ok: false, message: "Venda não encontrada" });
+    }
 
-  await db.insert(nfceLogsTable).values({
-    venda_id: vendaId,
-    ambiente: lastLog?.ambiente || "homologacao",
-    status: "erro",
-    chave_acesso: lastLog?.chave_acesso || null,
-    mensagem_status_sefaz:
-      "Cancelamento NFC-e solicitado. Rota em modo esboco aguardando integracao node-dfe.",
-  });
+    // 2. Se a venda foi em cartão e tem ID do TEF, aciona o estorno na PayGo
+    if (venda.pagamento === "cartao" && venda.tef_intencao_id) {
+      console.log(`[TEF] Iniciando estorno PayGo para Intenção: ${venda.tef_intencao_id}`);
+      
+      const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+      const key = process.env.CONTROLPAY_KEY?.trim() || "";
 
-  res.status(202).json({
-    ok: true,
-    message: "Solicitacao de cancelamento registrada (esboco).",
-  });
+      const respTef = await fetch(`${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intencaoVendaId: venda.tef_intencao_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159", 
+        }),
+      });
+
+      if (!respTef.ok) {
+        throw new Error("Falha ao comunicar estorno com a PayGo");
+      }
+      console.log("[TEF] Comando de estorno enviado para a maquininha.");
+    }
+
+    // 3. Registrar o log de tentativa de cancelamento fiscal
+    await db.insert(nfceLogsTable).values({
+      venda_id: vendaId,
+      ambiente: "homologacao", 
+      status: "processando",
+      mensagem_status_sefaz: "Cancelamento solicitado (TEF acionado).",
+    });
+
+    res.status(202).json({
+      ok: true,
+      message: "Estorno acionado na maquininha. Siga as instruções no terminal físico.",
+    });
+
+  } catch (error: any) {
+    console.error("[CANCELAR] Erro:", error);
+    res.status(500).json({ ok: false, message: error.message });
+  }
 });
 
 export default router;
