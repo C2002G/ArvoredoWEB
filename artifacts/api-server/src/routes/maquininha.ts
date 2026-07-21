@@ -174,16 +174,31 @@ router.post("/enviar", async (req, res) => {
     resultado.data?.pagamentoExterno ??
     {};
 
+  const codigoAutorizacao =
+    pagamento?.codigoAutorizacao ??
+    pagamento?.codigo_autorizacao ??
+    pagamento?.autorizacao ??
+    pagamento?.authorizationCode ??
+    pagamento?.codigo ??
+    null;
+  const bandeiraCartao =
+    pagamento?.bandeiraCartao ??
+    pagamento?.bandeira_cartao ??
+    pagamento?.bandeira ??
+    pagamento?.nomeBandeira ??
+    null;
+  const tipoPagamento =
+    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05";
+
   return res.json({
     ok: true,
     aprovado: true,
     dados_cartao: {
       cnpj_credenciadora: config.cnpj_credenciadora || null,
-      codigo_autorizacao: pagamento.autorizacao ?? null,
-      bandeira_cartao: pagamento.bandeira ?? null,
-      tipo_pagamento:
-        payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05",
-      nsu_tef: pagamento.nsuTid ?? pagamento.nsu ?? null,
+      codigo_autorizacao: codigoAutorizacao,
+      bandeira_cartao: bandeiraCartao,
+      tipo_pagamento: tipoPagamento,
+      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
       tef_intencao_id: intencaoVendaId,
     },
     comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,

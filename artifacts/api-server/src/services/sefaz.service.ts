@@ -455,13 +455,16 @@ export async function emitirNfce(
 
                 // Incluir dados de cartão sempre que houver informações válidas.
                 // Isso permite pagamento em débito/crédito funcionar com o simulador Stone.
-                const temDadosCartao = venda.cnpj_credenciadora && venda.codigo_autorizacao;
-                if (venda.pagamento === "cartao" && temDadosCartao) {
+                const temDadosCartao =
+                  venda.pagamento === "cartao" &&
+                  Boolean(venda.codigo_autorizacao || venda.bandeira_cartao || venda.tipo_pagamento);
+                if (temDadosCartao) {
+                  const cnpjCartao = String(venda.cnpj_credenciadora || "").replace(/\D/g, "");
                   result.card = {
                     tpIntegra: "1",
-                    CNPJ: String(venda.cnpj_credenciadora || "").replace(/\D/g, ""),
+                    ...(cnpjCartao ? { CNPJ: cnpjCartao } : {}),
                     tBand: normalizarBandeira(venda.bandeira_cartao || "99"),
-                    cAut: venda.codigo_autorizacao,
+                    cAut: venda.codigo_autorizacao || "000000",
                   };
                 }
 
