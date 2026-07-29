@@ -75,49 +75,59 @@ router.post("/:vendaId/cancelar", async (req, res) => {
   }
 
   try {
-    // 1. Buscar a venda no banco para pegar o tef_intencao_id
     const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
-    
     if (!venda) {
       return res.status(404).json({ ok: false, message: "Venda não encontrada" });
     }
 
-    // 2. Se a venda foi em cartão e tem ID do TEF, aciona o estorno na PayGo
-    if (venda.pagamento === "cartao" && venda.tef_intencao_id) {
-      console.log(`[TEF] Iniciando estorno PayGo para Intenção: ${venda.tef_intencao_id}`);
-      
+    let tefNegado = false;
+
+    // Cartão E Pix passam pelo mesmo fluxo TEF/ControlPay — os dois
+    // precisam acionar o cancelamento, não só cartão.
+    if ((venda.pagamento === "cartao" || venda.pagamento === "pix") && venda.tef_intencao_id) {
+      console.log(`[TEF] Iniciando cancelamento PayGo para Intenção: ${venda.tef_intencao_id}`);
+
       const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
       const key = process.env.CONTROLPAY_KEY?.trim() || "";
+      const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;
 
       const respTef = await fetch(`${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           intencaoVendaId: venda.tef_intencao_id,
+          terminalId, // doc: mandatório, mesmo terminal da venda original
           aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159", 
+          senhaTecnica: "314159",
         }),
       });
 
-      if (!respTef.ok) {
-        throw new Error("Falha ao comunicar estorno com a PayGo");
+      if (!respTef.ok) throw new Error("Falha ao comunicar cancelamento com a PayGo");
+
+      const tefData = (await respTef.json()) as any;
+      const statusCancelamento = tefData?.intencaoVenda?.intencaoVendaStatus;
+      console.log("[TEF] Status retornado pelo cancelamento:", statusCancelamento);
+
+      // 20 = Cancelado (sucesso real). Qualquer outro valor aqui = o host
+      // não efetivou — é exatamente o que o roteiro espera pro PIX.
+      if (statusCancelamento?.id !== 20) {
+        tefNegado = true;
+        console.log("[TEF] Cancelamento negado pelo host.");
       }
-      console.log("[TEF] Comando de estorno enviado para a maquininha.");
     }
 
-    // 3. Registrar o log de tentativa de cancelamento fiscal
     await db.insert(nfceLogsTable).values({
       venda_id: vendaId,
-      ambiente: "homologacao", 
+      ambiente: "homologacao",
       status: "processando",
-      mensagem_status_sefaz: "Cancelamento solicitado (TEF acionado).",
+      mensagem_status_sefaz: tefNegado ? "TRANSAÇÃO NEGADA PELO HOST" : "Cancelamento solicitado (TEF acionado).",
     });
 
-    res.status(202).json({
-      ok: true,
-      message: "Estorno acionado na maquininha. Siga as instruções no terminal físico.",
-    });
+    if (tefNegado) {
+      return res.status(402).json({ ok: false, message: "TRANSAÇÃO NEGADA PELO HOST" });
+    }
 
+    res.status(202).json({ ok: true, message: "Estorno acionado na maquininha. Siga as instruções no terminal físico." });
   } catch (error: any) {
     console.error("[CANCELAR] Erro:", error);
     res.status(500).json({ ok: false, message: error.message });

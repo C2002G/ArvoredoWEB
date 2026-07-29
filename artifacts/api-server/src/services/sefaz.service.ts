@@ -454,17 +454,16 @@ export async function emitirNfce(
 
                 // O bloco <card> só deve ser gerado para Cartão de Crédito ou Débito reais (tPag 03 ou 04)
                 // PIX (17) não deve gerar o sub-bloco <card> para evitar a rejeição 391 da SEFAZ.
-                const ehCartaoFisico = (tPag === "03" || tPag === "04") && venda.pagamento === "cartao";
-                const temDadosCartao =
-                  ehCartaoFisico &&
-                  Boolean(venda.codigo_autorizacao || venda.bandeira_cartao);
+                const precisaGrupoCard = tPag === "03" || tPag === "04" || tPag === "17";
 
-                if (temDadosCartao) {
+                if (precisaGrupoCard) {
                   const cnpjCartao = String(venda.cnpj_credenciadora || "").replace(/\D/g, "");
                   result.card = {
                     tpIntegra: "1",
-                    CNPJ: cnpjCartao || "16501555000157", // Força o da Stone caso esteja vazio para não rejeitar,
-                    tBand: normalizarBandeira(venda.bandeira_cartao || "99"),
+                    CNPJ: cnpjCartao || "16501555000157",
+                    // PIX não tem "bandeira" real — 99 (Outros) é o valor padrão usado
+                    // pelo mercado nesse caso (confirmado em exemplo real de XML, mesma NT).
+                    tBand: tPag === "17" ? "99" : normalizarBandeira(venda.bandeira_cartao || "99"),
                     cAut: venda.codigo_autorizacao || "000000",
                   };
                 }

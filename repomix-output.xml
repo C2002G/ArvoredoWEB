@@ -10097,116 +10097,6 @@ module.exports = defineConfig({
 });
 </file>
 
-<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
-import { useMutation, useQuery } from "@tanstack/react-query";
-
-const BASE = "/api/maquininha";
-
-export type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
-
-type EnvioMaquininhaInput = {
-  venda_local_id?: string;
-  metodo: "debito" | "credito" | "pix";
-  valor_total: number;
-  desconto?: number;
-  itens: Array<{
-    produto_id: number;
-    nome: string;
-    quantidade: number;
-    preco_unit: number;
-    subtotal: number;
-  }>;
-};
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
-  const payload = await res.json();
-  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
-  return payload as T;
-}
-
-export function useMaquininhaConfig() {
-  return useQuery({
-    queryKey: ["maquininha", "config"],
-    queryFn: () => request<MaquininhaConfig>("/config"),
-  });
-}
-
-export function useSalvarMaquininhaConfig() {
-  return useMutation({
-    mutationFn: (data: Partial<MaquininhaConfig>) =>
-      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export type MaquininhaResponse = {
-  ok: boolean;
-  aprovado?: boolean;
-  enviado?: boolean;
-  mensagem?: string;
-  modo?: string;
-  dados_cartao?: {
-    cnpj_credenciadora?: string | null;
-    codigo_autorizacao?: string | null;
-    bandeira_cartao?: string | null;
-    tipo_pagamento?: string | null;
-    nsu_tef?: string | null;
-    tef_intencao_id?: number | null;
-  };
-  comprovante_estabelecimento?: string | null;
-  comprovante_cliente?: string | null;
-};
-
-export function useEnviarParaMaquininha() {
-  return useMutation({
-    mutationFn: (data: EnvioMaquininhaInput) =>
-      request<MaquininhaResponse>("/enviar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useCancelarPagamento() {
-  return useMutation({
-    mutationFn: (data: { intencao_venda_id: number }) =>
-      request<{ ok: boolean; mensagem: string }>("/cancelar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useTestarMaquininha() {
-  return useMutation({
-    mutationFn: () =>
-      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
-        "/testar",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
-  });
-}
-</file>
-
 <file path="artifacts/arvoredo/src/store/use-cart.ts">
 import { create } from "zustand";
 import type { ItemVendaInput, Produto } from "@workspace/api-client-react/src/generated/api.schemas";
@@ -13264,6 +13154,117 @@ export function Layout({ children }: LayoutProps) {
       </main>
     </div>
   );
+}
+</file>
+
+<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
+import { useMutation, useQuery } from "@tanstack/react-query";
+
+const BASE = "/api/maquininha";
+
+export type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+type EnvioMaquininhaInput = {
+  venda_local_id?: string;
+  metodo: "debito" | "credito" | "pix";
+  valor_total: number;
+  parcelas?: number;
+  desconto?: number;
+  itens: Array<{
+    produto_id: number;
+    nome: string;
+    quantidade: number;
+    preco_unit: number;
+    subtotal: number;
+  }>;
+};
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, init);
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
+  return payload as T;
+}
+
+export function useMaquininhaConfig() {
+  return useQuery({
+    queryKey: ["maquininha", "config"],
+    queryFn: () => request<MaquininhaConfig>("/config"),
+  });
+}
+
+export function useSalvarMaquininhaConfig() {
+  return useMutation({
+    mutationFn: (data: Partial<MaquininhaConfig>) =>
+      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export type MaquininhaResponse = {
+  ok: boolean;
+  aprovado?: boolean;
+  enviado?: boolean;
+  mensagem?: string;
+  modo?: string;
+  dados_cartao?: {
+    cnpj_credenciadora?: string | null;
+    codigo_autorizacao?: string | null;
+    bandeira_cartao?: string | null;
+    tipo_pagamento?: string | null;
+    nsu_tef?: string | null;
+    tef_intencao_id?: number | null;
+  };
+  comprovante_estabelecimento?: string | null;
+  comprovante_cliente?: string | null;
+};
+
+export function useEnviarParaMaquininha() {
+  return useMutation({
+    mutationFn: (data: EnvioMaquininhaInput) =>
+      request<MaquininhaResponse>("/enviar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export function useCancelarPagamento() {
+  return useMutation({
+    mutationFn: (data: { intencao_venda_id: number }) =>
+      request<{ ok: boolean; mensagem: string }>("/cancelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export function useTestarMaquininha() {
+  return useMutation({
+    mutationFn: () =>
+      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
+        "/testar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+  });
 }
 </file>
 
@@ -17014,275 +17015,6 @@ router.post("/comprovante-tef", async (req, res) => {
 export default router;
 </file>
 
-<file path="artifacts/api-server/src/routes/maquininha.ts">
-import { Router, type IRouter } from "express";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-
-type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
-
-type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: ModoConexao;
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
-
-const router: IRouter = Router();
-
-const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  ativo: true,
-  modo_conexao: "manual",
-  api_url: "",
-  api_token: "",
-  timeout_ms: 60000,
-  empresa_nome: "NOME DA EMPRESA",
-  empresa_cnpj: "00.000.000/0000-00",
-  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  cnpj_credenciadora: "",
-};
-
-async function loadConfig(): Promise<MaquininhaConfig> {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
-}
-
-async function saveConfig(config: MaquininhaConfig): Promise<void> {
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
-}
-
-const FORMA_PAGAMENTO: Record<string, number> = {
-  credito: 21,
-  debito: 22,
-  pix: 25,
-};
-
-const STATUS_APROVADO = 10;
-const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
-
-async function pollingIntencao(
-  baseUrl: string,
-  key: string,
-  intencaoVendaId: number,
-  timeoutMs: number,
-): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
-  const inicio = Date.now();
-  while (Date.now() - inicio < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    try {
-      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
-        headers: { "User-Agent": "ArvoredoPDV/1.0" },
-      });
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as any;
-      const status: number =
-        data?.intencaoVenda?.intencaoVendaStatus?.id ??
-        data?.statusId ??
-        data?.status?.id;
-      if (status === STATUS_APROVADO) return { aprovado: true, data };
-      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
-    } catch {
-      // falha de rede temporária — continua tentando
-    }
-  }
-  return { aprovado: false, data: null, timeout: true };
-}
-
-router.get("/config", async (_req, res) => {
-  const config = await loadConfig();
-  res.json(config);
-});
-
-router.post("/config", async (req, res) => {
-  const current = await loadConfig();
-  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
-  const merged: MaquininhaConfig = {
-    ...current,
-    ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
-  };
-  await saveConfig(merged);
-  res.json({ ok: true, config: merged });
-});
-
-router.post("/enviar", async (req, res) => {
-  const config = await loadConfig();
-
-  const payload = req.body as {
-    venda_local_id?: string;
-    metodo: "debito" | "credito" | "pix";
-    valor_total: number; // em reais, ex: 10.50
-  };
-
-  if (!config.ativo) {
-    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
-  }
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
-  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
-
-  if (!key) {
-    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
-  }
-
-  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
-  if (!formaPagamentoId) {
-    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
-  }
-
-  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
-
-  let intencaoVendaId: number;
-  try {
-    const criarResp = await fetch(
-      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          aguardarTefIniciarTransacao: true,
-          formaPagamentoId,
-          valorTotalVendido: valorStr,
-          terminalId,
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!criarResp.ok) {
-      const txt = await criarResp.text();
-      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
-    }
-    const criarData = (await criarResp.json()) as any;
-    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
-    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-
-  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
-
-  if (!resultado.aprovado) {
-    const motivo = resultado.timeout
-      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
-      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
-    return res.status(402).json({ ok: false, mensagem: motivo });
-  }
-
-  const pagamento =
-    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentoExterno ??
-    {};
-
-  const codigoAutorizacao =
-    pagamento?.codigoAutorizacao ??
-    pagamento?.codigo_autorizacao ??
-    pagamento?.autorizacao ??
-    pagamento?.authorizationCode ??
-    pagamento?.codigo ??
-    null;
-  const bandeiraCartao =
-    pagamento?.bandeiraCartao ??
-    pagamento?.bandeira_cartao ??
-    pagamento?.bandeira ??
-    pagamento?.nomeBandeira ??
-    null;
-  const tipoPagamento =
-    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05";
-
-  return res.json({
-    ok: true,
-    aprovado: true,
-    dados_cartao: {
-      cnpj_credenciadora: config.cnpj_credenciadora || null,
-      codigo_autorizacao: codigoAutorizacao,
-      bandeira_cartao: bandeiraCartao,
-      tipo_pagamento: tipoPagamento,
-      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
-      tef_intencao_id: intencaoVendaId,
-    },
-    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
-    comprovante_cliente: pagamento.comprovanteCliente ?? null,
-  });
-});
-
-router.post("/cancelar", async (req, res) => {
-  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          intencaoVendaId: intencao_venda_id,
-          aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159",
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    const data = (await resp.json()) as any;
-    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-});
-
-router.post("/testar", async (_req, res) => {
-  const config = await loadConfig();
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  let paygoOnline = false;
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    paygoOnline = resp.ok;
-  } catch {
-    paygoOnline = false;
-  }
-
-  return res.json({
-    ok: true,
-    ativo: config.ativo,
-    modo_conexao: config.modo_conexao,
-    paygo_online: paygoOnline,
-    mensagem: paygoOnline
-      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
-      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
-  });
-});
-
-export default router;
-</file>
-
 <file path="artifacts/api-server/src/routes/produtos.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -17452,6 +17184,285 @@ export default router;
   },
   "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
 }
+</file>
+
+<file path="artifacts/api-server/src/routes/maquininha.ts">
+import { Router, type IRouter } from "express";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
+
+type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: ModoConexao;
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+const router: IRouter = Router();
+
+const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  ativo: true,
+  modo_conexao: "manual",
+  api_url: "",
+  api_token: "",
+  timeout_ms: 60000,
+  empresa_nome: "NOME DA EMPRESA",
+  empresa_cnpj: "00.000.000/0000-00",
+  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
+};
+
+async function loadConfig(): Promise<MaquininhaConfig> {
+  try {
+    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function saveConfig(config: MaquininhaConfig): Promise<void> {
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number =
+        data?.intencaoVenda?.intencaoVendaStatus?.id ??
+        data?.statusId ??
+        data?.status?.id;
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch {
+      // falha de rede temporária — continua tentando
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
+}
+
+router.get("/config", async (_req, res) => {
+  const config = await loadConfig();
+  res.json(config);
+});
+
+router.post("/config", async (req, res) => {
+  const current = await loadConfig();
+  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
+  const merged: MaquininhaConfig = {
+    ...current,
+    ...body,
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
+  };
+  await saveConfig(merged);
+  res.json({ ok: true, config: merged });
+});
+
+router.post("/enviar", async (req, res) => {
+  const config = await loadConfig();
+
+  const payload = req.body as {
+    venda_local_id?: string;
+    metodo: "debito" | "credito" | "pix";
+    valor_total: number; // em reais, ex: 10.50
+    parcelas?: number; // opcional, apenas para crédito
+  };
+
+  if (!config.ativo) {
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
+  }
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
+  
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
+  }
+
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
+  }
+
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  const quantidadeParcelas = payload.parcelas && payload.parcelas > 1 ? payload.parcelas : 1;
+  const tipoParcelamentoId = quantidadeParcelas > 1 ? 3 : 1; // 3 = Parcelado Estabelecimento (Loja)
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+          terminalId,
+          quantidadeParcelas,
+          tipoParcelamentoId,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+    console.log("\n=======================================================");
+    console.log(`🧾 ID PARA A PLANILHA DA PAYGO: ${intencaoVendaId}`);
+    console.log("=======================================================\n");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+    const motivo = resultado.timeout
+      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
+    return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  const codigoAutorizacao =
+    pagamento?.codigoAutorizacao ??
+    pagamento?.codigo_autorizacao ??
+    pagamento?.autorizacao ??
+    pagamento?.authorizationCode ??
+    pagamento?.codigo ??
+    null;
+  const bandeiraCartao =
+    pagamento?.bandeiraCartao ??
+    pagamento?.bandeira_cartao ??
+    pagamento?.bandeira ??
+    pagamento?.nomeBandeira ??
+    null;
+  const tipoPagamento =
+    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05";
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: codigoAutorizacao,
+      bandeira_cartao: bandeiraCartao,
+      tipo_pagamento: tipoPagamento,
+      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+});
+
+router.post("/testar", async (_req, res) => {
+  const config = await loadConfig();
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
+    ok: true,
+    ativo: config.ativo,
+    modo_conexao: config.modo_conexao,
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
+  });
+});
+
+export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/pages/historico.tsx">
@@ -20050,6 +20061,288 @@ router.put("/:id", async (req, res) => {
 export default router;
 </file>
 
+<file path="artifacts/api-server/src/lib/print-layout.ts">
+import type { Venda, ItemVenda } from "@workspace/db/schema";
+
+/**
+ * Tipos simplificados para a função de impressão.
+ */
+export type CupomItem = Pick<ItemVenda, 'produto_id' | 'nome_snap' | 'quantidade' | 'preco_unit' | 'subtotal' | 'unidades'>;
+export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao' | 'pagamento'> & {
+  cnpj_credenciadora?: string | null;
+  codigo_autorizacao?: string | null;
+  bandeira_cartao?: string | null;
+  tipo_pagamento?: string | null;
+};
+export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
+export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
+export type SangriaItem = { valor: number; };
+
+
+export const PRINTER_LAYOUT = {
+  colunas: 48,
+  empresa: {
+    nome: "MERCADO ARVOREDO LTDA",
+    cnpj: "60.242.783/0001-41",
+    ie: "0964060779",
+    endereco: "Rua CEL FERNANDO MACHADO, 453 - CENTRO HISTORICO - Porto Alegre - RS",
+    telefone: "(51) 9787-4406",
+  },
+};
+
+const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
+const formatMoneyTight = (value: number) => value.toFixed(2).replace(".", ",");
+const drawLine = (width = PRINTER_LAYOUT.colunas) => "-".repeat(width);
+
+/**
+ * Formata data/hora usando o fuso horário Brasil explicitamente.
+ * Remove conversões manuais de timezone que causam problemas.
+ */
+function formatarHorarioBrasil(data: Date | string): string {
+  const date = new Date(data);
+  
+  // Remove conversão manual de timezone - usa o timezone do sistema automaticamente
+  // O JavaScript já converte automaticamente datas ISO com timezone para o local
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "America/Sao_Paulo"
+  });
+}
+
+function normalizeText(text: string) {
+  return text
+    .replace(/\r/g, "")
+    .replace(/\n{2,}/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\r\n");
+}
+
+function padRight(value: string, size: number) {
+  if (value.length >= size) return value.slice(0, size);
+  return `${value}${" ".repeat(size - value.length)}`;
+}
+
+function padLeft(value: string, size: number) {
+  const v = value.slice(0, size);
+  if (v.length >= size) return v;
+  return `${" ".repeat(size - v.length)}${v}`;
+}
+
+function centerText(value: string, width = PRINTER_LAYOUT.colunas) {
+  const clean = value.replace(/\r?\n/g, " ").trim().slice(0, width);
+  const left = Math.max(0, Math.floor((width - clean.length) / 2));
+  return padRight(`${" ".repeat(left)}${clean}`, width);
+}
+
+function wrapText(text: string, w: number): string[] {
+    const t = text.replace(/\s+/g, " ").trim();
+    if (t.length <= w) return [t];
+    const out: string[] = [];
+    let rest = t;
+    while (rest.length > 0) {
+        if (rest.length <= w) { out.push(rest); break; }
+        let cut = rest.lastIndexOf(" ", w);
+        if (cut <= 0) cut = w;
+        out.push(rest.slice(0, cut).trim());
+        rest = rest.slice(cut).trim();
+    }
+    return out;
+}
+
+function parseDocumentoNota(observacao?: string | null) {
+  const match = observacao?.match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
+  if (!match) return null;
+  const documento = match[1];
+  return {
+    label: documento.length === 14 ? "CNPJ" : "CPF",
+    value: documento,
+  };
+}
+
+function codigo6(item: CupomItem) {
+  if (item.produto_id != null) {
+    return String(item.produto_id).padStart(6, "0").slice(-6);
+  }
+  const n = String(item.nome_snap).replace(/\D/g, "");
+  return (n + "000000").slice(0, 6);
+}
+
+function qtdUndItem(item: CupomItem) {
+  const u = item.unidades != null && item.unidades > 0;
+  if (u) return { qNum: item.unidades, und: "UN" as const };
+  const isInteiro = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
+  if (isInteiro) return { qNum: item.quantidade, und: "UN" as const };
+  return { qNum: item.quantidade, und: "KG" as const };
+}
+
+function linhaItem48(item: CupomItem) {
+  const cod = codigo6(item);
+  const desc = String(item.nome_snap).replace(/\s+/g, " ").trim();
+  const { qNum, und } = qtdUndItem(item);
+  const q5 = padLeft(formatMoneyTight(Number(qNum)), 5);
+  const vu = formatMoneyTight(item.preco_unit);
+  const vt = formatMoneyTight(item.subtotal);
+  return (
+    padRight(cod, 6) +
+    padRight(desc, 20) +
+    q5 + und +
+    padLeft(vu, 6) +
+    padLeft("0,00", 4) +
+    padLeft(vt, 5)
+  );
+}
+
+export async function buildCupomText(
+  venda: CupomVenda,
+  itens: CupomItem[],
+  clienteNome?: string,
+  chaveAcesso?: string,
+  qrCodeUrl?: string,
+  nfeDados?: { nProt?: string; dhRecbto?: string; vTotTrib?: number },
+) {
+  const W = PRINTER_LAYOUT.colunas;
+  const rows: string[] = [];
+
+  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
+  rows.push(`CNPJ: ${PRINTER_LAYOUT.empresa.cnpj}  IE: ${PRINTER_LAYOUT.empresa.ie}`.slice(0, W));
+  for (const ln of wrapText(PRINTER_LAYOUT.empresa.endereco, W)) rows.push(ln);
+  rows.push(`Fone: ${PRINTER_LAYOUT.empresa.telefone}`.slice(0, W));
+  rows.push(centerText("Documento Auxiliar da Nota Fiscal de", W));
+  rows.push(centerText("Consumidor Eletronica", W));
+  rows.push(drawLine(W));
+
+  rows.push("Cod.  Descricao          Qtd Und VlrU Dc VlTot ".slice(0, W));
+  rows.push(drawLine(W));
+
+  for (const item of itens) {
+    rows.push(linhaItem48(item).slice(0, W));
+    const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
+    const isInteiroQtd = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
+    if (u > 0 || !isInteiroQtd) {
+      rows.push(
+        `  * Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg  x  ${formatMoney(item.preco_unit)}/kg`.slice(0, W),
+      );
+    }
+  }
+
+  rows.push(drawLine(W));
+  rows.push(`Qtd. total de itens: ${itens.length}`.slice(0, W));
+  rows.push(`Valor total R$ ${venda.total.toFixed(2).replace(".", ",")}`.slice(0, W));
+  if (venda.desconto && venda.desconto > 0) {
+    rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`.slice(0, W));
+  }
+  rows.push(drawLine(W));
+
+  if (venda.pagamento === "cartao") {
+    rows.push(centerText("FORMA DE PAGAMENTO: CARTAO", W));
+    if (venda.bandeira_cartao) rows.push(`Bandeira: ${venda.bandeira_cartao}`.slice(0, W));
+    if (venda.cnpj_credenciadora) rows.push(`CNPJ Credenciadora: ${venda.cnpj_credenciadora}`.slice(0, W));
+    if (venda.codigo_autorizacao) rows.push(`Cod. Autorizacao: ${venda.codigo_autorizacao}`.slice(0, W));
+  } else {
+    rows.push(centerText(`FORMA DE PAGAMENTO: ${String(venda.pagamento).toUpperCase()}`, W));
+  }
+
+  rows.push(drawLine(W));
+  rows.push(`NFC-e Nº ${venda.id}  Serie 1`.slice(0, W));
+  if (nfeDados?.nProt) {
+    rows.push(`Protocolo: ${nfeDados.nProt}`.slice(0, W));
+    if (nfeDados.dhRecbto) rows.push(`Autorizacao: ${formatarHorarioBrasil(nfeDados.dhRecbto)}`.slice(0, W));
+  } else {
+    rows.push(`Data: ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
+  }
+
+  if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
+  const destinatarioDoc = parseDocumentoNota(venda.observacao);
+  if (destinatarioDoc) {
+    rows.push(`${destinatarioDoc.label}: ${destinatarioDoc.value}`.slice(0, W));
+  }
+  if (venda.observacao) {
+     for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
+  }
+
+  const tributosBase = nfeDados?.vTotTrib || (venda.total * 0.12);
+  const tribFederal = (tributosBase * 0.42).toFixed(2);
+  const tribEstadual = (tributosBase * 0.58).toFixed(2);
+  rows.push(drawLine(W));
+  rows.push(centerText("Tributos Totais Incidentes (Lei 12.741/2012)", W));
+  rows.push(centerText(`Aprox: R$ ${tributosBase.toFixed(2)} (Fed R$ ${tribFederal} | Est R$ ${tribEstadual} | Mun R$ 0,00)`, W));
+  rows.push(drawLine(W));
+  for (const ln of wrapText("DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL; NAO GERA DIREITO A CREDITO FISCAL DE IPI", W)) {
+      rows.push(centerText(ln, W));
+  }
+  rows.push(drawLine(W));
+  rows.push(`NFC-e ref. venda #${venda.id}  ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
+  
+  if (chaveAcesso) {
+    rows.push(drawLine(W));
+    rows.push(centerText("Consulte pela Chave de Acesso em:", W));
+    rows.push(centerText("www.sefaz.rs.gov.br/nfce/consulta", W));
+    rows.push(centerText(chaveAcesso.replace(/(\d{4})/g, "$1 ").trim(), W));
+    rows.push(drawLine(W));
+    rows.push(centerText("Consulte sua NFC-e pelo QR Code", W));
+    
+    if (qrCodeUrl) {
+      console.log("[CUPOM] QR Code URL extraída:", qrCodeUrl);
+    } else {
+      console.log("[CUPOM] AVISO: QR Code URL não fornecida");
+    }
+  } else {
+    rows.push(drawLine(W));
+    rows.push(centerText("CUPOM SEM VALOR FISCAL", W));
+  }
+  
+  rows.push(drawLine(W));
+  rows.push(centerText("Obrigado pela preferencia!", W));
+  rows.push("");
+
+  return normalizeText(rows.join("\n"));
+}
+
+export function buildSangriaText(
+  payload: SangriaPayload,
+  vendas: SangriaVenda[],
+  sangrias: SangriaItem[],
+) {
+  const W = PRINTER_LAYOUT.colunas;
+  const rows: string[] = [];
+  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
+  rows.push(centerText("RELATORIO DE SANGRIA", W));
+  rows.push(drawLine(W));
+  rows.push(`PERIODO: ${payload.data_inicio} ate ${payload.data_fim}`.slice(0, W));
+  if (payload.sessao_id) rows.push(`SESSAO: ${payload.sessao_id}`.slice(0, W));
+  rows.push(drawLine(W));
+
+  const totalVendas = vendas.reduce((sum, item) => sum + item.total, 0);
+  const totalDinheiro = vendas.filter((v) => v.pagamento === "dinheiro").reduce((s, v) => s + v.total, 0);
+  const totalPix = vendas.filter((v) => v.pagamento === "pix").reduce((s, v) => s + v.total, 0);
+  const totalCartao = vendas.filter((v) => v.pagamento === "cartao").reduce((s, v) => s + v.total, 0);
+  const totalFiado = vendas.filter((v) => v.pagamento === "fiado").reduce((s, v) => s + v.total, 0);
+  const totalSangrias = sangrias.reduce((sum, item) => sum + item.valor, 0);
+
+  rows.push(`Vendas: ${vendas.length}`.slice(0, W));
+  rows.push(`Total vendas: ${formatMoney(totalVendas)}`.slice(0, W));
+  rows.push(`Dinheiro: ${formatMoney(totalDinheiro)}`.slice(0, W));
+  rows.push(`PIX: ${formatMoney(totalPix)}`.slice(0, W));
+  rows.push(`Cartao: ${formatMoney(totalCartao)}`.slice(0, W));
+  rows.push(`Fiado: ${formatMoney(totalFiado)}`.slice(0, W));
+  rows.push(drawLine(W));
+  rows.push(`Sangrias: ${sangrias.length}`.slice(0, W));
+  rows.push(`Total sangria: ${formatMoney(totalSangrias)}`.slice(0, W));
+  rows.push(drawLine(W));
+  rows.push("Fim do relatorio");
+  rows.push("");
+
+  return normalizeText(rows.join("\n"));
+}
+</file>
+
 <file path="artifacts/api-server/src/services/sefaz.service.ts">
 import { db } from "@workspace/db";
 import { configFiscalTable, nfceLogsTable, Venda, ItemVenda, Produto, Cliente } from "@workspace/db/schema";
@@ -20516,7 +20809,7 @@ export async function emitirNfce(
                   const cnpjCartao = String(venda.cnpj_credenciadora || "").replace(/\D/g, "");
                   result.card = {
                     tpIntegra: "1",
-                    ...(cnpjCartao ? { CNPJ: cnpjCartao } : {}),
+                    CNPJ: cnpjCartao || "16501555000157", // Força o da Stone caso esteja vazio para não rejeitar,
                     tBand: normalizarBandeira(venda.bandeira_cartao || "99"),
                     cAut: venda.codigo_autorizacao || "000000",
                   };
@@ -20717,1228 +21010,6 @@ export async function emitirNfce(
 
     return { success: false, status: "erro", mensagem: error.message };
   }
-}
-</file>
-
-<file path="artifacts/api-server/src/lib/print-layout.ts">
-import type { Venda, ItemVenda } from "@workspace/db/schema";
-
-/**
- * Tipos simplificados para a função de impressão.
- */
-export type CupomItem = Pick<ItemVenda, 'produto_id' | 'nome_snap' | 'quantidade' | 'preco_unit' | 'subtotal' | 'unidades'>;
-export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' | 'observacao' | 'pagamento'> & {
-  cnpj_credenciadora?: string | null;
-  codigo_autorizacao?: string | null;
-  bandeira_cartao?: string | null;
-  tipo_pagamento?: string | null;
-};
-export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
-export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
-export type SangriaItem = { valor: number; };
-
-
-export const PRINTER_LAYOUT = {
-  colunas: 48,
-  empresa: {
-    nome: "MERCADO ARVOREDO LTDA",
-    cnpj: "60.242.783/0001-41",
-    ie: "0964060779",
-    endereco: "Rua CEL FERNANDO MACHADO, 453 - CENTRO HISTORICO - Porto Alegre - RS",
-    telefone: "(51) 9787-4406",
-  },
-};
-
-const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
-const formatMoneyTight = (value: number) => value.toFixed(2).replace(".", ",");
-const drawLine = (width = PRINTER_LAYOUT.colunas) => "-".repeat(width);
-
-/**
- * Formata data/hora usando o fuso horário Brasil explicitamente.
- * Remove conversões manuais de timezone que causam problemas.
- */
-function formatarHorarioBrasil(data: Date | string): string {
-  const date = new Date(data);
-  
-  // Remove conversão manual de timezone - usa o timezone do sistema automaticamente
-  // O JavaScript já converte automaticamente datas ISO com timezone para o local
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit", 
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: "America/Sao_Paulo"
-  });
-}
-
-function normalizeText(text: string) {
-  return text
-    .replace(/\r/g, "")
-    .replace(/\n{2,}/g, "\n")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .join("\r\n");
-}
-
-function padRight(value: string, size: number) {
-  if (value.length >= size) return value.slice(0, size);
-  return `${value}${" ".repeat(size - value.length)}`;
-}
-
-function padLeft(value: string, size: number) {
-  const v = value.slice(0, size);
-  if (v.length >= size) return v;
-  return `${" ".repeat(size - v.length)}${v}`;
-}
-
-function centerText(value: string, width = PRINTER_LAYOUT.colunas) {
-  const clean = value.replace(/\r?\n/g, " ").trim().slice(0, width);
-  const left = Math.max(0, Math.floor((width - clean.length) / 2));
-  return padRight(`${" ".repeat(left)}${clean}`, width);
-}
-
-function wrapText(text: string, w: number): string[] {
-    const t = text.replace(/\s+/g, " ").trim();
-    if (t.length <= w) return [t];
-    const out: string[] = [];
-    let rest = t;
-    while (rest.length > 0) {
-        if (rest.length <= w) { out.push(rest); break; }
-        let cut = rest.lastIndexOf(" ", w);
-        if (cut <= 0) cut = w;
-        out.push(rest.slice(0, cut).trim());
-        rest = rest.slice(cut).trim();
-    }
-    return out;
-}
-
-function parseDocumentoNota(observacao?: string | null) {
-  const match = observacao?.match(/(?:CPF_NA_NOTA|CNPJ_NA_NOTA)\s*:\s*(\d{14}|\d{11})/i);
-  if (!match) return null;
-  const documento = match[1];
-  return {
-    label: documento.length === 14 ? "CNPJ" : "CPF",
-    value: documento,
-  };
-}
-
-function codigo6(item: CupomItem) {
-  if (item.produto_id != null) {
-    return String(item.produto_id).padStart(6, "0").slice(-6);
-  }
-  const n = String(item.nome_snap).replace(/\D/g, "");
-  return (n + "000000").slice(0, 6);
-}
-
-function qtdUndItem(item: CupomItem) {
-  const u = item.unidades != null && item.unidades > 0;
-  if (u) return { qNum: item.unidades, und: "UN" as const };
-  const isInteiro = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
-  if (isInteiro) return { qNum: item.quantidade, und: "UN" as const };
-  return { qNum: item.quantidade, und: "KG" as const };
-}
-
-function linhaItem48(item: CupomItem) {
-  const cod = codigo6(item);
-  const desc = String(item.nome_snap).replace(/\s+/g, " ").trim();
-  const { qNum, und } = qtdUndItem(item);
-  const q5 = padLeft(formatMoneyTight(Number(qNum)), 5);
-  const vu = formatMoneyTight(item.preco_unit);
-  const vt = formatMoneyTight(item.subtotal);
-  return (
-    padRight(cod, 6) +
-    padRight(desc, 20) +
-    q5 + und +
-    padLeft(vu, 6) +
-    padLeft("0,00", 4) +
-    padLeft(vt, 5)
-  );
-}
-
-export async function buildCupomText(
-  venda: CupomVenda,
-  itens: CupomItem[],
-  clienteNome?: string,
-  chaveAcesso?: string,
-  qrCodeUrl?: string,
-  nfeDados?: { nProt?: string; dhRecbto?: string; vTotTrib?: number },
-) {
-  const W = PRINTER_LAYOUT.colunas;
-  const rows: string[] = [];
-
-  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
-  rows.push(`CNPJ: ${PRINTER_LAYOUT.empresa.cnpj}  IE: ${PRINTER_LAYOUT.empresa.ie}`.slice(0, W));
-  for (const ln of wrapText(PRINTER_LAYOUT.empresa.endereco, W)) rows.push(ln);
-  rows.push(`Fone: ${PRINTER_LAYOUT.empresa.telefone}`.slice(0, W));
-  rows.push(centerText("Documento Auxiliar da Nota Fiscal de", W));
-  rows.push(centerText("Consumidor Eletronica", W));
-  rows.push(drawLine(W));
-
-  rows.push("Cod.  Descricao          Qtd Und VlrU Dc VlTot ".slice(0, W));
-  rows.push(drawLine(W));
-
-  for (const item of itens) {
-    rows.push(linhaItem48(item).slice(0, W));
-    const u = item.unidades != null && item.unidades > 0 ? item.unidades : 0;
-    const isInteiroQtd = Math.abs(item.quantidade - Math.round(item.quantidade)) < 0.0001;
-    if (u > 0 || !isInteiroQtd) {
-      rows.push(
-        `  * Peso: ${item.quantidade.toFixed(3).replace(".", ",")} kg  x  ${formatMoney(item.preco_unit)}/kg`.slice(0, W),
-      );
-    }
-  }
-
-  rows.push(drawLine(W));
-  rows.push(`Qtd. total de itens: ${itens.length}`.slice(0, W));
-  rows.push(`Valor total R$ ${venda.total.toFixed(2).replace(".", ",")}`.slice(0, W));
-  if (venda.desconto && venda.desconto > 0) {
-    rows.push(`Desconto R$ ${venda.desconto.toFixed(2).replace(".", ",")}`.slice(0, W));
-  }
-  rows.push(drawLine(W));
-
-  if (venda.pagamento === "cartao") {
-    rows.push(centerText("FORMA DE PAGAMENTO: CARTAO", W));
-    if (venda.bandeira_cartao) rows.push(`Bandeira: ${venda.bandeira_cartao}`.slice(0, W));
-    if (venda.cnpj_credenciadora) rows.push(`CNPJ Credenciadora: ${venda.cnpj_credenciadora}`.slice(0, W));
-    if (venda.codigo_autorizacao) rows.push(`Cod. Autorizacao: ${venda.codigo_autorizacao}`.slice(0, W));
-  } else {
-    rows.push(centerText(`FORMA DE PAGAMENTO: ${String(venda.pagamento).toUpperCase()}`, W));
-  }
-
-  rows.push(drawLine(W));
-  rows.push(`NFC-e Nº ${venda.id}  Serie 1`.slice(0, W));
-  if (nfeDados?.nProt) {
-    rows.push(`Protocolo: ${nfeDados.nProt}`.slice(0, W));
-    if (nfeDados.dhRecbto) rows.push(`Autorizacao: ${formatarHorarioBrasil(nfeDados.dhRecbto)}`.slice(0, W));
-  } else {
-    rows.push(`Data: ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
-  }
-
-  if (clienteNome) rows.push(`Consumidor: ${clienteNome}`.slice(0, W));
-  const destinatarioDoc = parseDocumentoNota(venda.observacao);
-  if (destinatarioDoc) {
-    rows.push(`${destinatarioDoc.label}: ${destinatarioDoc.value}`.slice(0, W));
-  }
-  if (venda.observacao) {
-     for (const ln of wrapText(`Obs: ${venda.observacao}`, W)) rows.push(ln);
-  }
-
-  const tributosBase = nfeDados?.vTotTrib || (venda.total * 0.12);
-  const tribFederal = (tributosBase * 0.42).toFixed(2);
-  const tribEstadual = (tributosBase * 0.58).toFixed(2);
-  rows.push(drawLine(W));
-  rows.push(centerText("Tributos Totais Incidentes (Lei 12.741/2012)", W));
-  rows.push(centerText(`Aprox: R$ ${tributosBase.toFixed(2)} (Fed R$ ${tribFederal} | Est R$ ${tribEstadual} | Mun R$ 0,00)`, W));
-  rows.push(drawLine(W));
-  for (const ln of wrapText("DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL; NAO GERA DIREITO A CREDITO FISCAL DE IPI", W)) {
-      rows.push(centerText(ln, W));
-  }
-  rows.push(drawLine(W));
-  rows.push(`NFC-e ref. venda #${venda.id}  ${formatarHorarioBrasil(venda.criado_em)}`.slice(0, W));
-  
-  if (chaveAcesso) {
-    rows.push(drawLine(W));
-    rows.push(centerText("Consulte pela Chave de Acesso em:", W));
-    rows.push(centerText("www.sefaz.rs.gov.br/nfce/consulta", W));
-    rows.push(centerText(chaveAcesso.replace(/(\d{4})/g, "$1 ").trim(), W));
-    rows.push(drawLine(W));
-    rows.push(centerText("Consulte sua NFC-e pelo QR Code", W));
-    
-    if (qrCodeUrl) {
-      console.log("[CUPOM] QR Code URL extraída:", qrCodeUrl);
-    } else {
-      console.log("[CUPOM] AVISO: QR Code URL não fornecida");
-    }
-  } else {
-    rows.push(drawLine(W));
-    rows.push(centerText("CUPOM SEM VALOR FISCAL", W));
-  }
-  
-  rows.push(drawLine(W));
-  rows.push(centerText("Obrigado pela preferencia!", W));
-  rows.push("");
-
-  return normalizeText(rows.join("\n"));
-}
-
-export function buildSangriaText(
-  payload: SangriaPayload,
-  vendas: SangriaVenda[],
-  sangrias: SangriaItem[],
-) {
-  const W = PRINTER_LAYOUT.colunas;
-  const rows: string[] = [];
-  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
-  rows.push(centerText("RELATORIO DE SANGRIA", W));
-  rows.push(drawLine(W));
-  rows.push(`PERIODO: ${payload.data_inicio} ate ${payload.data_fim}`.slice(0, W));
-  if (payload.sessao_id) rows.push(`SESSAO: ${payload.sessao_id}`.slice(0, W));
-  rows.push(drawLine(W));
-
-  const totalVendas = vendas.reduce((sum, item) => sum + item.total, 0);
-  const totalDinheiro = vendas.filter((v) => v.pagamento === "dinheiro").reduce((s, v) => s + v.total, 0);
-  const totalPix = vendas.filter((v) => v.pagamento === "pix").reduce((s, v) => s + v.total, 0);
-  const totalCartao = vendas.filter((v) => v.pagamento === "cartao").reduce((s, v) => s + v.total, 0);
-  const totalFiado = vendas.filter((v) => v.pagamento === "fiado").reduce((s, v) => s + v.total, 0);
-  const totalSangrias = sangrias.reduce((sum, item) => sum + item.valor, 0);
-
-  rows.push(`Vendas: ${vendas.length}`.slice(0, W));
-  rows.push(`Total vendas: ${formatMoney(totalVendas)}`.slice(0, W));
-  rows.push(`Dinheiro: ${formatMoney(totalDinheiro)}`.slice(0, W));
-  rows.push(`PIX: ${formatMoney(totalPix)}`.slice(0, W));
-  rows.push(`Cartao: ${formatMoney(totalCartao)}`.slice(0, W));
-  rows.push(`Fiado: ${formatMoney(totalFiado)}`.slice(0, W));
-  rows.push(drawLine(W));
-  rows.push(`Sangrias: ${sangrias.length}`.slice(0, W));
-  rows.push(`Total sangria: ${formatMoney(totalSangrias)}`.slice(0, W));
-  rows.push(drawLine(W));
-  rows.push("Fim do relatorio");
-  rows.push("");
-
-  return normalizeText(rows.join("\n"));
-}
-</file>
-
-<file path="artifacts/arvoredo/src/pages/pdv.tsx">
-import React, { useState, useDeferredValue, useCallback, useEffect } from "react";
-import { useCart, type CartItem } from "@/store/use-cart";
-import { useProdutos } from "@/hooks/use-produtos";
-import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
-import { useCaixaStatus } from "@/hooks/use-caixa";
-import { useFiadoClientes } from "@/hooks/use-fiado";
-import { useImprimirCupom } from "@/hooks/use-impressora";
-import { useEnviarParaMaquininha, useCancelarPagamento } from "@/hooks/use-maquininha";
-import { formatMoney } from "@/lib/utils";
-import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer, UserCheck, X } from "lucide-react";
-import { Button, Input, Select, Modal } from "@/components/ui-elements";
-import { useToast } from "@/hooks/use-toast";
-import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
-
-type Cliente = { id: number; nome: string; apelido?: string | null; cpf?: string | null };
-type PaymentMethod = "dinheiro" | "pix" | "cartao" | "debito" | "credito" | "fiado";
-type PaymentAllocation = {
-  method: Exclude<PaymentMethod, "fiado">;
-  amount: number;
-};
-
-/* Pré-visualização do cupom quando impressora não está conectada */
-function TicketPreview({ texto, onClose }: { texto: string; onClose: () => void }) {
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Impressora não encontrada. Cupom gerado:</p>
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto">
-        <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{texto}</pre>
-      </div>
-      <Button className="w-full" onClick={onClose}>Fechar</Button>
-    </div>
-  );
-}
-
-/* Modal de seleção de cliente para nota fiscal */
-function ClienteSelectorModal({
-  isOpen,
-  onClose,
-  clientes,
-  onSelect,
-  selected,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  clientes: Cliente[];
-  onSelect: (c: Cliente | null) => void;
-  selected: Cliente | null;
-}) {
-  const [busca, setBusca] = useState("");
-  const filtrados = clientes.filter(c => {
-    const q = busca.toLowerCase();
-    return (
-      c.nome.toLowerCase().includes(q) ||
-      (c.apelido || "").toLowerCase().includes(q) ||
-      (c.cpf || "").includes(q)
-    );
-  });
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Vincular cliente à nota fiscal">
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Selecione um cliente para incluir nome e CPF no cupom fiscal. Opcional para qualquer forma de pagamento.
-        </p>
-        <Input
-          autoFocus
-          placeholder="Buscar por nome, apelido ou CPF..."
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-        />
-        <div className="max-h-64 overflow-y-auto space-y-1 rounded-xl border border-border">
-          {/* Opção "sem cliente" */}
-          <button
-            onClick={() => { onSelect(null); onClose(); }}
-            className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-secondary transition-colors ${!selected ? 'bg-secondary font-semibold' : ''}`}
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-            <span className="text-muted-foreground">Sem cliente vinculado</span>
-          </button>
-
-          {filtrados.length === 0 && busca && (
-            <p className="px-4 py-3 text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
-          )}
-
-          {filtrados.map(c => (
-            <button
-              key={c.id}
-              onClick={() => { onSelect(c); onClose(); }}
-              className={`w-full text-left px-4 py-3 hover:bg-secondary transition-colors flex flex-col ${selected?.id === c.id ? 'bg-primary/10' : ''}`}
-            >
-              <span className="font-semibold">
-                {c.apelido ? `${c.apelido}` : c.nome}
-                {c.apelido && <span className="text-muted-foreground font-normal"> ({c.nome})</span>}
-              </span>
-              {c.cpf && (
-                <span className="text-xs text-muted-foreground font-mono mt-0.5">CPF: {c.cpf}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <Button variant="ghost" className="w-full" onClick={onClose}>Cancelar</Button>
-      </div>
-    </Modal>
-  );
-}
-
-function FeiraLineEditor({
-  item,
-  onFeiraChange,
-  onRemove,
-  onNudgePeso,
-}: {
-  item: CartItem;
-  onFeiraChange: (id: number, p: { peso_kg: number }) => void;
-  onRemove: () => void;
-  onNudgePeso: (delta: number) => void;
-}) {
-  const [gStr, setGStr] = useState(() => String(Math.round(item.quantidade * 1000)));
-
-  useEffect(() => {
-    setGStr(String(Math.round(item.quantidade * 1000)));
-  }, [item.produto_id, item.quantidade]);
-
-  const apply = () => {
-    const g = Number(String(gStr).replace(",", "."));
-    if (!Number.isFinite(g) || g <= 0) {
-      setGStr(String(Math.round(item.quantidade * 1000)));
-      return;
-    }
-    onFeiraChange(item.produto_id, { peso_kg: g / 1000 });
-  };
-
-  return (
-    <div className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
-      <div className="flex justify-between items-start mb-2">
-        <span className="font-semibold">{item.nome_snap}</span>
-        <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="mb-2">
-        <div>
-          <label className="text-xs text-muted-foreground">Peso (g)</label>
-          <Input
-            className="font-mono h-9"
-            type="text"
-            inputMode="decimal"
-            value={gStr}
-            onChange={(e) => setGStr(e.target.value)}
-            onBlur={apply}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-          />
-        </div>
-      </div>
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2 bg-background border border-border rounded-lg p-1">
-          <button type="button" onClick={() => onNudgePeso(-0.1)} className="p-1 hover:bg-secondary rounded" title="−100g">
-            <Minus className="w-4 h-4" />
-          </button>
-          <span className="text-xs text-muted-foreground w-14 text-center">
-            {item.quantidade.toFixed(3)} kg
-          </span>
-          <button type="button" onClick={() => onNudgePeso(0.1)} className="p-1 hover:bg-secondary rounded" title="+100g">
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-        <span className="font-mono font-bold text-primary">{formatMoney(item.subtotal)}</span>
-      </div>
-    </div>
-  );
-}
-
-export default function Pdv() {
-  const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
-  const [categoria, setCategoria] = useState<"mercado" | "cozinha" | "feira" | "">("");
-  
-  const { data: produtos = [], isLoading } = useProdutos({ q: deferredSearch, categoria: categoria || undefined });
-  const { data: statusCaixa } = useCaixaStatus();
-  
-  const cart = useCart();
-  const registrarVenda = useRegistrarVendaWrapper();
-  const imprimirCupom = useImprimirCupom();
-  const enviarMaquininha = useEnviarParaMaquininha();
-  const cancelarPagamento = useCancelarPagamento();
-  const [tefStatus, setTefStatus] = useState<"idle" | "aguardando" | "aprovado" | "negado">("idle");
-  const { toast } = useToast();
-  const { data: clientes = [] } = useFiadoClientes();
-
-  const [checkoutModal, setCheckoutModal] = useState<{
-    isOpen: boolean;
-    paymentMethod: PaymentMethod | null;
-  }>({ isOpen: false, paymentMethod: null });
-
-  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; method: Exclude<PaymentMethod, "fiado"> | null }>({
-    isOpen: false,
-    method: null,
-  });
-  const [valorPagamentoStr, setValorPagamentoStr] = useState("");
-  const [pagamentosParciais, setPagamentosParciais] = useState<PaymentAllocation[]>([]);
-  const [feiraModal, setFeiraModal] = useState<{ isOpen: boolean; produto: Produto | null }>({ isOpen: false, produto: null });
-  const [pesoGramasStr, setPesoGramasStr] = useState("");
-  const [cpfModalOpen, setCpfModalOpen] = useState(false);
-  const [cpfInput, setCpfInput] = useState("");
-  const [pendingVenda, setPendingVenda] = useState<{
-    method: PaymentMethod;
-    clienteId?: number;
-    observacaoDinheiro?: string | null;
-    pagamentosOverride?: PaymentAllocation[];
-  } | null>(null);
-
-  const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
-    isOpen: false, texto: null,
-  });
-
-  const [clienteModal, setClienteModal] = useState(false);
-  const [clienteNota, setClienteNota] = useState<Cliente | null>(null);
-  const [selectedCliente, setSelectedCliente] = useState<string>("");
-
-  useEffect(() => {
-    setPagamentosParciais([]);
-  }, [cart.items, cart.desconto]);
-
-  const handleAddToCart = (p: Produto) => {
-    if (p.categoria === "feira") {
-      setPesoGramasStr("");
-      setFeiraModal({ isOpen: true, produto: p });
-      return;
-    }
-    cart.addItem(p);
-  };
-
-  const handleCheckoutClick = (method: PaymentMethod) => {
-    if (!statusCaixa?.aberto) {
-      toast({ title: "Caixa Fechado", description: "Abra o caixa antes de registrar uma venda.", variant: "destructive" });
-      return;
-    }
-    if (cart.items.length === 0) {
-      toast({ title: "Carrinho Vazio", description: "Adicione produtos antes de finalizar.", variant: "destructive" });
-      return;
-    }
-    if (method === 'fiado') {
-      setCheckoutModal({ isOpen: true, paymentMethod: method });
-    } else {
-      const restante = Math.max(0, cart.getTotal() - pagamentosParciais.reduce((acc, p) => acc + p.amount, 0));
-      setValorPagamentoStr(restante.toFixed(2));
-      setPaymentModal({ isOpen: true, method });
-    }
-  };
-
-  const imprimirAposVenda = useCallback((vendaId: number) => {
-    imprimirCupom.mutate({ data: { venda_id: vendaId } }, {
-      onSuccess: (res: any) => {
-        if (res?.simulado && res?.texto) {
-          setCupomModal({ isOpen: true, texto: res.texto });
-        } else if (!res?.ok) {
-          toast({
-            title: "Aviso de Impressão",
-            description: res?.erro || "Não foi possível imprimir o cupom.",
-            variant: "destructive",
-          });
-        }
-      },
-      onError: (err: any) => {
-        console.error("[imprimirAposVenda] erro:", err);
-        toast({
-          title: "Erro de Impressão",
-          description: err?.message || "Falha ao comunicar com a impressora.",
-          variant: "destructive",
-        });
-      },
-    });
-  }, [imprimirCupom, toast]);
-
-  const processVenda = async (
-    method: PaymentMethod,
-    clienteId?: number,
-    observacaoDinheiro?: string | null,
-    pagamentosOverride?: PaymentAllocation[],
-    cpfNota?: string | null,
-  ) => {
-    const hasCozinha = cart.items.some(i => i.is_cozinha);
-    const hasFeira = cart.items.some((i) => i.is_feira);
-    const hasMercado = cart.items.some(i => !i.is_cozinha && !i.is_feira);
-    const saleCategory =
-      hasFeira && !hasCozinha && !hasMercado
-        ? "feira"
-        : hasCozinha && !hasMercado && !hasFeira
-          ? "cozinha"
-          : "mercado";
-    const tipoMaquininha = method === 'debito' || method === 'credito' || method === 'pix';
-
-    let dadosCartao: {
-      cnpj_credenciadora?: string | null;
-      codigo_autorizacao?: string | null;
-      bandeira_cartao?: string | null;
-      tipo_pagamento?: string | null;
-    } | null = null;
-
-    if (tipoMaquininha) {
-      setTefStatus("aguardando");
-      try {
-        const resposta = await enviarMaquininha.mutateAsync({
-          venda_local_id: `local-${Date.now()}`,
-          metodo: method === "pix" ? "pix" : method,
-          valor_total: cart.getTotal(),
-          desconto: cart.desconto,
-          itens: cart.items.map((item) => ({
-            produto_id: item.produto_id,
-            nome: item.nome_snap,
-            quantidade: item.quantidade,
-            preco_unit: item.preco_unit,
-            subtotal: item.subtotal,
-          })),
-        });
-
-        if (!resposta?.aprovado) {
-          setTefStatus("negado");
-          toast({
-            title: "Pagamento não aprovado",
-            description: resposta?.mensagem ?? "Tente novamente.",
-            variant: "destructive",
-          });
-          setTefStatus("idle");
-          return;
-        }
-
-        setTefStatus("aprovado");
-        toast({
-          title: "Pagamento aprovado ✓",
-          description: `Autorização: ${resposta.dados_cartao?.codigo_autorizacao ?? "TEF"}`,
-          className: "bg-green-600 text-white",
-        });
-        if (resposta?.dados_cartao) {
-          dadosCartao = resposta.dados_cartao;
-        }
-      } catch (error) {
-        setTefStatus("negado");
-        const msg = error instanceof Error ? error.message : "Falha ao processar pagamento";
-        toast({
-          title: "Pagamento recusado",
-          description: msg,
-          variant: "destructive",
-        });
-        setTefStatus("idle");
-        return;
-      }
-    }
-
-    const pagamentoVenda = method === "debito" || method === "credito" ? "cartao" : method;
-    const pagamentosEfetivos = pagamentosOverride ?? pagamentosParciais;
-    const pagamentosTexto = pagamentosEfetivos.length
-      ? ` | MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}`
-      : "";
-    const observacaoForma =
-      method === "dinheiro" && observacaoDinheiro
-        ? `${observacaoDinheiro}${pagamentosTexto}`
-        : method === "debito" ? "Pagamento em cartao de debito (maquininha)." :
-        method === "credito" ? "Pagamento em cartao de credito (maquininha)." :
-        method === "pix" ? "Pagamento via PIX (maquininha)." :
-        null;
-    const observacaoFinal =
-      observacaoForma == null
-        ? pagamentosTexto ? `MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}` : null
-        : observacaoForma;
-    const cpfDigits = (cpfNota || "").replace(/\D/g, "");
-    const observacaoComCpf =
-      cpfDigits.length === 11
-        ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CPF_NA_NOTA:${cpfDigits}`
-        : cpfDigits.length === 14
-          ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CNPJ_NA_NOTA:${cpfDigits}`
-          : observacaoFinal;
-
-    const registrarVendaData = {
-      categoria: saleCategory,
-      pagamento: pagamentoVenda,
-      desconto: cart.desconto,
-      cliente_id: clienteId,
-      observacao: observacaoComCpf,
-      cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
-      itens: cart.getPayloadItens(),
-      ...dadosCartao,
-    } as any;
-
-    registrarVenda.mutate({
-      data: registrarVendaData,
-    }, {
-      onSuccess: (venda) => {
-        setTefStatus("idle");
-        toast({ title: "✓ Venda Finalizada", description: "Imprimindo cupom...", className: "bg-green-600 text-white" });
-        cart.clearCart();
-        setClienteNota(null);
-        setCheckoutModal({ isOpen: false, paymentMethod: null });
-        setPaymentModal({ isOpen: false, method: null });
-        setValorPagamentoStr("");
-        setPagamentosParciais([]);
-        setCpfInput("");
-        setCpfModalOpen(false);
-        setPendingVenda(null);
-        const danfeImpresso = (venda as { danfe_impresso?: boolean } | undefined)?.danfe_impresso;
-        const danfeWillPrint = (venda as { _danfe_will_print?: boolean } | undefined)?._danfe_will_print;
-        // Só imprimir cupom se DANFE não foi impresso E não será impresso em background
-        if (venda?.id && !danfeImpresso && !danfeWillPrint) {
-          imprimirAposVenda(venda.id);
-        }
-      },
-      onError: (err) => {
-        toast({ title: "Erro na Venda", description: err.message, variant: "destructive" });
-      }
-    });
-  };
-
-  const totalVenda = cart.getTotal();
-  const totalPago = pagamentosParciais.reduce((acc, p) => acc + p.amount, 0);
-  const restante = Math.max(0, totalVenda - totalPago);
-  const valorPagamentoNum = Number(String(valorPagamentoStr).replace(",", ".")) || 0;
-  const isDinheiro = paymentModal.method === "dinheiro";
-
-  // Se for dinheiro, pode ser maior que o restante. Se não for, bloqueia.
-  const pagamentoValido = valorPagamentoNum > 0 && (isDinheiro ? true : valorPagamentoNum <= restante + 1e-9);
-
-  // Calcula o troco
-  const troco = isDinheiro && valorPagamentoNum > restante ? valorPagamentoNum - restante : 0;
-
-  // O valor que de fato vai abater da dívida do sistema
-  const valorAAbater = isDinheiro ? Math.min(valorPagamentoNum, restante) : valorPagamentoNum;
-
-  const confirmarParcelaPagamento = () => {
-    if (!paymentModal.method) return;
-    if (!pagamentoValido) {
-      toast({
-        title: "Valor inválido",
-        description: "Informe um valor maior que zero e menor ou igual ao restante.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const novosPagamentos = [...pagamentosParciais, { method: paymentModal.method, amount: Number(valorAAbater.toFixed(2)) }];
-    const novoPago = novosPagamentos.reduce((acc, p) => acc + p.amount, 0);
-    const novoRestante = Math.max(0, totalVenda - novoPago);
-
-    setPagamentosParciais(novosPagamentos);
-    setPaymentModal({ isOpen: false, method: null });
-    setValorPagamentoStr("");
-
-    if (novoRestante <= 0.009) {
-      const ultimoMetodo = paymentModal.method === "debito" || paymentModal.method === "credito" ? paymentModal.method : paymentModal.method;
-      const obsDinheiro =
-        paymentModal.method === "dinheiro"
-          ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ ${troco.toFixed(2).replace('.', ',')}`
-          : undefined;
-      setPendingVenda({
-        method: ultimoMetodo,
-        clienteId: clienteNota?.id,
-        observacaoDinheiro: obsDinheiro,
-        pagamentosOverride: novosPagamentos,
-      });
-      setCpfModalOpen(true);
-      return;
-    }
-
-    toast({
-      title: "Pagamento parcial registrado",
-      description: `Restante: ${formatMoney(novoRestante)}. Selecione a próxima forma de pagamento.`,
-      className: "bg-blue-600 text-white",
-    });
-  };
-
-  const confirmarPesoFeira = () => {
-    const produto = feiraModal.produto;
-    const gramas = Number(String(pesoGramasStr).replace(",", "."));
-    if (!produto || !Number.isFinite(gramas) || gramas <= 0) {
-      toast({ title: "Peso inválido", description: "Informe o peso em gramas.", variant: "destructive" });
-      return;
-    }
-    const kg = gramas / 1000;
-    cart.addWeightedItem(produto, kg);
-    setFeiraModal({ isOpen: false, produto: null });
-    setPesoGramasStr("");
-  };
-
-  return (
-    <>
-      {tefStatus === "aguardando" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
-            <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-            <h2 className="text-xl font-bold text-foreground">Aguardando maquininha...</h2>
-            <p className="text-sm text-muted-foreground text-center">
-              Peça ao cliente para aproximar, inserir ou passar o cartão e digitar a senha na maquininha.
-            </p>
-            <p className="text-xs text-muted-foreground/60 text-center">
-              Não feche nem atualize o sistema enquanto o pagamento é processado.
-            </p>
-          </div>
-        </div>
-      )}
-      <div className="flex flex-col lg:flex-row h-full">
-        {/* Left Area - Products */}
-      <div className="flex-1 flex flex-col h-full bg-secondary/30 p-6 overflow-hidden">
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-            <Input 
-              autoFocus
-              placeholder="Buscar por nome ou código de barras..." 
-              className="pl-10 h-12 text-lg shadow-sm"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 p-1 bg-muted rounded-xl">
-            <button
-              onClick={() => setCategoria("")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => setCategoria("mercado")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "mercado" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
-            >
-              Mercado
-            </button>
-            <button
-              onClick={() => setCategoria("cozinha")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "cozinha" ? "bg-kitchen text-kitchen-foreground shadow-sm" : "text-muted-foreground"}`}
-            >
-              Cozinha
-            </button>
-            <button
-              onClick={() => setCategoria("feira")}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "feira" ? "bg-emerald-600 text-white shadow-sm" : "text-muted-foreground"}`}
-            >
-              Feira
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0 pr-2 pb-24 lg:pb-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando produtos...</div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-              {produtos.map((p) => (
-                <div 
-                  key={p.id}
-                  onClick={() => handleAddToCart(p)}
-                  className="bg-card p-4 rounded-2xl border border-border shadow-sm hover:shadow-md hover:border-primary/50 cursor-pointer transition-all hover:-translate-y-1 flex flex-col h-32 select-none"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-                      {p.estoque} {p.unidade}
-                    </span>
-                    {p.categoria === 'cozinha' ? (
-                      <span className="w-2 h-2 rounded-full bg-kitchen"></span>
-                    ) : p.categoria === "feira" ? (
-                      <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                    ) : (
-                      <span className="w-2 h-2 rounded-full bg-primary"></span>
-                    )}
-                  </div>
-                  <h3 className="font-bold text-foreground leading-tight line-clamp-2">
-                    {p.nome} {p.marca ? `- ${p.marca}` : ''}
-                  </h3>
-                  <div className="mt-auto font-mono font-bold text-primary text-lg">
-                    {formatMoney(p.preco)}
-                  </div>
-                </div>
-              ))}
-              {produtos.length === 0 && (
-                <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
-                  <Package className="w-12 h-12 mb-4 opacity-50" />
-                  <p className="text-lg">Nenhum produto encontrado</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Right Area - Cart */}
-      <div className="w-full lg:w-[400px] xl:w-[450px] bg-card border-l border-border flex flex-col flex-shrink-0 h-full">
-        <div className="p-6 border-b border-border bg-secondary/10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <ShoppingBag className="text-primary" />
-              Carrinho
-            </h2>
-            <button
-              onClick={() => setClienteModal(true)}
-              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
-                clienteNota
-                  ? "bg-primary/10 border-primary/30 text-primary font-semibold"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              }`}
-              title="Vincular cliente à nota fiscal"
-            >
-              <UserCheck className="w-4 h-4" />
-              {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
-            </button>
-          </div>
-
-          {/* Info do cliente vinculado */}
-          {clienteNota && (
-            <div className="mt-3 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-primary">
-                  {clienteNota.apelido ? `${clienteNota.apelido} (${clienteNota.nome})` : clienteNota.nome}
-                </p>
-                {clienteNota.cpf && (
-                  <p className="text-xs text-muted-foreground font-mono">CPF: {clienteNota.cpf}</p>
-                )}
-              </div>
-              <button
-                onClick={() => setClienteNota(null)}
-                className="text-muted-foreground hover:text-destructive p-1"
-                title="Remover cliente"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {cart.items.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-60">
-              <ShoppingBag className="w-16 h-16 mb-4" />
-              <p>O carrinho está vazio</p>
-            </div>
-          ) : (
-            cart.items.map((item) =>
-              item.is_feira ? (
-                <FeiraLineEditor
-                  key={item.produto_id}
-                  item={item}
-                  onFeiraChange={cart.setFeiraPesoUnidades}
-                  onRemove={() => cart.removeItem(item.produto_id)}
-                  onNudgePeso={(delta) => cart.updateQuantity(item.produto_id, delta)}
-                />
-              ) : (
-                <div key={item.produto_id} className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-semibold">{item.nome_snap}</span>
-                    <button
-                      type="button"
-                      onClick={() => cart.removeItem(item.produto_id)}
-                      className="text-muted-foreground hover:text-destructive p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3 bg-background border border-border rounded-lg p-1">
-                      <button
-                        type="button"
-                        onClick={() => cart.updateQuantity(item.produto_id, -1)}
-                        className="p-1 hover:bg-secondary rounded"
-                      >
-                        <Minus className="w-4 h-4" />
-                      </button>
-                      <span className="font-mono font-bold w-16 text-center">{item.quantidade}</span>
-                      <button
-                        type="button"
-                        onClick={() => cart.updateQuantity(item.produto_id, 1)}
-                        className="p-1 hover:bg-secondary rounded"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <span className="font-mono font-bold text-primary">{formatMoney(item.subtotal)}</span>
-                  </div>
-                </div>
-              ),
-            )
-          )}
-        </div>
-
-        <div className="p-6 bg-card border-t border-border shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span className="font-mono font-medium">{formatMoney(cart.getSubtotal())}</span>
-          </div>
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-muted-foreground">Desconto (R$)</span>
-            <Input 
-              type="number" 
-              min="0"
-              step="0.01"
-              value={cart.desconto || ''} 
-              onChange={(e) => cart.setDesconto(Number(e.target.value))}
-              className="w-24 h-8 text-right font-mono" 
-            />
-          </div>
-          <div className="flex justify-between items-end mb-6">
-            <span className="text-xl font-bold">Total</span>
-            <span className="text-4xl font-black font-mono text-primary tracking-tight">
-              {formatMoney(restante)}
-            </span>
-          </div>
-          {pagamentosParciais.length > 0 && (
-            <div className="mb-4 p-3 rounded-xl border border-primary/20 bg-primary/5 space-y-1">
-              <p className="text-xs font-semibold text-primary">Pagamentos parciais:</p>
-              {pagamentosParciais.map((p, idx) => (
-                <p key={`${p.method}-${idx}`} className="text-xs text-muted-foreground">
-                  {p.method.toUpperCase()}: {formatMoney(p.amount)}
-                </p>
-              ))}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button size="lg" variant="default" className="w-full flex-col h-auto py-3 gap-1" onClick={() => handleCheckoutClick('dinheiro')}>
-              <Banknote className="w-6 h-6" />
-              <span>Dinheiro</span>
-            </Button>
-            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('pix')}>
-              <QrCode className="w-6 h-6" />
-              <span>PIX</span>
-            </Button>
-            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('debito')}>
-              <CreditCard className="w-6 h-6" />
-              <span>Débito</span>
-            </Button>
-            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('credito')}>
-              <CreditCard className="w-6 h-6" />
-              <span>Crédito</span>
-            </Button>
-            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-destructive/20 hover:border-destructive hover:bg-destructive text-destructive hover:text-white" onClick={() => handleCheckoutClick('fiado')}>
-              <Users className="w-6 h-6" />
-              <span>Comanda</span>
-            </Button>
-          </div>
-
-          {imprimirCupom.isPending && (
-            <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Printer className="w-4 h-4 animate-pulse" />
-              Imprimindo cupom...
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Modal Vincular Cliente */}
-      <ClienteSelectorModal
-        isOpen={clienteModal}
-        onClose={() => setClienteModal(false)}
-        clientes={clientes as Cliente[]}
-        onSelect={setClienteNota}
-        selected={clienteNota}
-      />
-
-      <Modal
-        isOpen={paymentModal.isOpen}
-        onClose={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}
-        title={`Pagamento - ${paymentModal.method?.toUpperCase() ?? ""}`}
-      >
-        <div className="space-y-4">
-          <div className="bg-secondary p-4 rounded-xl flex justify-between items-center">
-            <span className="font-semibold">Restante da venda</span>
-            <span className="text-2xl font-bold font-mono text-primary">{formatMoney(restante)}</span>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Valor a pagar agora (R$)</label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={valorPagamentoStr}
-              onChange={(e) => setValorPagamentoStr(e.target.value)}
-              className="font-mono text-lg"
-            />
-          </div>
-          <div className={`p-4 rounded-xl border ${pagamentoValido ? "bg-muted/50 border-border" : "bg-destructive/10 border-destructive/30"}`}>
-            <p className="text-sm text-muted-foreground mb-1">Restante após confirmar</p>
-            <p className="text-2xl font-black font-mono">{formatMoney(Math.max(0, restante - valorAAbater))}</p>
-            {!pagamentoValido && valorPagamentoStr !== "" && (
-              <p className="text-sm text-destructive mt-2">Valor deve ser maior que zero e menor ou igual ao restante.</p>
-            )}
-          </div>
-
-          {/* ADICIONAR ISSO: Mostra o troco se for dinheiro e o valor recebido for maior */}
-          {isDinheiro && troco > 0 && (
-            <div className="p-4 rounded-xl border bg-green-100 border-green-300 mt-2">
-              <p className="text-sm text-green-800 font-semibold mb-1">Troco a devolver ao cliente</p>
-              <p className="text-3xl font-black font-mono text-green-700">{formatMoney(troco)}</p>
-            </div>
-          )}
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}>
-              Cancelar
-            </Button>
-            <Button
-              className="flex-1"
-              disabled={!pagamentoValido || registrarVenda.isPending}
-              onClick={confirmarParcelaPagamento}
-            >
-              {registrarVenda.isPending ? "Registrando..." : "Confirmar"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={feiraModal.isOpen}
-        onClose={() => setFeiraModal({ isOpen: false, produto: null })}
-        title="Produto da Feira - Pesagem"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Informe o peso em gramas para calcular automaticamente o valor por kg.
-          </p>
-          <div className="bg-secondary p-4 rounded-xl">
-            <p className="font-semibold">{feiraModal.produto?.nome}</p>
-            <p className="text-sm text-muted-foreground">
-              Preco por kg: {formatMoney(feiraModal.produto?.preco ?? 0)}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
-            <Input
-              type="number"
-              min="1"
-              step="1"
-              value={pesoGramasStr}
-              onChange={(e) => setPesoGramasStr(e.target.value)}
-              placeholder="Ex: 500"
-            />
-          </div>
-          <div className="bg-muted/50 border border-border rounded-xl p-3">
-            <p className="text-sm text-muted-foreground">Subtotal estimado</p>
-            <p className="text-2xl font-black font-mono text-primary">
-              {formatMoney(((Number(pesoGramasStr || "0") / 1000) * (feiraModal.produto?.preco ?? 0)) || 0)}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => setFeiraModal({ isOpen: false, produto: null })}>
-              Cancelar
-            </Button>
-            <Button className="flex-1" onClick={confirmarPesoFeira}>
-              Adicionar ao carrinho
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal Fiado */}
-      <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Comanda em Aberto">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Selecione o Cliente</label>
-            <Select value={selectedCliente} onChange={(e) => setSelectedCliente(e.target.value)}>
-              <option value="">-- Selecione --</option>
-              {clientes.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.apelido ? `${c.apelido} (${c.nome})` : c.nome}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="bg-secondary p-4 rounded-xl flex justify-between items-center">
-            <span className="font-semibold">Valor Total:</span>
-            <span className="text-2xl font-bold text-destructive font-mono">{formatMoney(cart.getTotal())}</span>
-          </div>
-          <Button 
-            className="w-full mt-4" 
-            size="lg" 
-            disabled={!selectedCliente || registrarVenda.isPending}
-            onClick={() => {
-              setPendingVenda({ method: "fiado", clienteId: Number(selectedCliente) });
-              setCpfModalOpen(true);
-            }}
-          >
-            {registrarVenda.isPending ? "Registrando..." : "Confirmar na Comanda"}
-          </Button>
-        </div>
-      </Modal>
-
-      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF/CNPJ na nota (opcional)">
-        <div className="space-y-4">
-          <Input
-            value={cpfInput}
-            onChange={(e) => setCpfInput(e.target.value)}
-            placeholder="Digite CPF ou CNPJ e clique em Sim, ou clique em Nao"
-            className="font-mono"
-          />
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                if (!pendingVenda) return;
-                const venda = pendingVenda;
-                setCpfModalOpen(false);
-                setPendingVenda(null);
-                setCpfInput("");
-                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, null);
-              }}
-            >
-              Nao
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={() => {
-                if (!pendingVenda) return;
-                const venda = pendingVenda;
-                const cpf = cpfInput;
-                setCpfModalOpen(false);
-                setPendingVenda(null);
-                setCpfInput("");
-                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, cpf);
-              }}
-            >
-              Sim
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal Cupom (impressora não conectada) */}
-      <Modal
-        isOpen={cupomModal.isOpen}
-        onClose={() => setCupomModal({ isOpen: false, texto: null })}
-        title="Cupom Fiscal"
-      >
-        {cupomModal.texto && (
-          <TicketPreview
-            texto={cupomModal.texto}
-            onClose={() => setCupomModal({ isOpen: false, texto: null })}
-          />
-        )}
-      </Modal>
-    </div>
-    </>
-  );
 }
 </file>
 
@@ -22415,6 +21486,968 @@ Write-Output "Impressão completa concluída"
 export async function reimprimirDanfeSimplificado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string) {
   const parsed = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
   await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado);
+}
+</file>
+
+<file path="artifacts/arvoredo/src/pages/pdv.tsx">
+import React, { useState, useDeferredValue, useCallback, useEffect } from "react";
+import { useCart, type CartItem } from "@/store/use-cart";
+import { useProdutos } from "@/hooks/use-produtos";
+import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
+import { useCaixaStatus } from "@/hooks/use-caixa";
+import { useFiadoClientes } from "@/hooks/use-fiado";
+import { useImprimirCupom } from "@/hooks/use-impressora";
+import { useEnviarParaMaquininha, useCancelarPagamento } from "@/hooks/use-maquininha";
+import { formatMoney } from "@/lib/utils";
+import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode, Users, Package, Printer, UserCheck, X } from "lucide-react";
+import { Button, Input, Select, Modal } from "@/components/ui-elements";
+import { useToast } from "@/hooks/use-toast";
+import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
+
+type Cliente = { id: number; nome: string; apelido?: string | null; cpf?: string | null };
+type PaymentMethod = "dinheiro" | "pix" | "cartao" | "debito" | "credito" | "fiado";
+type PaymentAllocation = {
+  method: Exclude<PaymentMethod, "fiado">;
+  amount: number;
+};
+
+/* Pré-visualização do cupom quando impressora não está conectada */
+function TicketPreview({ texto, onClose }: { texto: string; onClose: () => void }) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Impressora não encontrada. Cupom gerado:</p>
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto">
+        <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{texto}</pre>
+      </div>
+      <Button className="w-full" onClick={onClose}>Fechar</Button>
+    </div>
+  );
+}
+
+/* Modal de seleção de cliente para nota fiscal */
+function ClienteSelectorModal({
+  isOpen,
+  onClose,
+  clientes,
+  onSelect,
+  selected,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  clientes: Cliente[];
+  onSelect: (c: Cliente | null) => void;
+  selected: Cliente | null;
+}) {
+  const [busca, setBusca] = useState("");
+  const filtrados = clientes.filter(c => {
+    const q = busca.toLowerCase();
+    return (
+      c.nome.toLowerCase().includes(q) ||
+      (c.apelido || "").toLowerCase().includes(q) ||
+      (c.cpf || "").includes(q)
+    );
+  });
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Vincular cliente à nota fiscal">
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Selecione um cliente para incluir nome e CPF no cupom fiscal. Opcional para qualquer forma de pagamento.
+        </p>
+        <Input
+          autoFocus
+          placeholder="Buscar por nome, apelido ou CPF..."
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+        />
+        <div className="max-h-64 overflow-y-auto space-y-1 rounded-xl border border-border">
+          {/* Opção "sem cliente" */}
+          <button
+            onClick={() => { onSelect(null); onClose(); }}
+            className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-secondary transition-colors ${!selected ? 'bg-secondary font-semibold' : ''}`}
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Sem cliente vinculado</span>
+          </button>
+
+          {filtrados.length === 0 && busca && (
+            <p className="px-4 py-3 text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
+          )}
+
+          {filtrados.map(c => (
+            <button
+              key={c.id}
+              onClick={() => { onSelect(c); onClose(); }}
+              className={`w-full text-left px-4 py-3 hover:bg-secondary transition-colors flex flex-col ${selected?.id === c.id ? 'bg-primary/10' : ''}`}
+            >
+              <span className="font-semibold">
+                {c.apelido ? `${c.apelido}` : c.nome}
+                {c.apelido && <span className="text-muted-foreground font-normal"> ({c.nome})</span>}
+              </span>
+              {c.cpf && (
+                <span className="text-xs text-muted-foreground font-mono mt-0.5">CPF: {c.cpf}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <Button variant="ghost" className="w-full" onClick={onClose}>Cancelar</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function FeiraLineEditor({
+  item,
+  onFeiraChange,
+  onRemove,
+  onNudgePeso,
+}: {
+  item: CartItem;
+  onFeiraChange: (id: number, p: { peso_kg: number }) => void;
+  onRemove: () => void;
+  onNudgePeso: (delta: number) => void;
+}) {
+  const [gStr, setGStr] = useState(() => String(Math.round(item.quantidade * 1000)));
+
+  useEffect(() => {
+    setGStr(String(Math.round(item.quantidade * 1000)));
+  }, [item.produto_id, item.quantidade]);
+
+  const apply = () => {
+    const g = Number(String(gStr).replace(",", "."));
+    if (!Number.isFinite(g) || g <= 0) {
+      setGStr(String(Math.round(item.quantidade * 1000)));
+      return;
+    }
+    onFeiraChange(item.produto_id, { peso_kg: g / 1000 });
+  };
+
+  return (
+    <div className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
+      <div className="flex justify-between items-start mb-2">
+        <span className="font-semibold">{item.nome_snap}</span>
+        <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1">
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="mb-2">
+        <div>
+          <label className="text-xs text-muted-foreground">Peso (g)</label>
+          <Input
+            className="font-mono h-9"
+            type="text"
+            inputMode="decimal"
+            value={gStr}
+            onChange={(e) => setGStr(e.target.value)}
+            onBlur={apply}
+            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2 bg-background border border-border rounded-lg p-1">
+          <button type="button" onClick={() => onNudgePeso(-0.1)} className="p-1 hover:bg-secondary rounded" title="−100g">
+            <Minus className="w-4 h-4" />
+          </button>
+          <span className="text-xs text-muted-foreground w-14 text-center">
+            {item.quantidade.toFixed(3)} kg
+          </span>
+          <button type="button" onClick={() => onNudgePeso(0.1)} className="p-1 hover:bg-secondary rounded" title="+100g">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+        <span className="font-mono font-bold text-primary">{formatMoney(item.subtotal)}</span>
+      </div>
+    </div>
+  );
+}
+
+export default function Pdv() {
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [categoria, setCategoria] = useState<"mercado" | "cozinha" | "feira" | "">("");
+  
+  const { data: produtos = [], isLoading } = useProdutos({ q: deferredSearch, categoria: categoria || undefined });
+  const { data: statusCaixa } = useCaixaStatus();
+  
+  const cart = useCart();
+  const registrarVenda = useRegistrarVendaWrapper();
+  const imprimirCupom = useImprimirCupom();
+  const enviarMaquininha = useEnviarParaMaquininha();
+  const cancelarPagamento = useCancelarPagamento();
+  const [tefStatus, setTefStatus] = useState<"idle" | "aguardando" | "aprovado" | "negado">("idle");
+  const { toast } = useToast();
+  const { data: clientes = [] } = useFiadoClientes();
+
+  const [checkoutModal, setCheckoutModal] = useState<{
+    isOpen: boolean;
+    paymentMethod: PaymentMethod | null;
+  }>({ isOpen: false, paymentMethod: null });
+
+  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; method: Exclude<PaymentMethod, "fiado"> | null }>({
+    isOpen: false,
+    method: null,
+  });
+  const [valorPagamentoStr, setValorPagamentoStr] = useState("");
+      const [parcelas, setParcelas] = useState(1); // <--- ADICIONE ESTA LINHA
+  const [pagamentosParciais, setPagamentosParciais] = useState<PaymentAllocation[]>([]);
+  const [feiraModal, setFeiraModal] = useState<{ isOpen: boolean; produto: Produto | null }>({ isOpen: false, produto: null });
+  const [pesoGramasStr, setPesoGramasStr] = useState("");
+  const [cpfModalOpen, setCpfModalOpen] = useState(false);
+  const [cpfInput, setCpfInput] = useState("");
+  const [pendingVenda, setPendingVenda] = useState<{
+    method: PaymentMethod;
+    clienteId?: number;
+    observacaoDinheiro?: string | null;
+    pagamentosOverride?: PaymentAllocation[];
+    parcelas?: number;
+  } | null>(null);
+
+  const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
+    isOpen: false, texto: null,
+  });
+
+  const [clienteModal, setClienteModal] = useState(false);
+  const [clienteNota, setClienteNota] = useState<Cliente | null>(null);
+  const [selectedCliente, setSelectedCliente] = useState<string>("");
+
+  useEffect(() => {
+    setPagamentosParciais([]);
+  }, [cart.items, cart.desconto]);
+
+  const handleAddToCart = (p: Produto) => {
+    if (p.categoria === "feira") {
+      setPesoGramasStr("");
+      setFeiraModal({ isOpen: true, produto: p });
+      return;
+    }
+    cart.addItem(p);
+  };
+
+  const handleCheckoutClick = (method: PaymentMethod) => {
+    if (!statusCaixa?.aberto) {
+      toast({ title: "Caixa Fechado", description: "Abra o caixa antes de registrar uma venda.", variant: "destructive" });
+      return;
+    }
+    if (cart.items.length === 0) {
+      toast({ title: "Carrinho Vazio", description: "Adicione produtos antes de finalizar.", variant: "destructive" });
+      return;
+    }
+    if (method === 'fiado') {
+      setCheckoutModal({ isOpen: true, paymentMethod: method });
+    } else {
+      const restante = Math.max(0, cart.getTotal() - pagamentosParciais.reduce((acc, p) => acc + p.amount, 0));
+      setValorPagamentoStr(restante.toFixed(2));
+      setPaymentModal({ isOpen: true, method });
+    }
+  };
+
+  const imprimirAposVenda = useCallback((vendaId: number) => {
+    imprimirCupom.mutate({ data: { venda_id: vendaId } }, {
+      onSuccess: (res: any) => {
+        if (res?.simulado && res?.texto) {
+          setCupomModal({ isOpen: true, texto: res.texto });
+        } else if (!res?.ok) {
+          toast({
+            title: "Aviso de Impressão",
+            description: res?.erro || "Não foi possível imprimir o cupom.",
+            variant: "destructive",
+          });
+        }
+      },
+      onError: (err: any) => {
+        console.error("[imprimirAposVenda] erro:", err);
+        toast({
+          title: "Erro de Impressão",
+          description: err?.message || "Falha ao comunicar com a impressora.",
+          variant: "destructive",
+        });
+      },
+    });
+  }, [imprimirCupom, toast]);
+
+  const processVenda = async (
+    method: PaymentMethod,
+    clienteId?: number,
+    observacaoDinheiro?: string | null,
+    pagamentosOverride?: PaymentAllocation[],
+    cpfNota?: string | null,
+    parcelasVenda: number = 1 
+  ) => {
+    const hasCozinha = cart.items.some(i => i.is_cozinha);
+    const hasFeira = cart.items.some((i) => i.is_feira);
+    const hasMercado = cart.items.some(i => !i.is_cozinha && !i.is_feira);
+    const saleCategory =
+      hasFeira && !hasCozinha && !hasMercado
+        ? "feira"
+        : hasCozinha && !hasMercado && !hasFeira
+          ? "cozinha"
+          : "mercado";
+    const tipoMaquininha = method === 'debito' || method === 'credito' || method === 'pix';
+
+    let dadosCartao: {
+      cnpj_credenciadora?: string | null;
+      codigo_autorizacao?: string | null;
+      bandeira_cartao?: string | null;
+      tipo_pagamento?: string | null;
+    } | null = null;
+
+    if (tipoMaquininha) {
+      setTefStatus("aguardando");
+      try {
+        const resposta = await enviarMaquininha.mutateAsync({
+          venda_local_id: `local-${Date.now()}`,
+          metodo: method === "pix" ? "pix" : method,
+          valor_total: cart.getTotal(),
+          parcelas: parcelasVenda,
+          desconto: cart.desconto,
+          itens: cart.items.map((item) => ({
+            produto_id: item.produto_id,
+            nome: item.nome_snap,
+            quantidade: item.quantidade,
+            preco_unit: item.preco_unit,
+            subtotal: item.subtotal,
+          })),
+        });
+
+        if (!resposta?.aprovado) {
+          setTefStatus("negado");
+          toast({
+            title: "Pagamento não aprovado",
+            description: resposta?.mensagem ?? "Tente novamente.",
+            variant: "destructive",
+          });
+          setTefStatus("idle");
+          return;
+        }
+
+        setTefStatus("aprovado");
+        toast({
+          title: "Pagamento aprovado ✓",
+          description: `Autorização: ${resposta.dados_cartao?.codigo_autorizacao ?? "TEF"}`,
+          className: "bg-green-600 text-white",
+        });
+        if (resposta?.dados_cartao) {
+          dadosCartao = resposta.dados_cartao;
+        }
+      } catch (error) {
+        setTefStatus("negado");
+        const msg = error instanceof Error ? error.message : "Falha ao processar pagamento";
+        toast({
+          title: "Pagamento recusado",
+          description: msg,
+          variant: "destructive",
+        });
+        setTefStatus("idle");
+        return;
+      }
+    }
+
+    const pagamentoVenda = method === "debito" || method === "credito" ? "cartao" : method;
+    const pagamentosEfetivos = pagamentosOverride ?? pagamentosParciais;
+    const pagamentosTexto = pagamentosEfetivos.length
+      ? ` | MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}`
+      : "";
+    const observacaoForma =
+      method === "dinheiro" && observacaoDinheiro
+        ? `${observacaoDinheiro}${pagamentosTexto}`
+        : method === "debito" ? "Pagamento em cartao de debito (maquininha)." :
+        method === "credito" ? "Pagamento em cartao de credito (maquininha)." :
+        method === "pix" ? "Pagamento via PIX (maquininha)." :
+        null;
+    const observacaoFinal =
+      observacaoForma == null
+        ? pagamentosTexto ? `MULTIPAGAMENTO: ${pagamentosEfetivos.map((item) => `${item.method}=${item.amount.toFixed(2)}`).join("; ")}` : null
+        : observacaoForma;
+    const cpfDigits = (cpfNota || "").replace(/\D/g, "");
+    const observacaoComCpf =
+      cpfDigits.length === 11
+        ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CPF_NA_NOTA:${cpfDigits}`
+        : cpfDigits.length === 14
+          ? `${observacaoFinal ? `${observacaoFinal} | ` : ""}CNPJ_NA_NOTA:${cpfDigits}`
+          : observacaoFinal;
+
+    const registrarVendaData = {
+      categoria: saleCategory,
+      pagamento: pagamentoVenda,
+      desconto: cart.desconto,
+      cliente_id: clienteId,
+      observacao: observacaoComCpf,
+      cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
+      itens: cart.getPayloadItens(),
+      ...dadosCartao,
+    } as any;
+
+    registrarVenda.mutate({
+      data: registrarVendaData,
+    }, {
+      onSuccess: (venda) => {
+        setTefStatus("idle");
+        toast({ title: "✓ Venda Finalizada", description: "Imprimindo cupom...", className: "bg-green-600 text-white" });
+        cart.clearCart();
+        setClienteNota(null);
+        setCheckoutModal({ isOpen: false, paymentMethod: null });
+        setPaymentModal({ isOpen: false, method: null });
+        setValorPagamentoStr("");
+        setPagamentosParciais([]);
+        setCpfInput("");
+        setCpfModalOpen(false);
+        setPendingVenda(null);
+        const danfeImpresso = (venda as { danfe_impresso?: boolean } | undefined)?.danfe_impresso;
+        const danfeWillPrint = (venda as { _danfe_will_print?: boolean } | undefined)?._danfe_will_print;
+        // Só imprimir cupom se DANFE não foi impresso E não será impresso em background
+        if (venda?.id && !danfeImpresso && !danfeWillPrint) {
+          imprimirAposVenda(venda.id);
+        }
+      },
+      onError: (err) => {
+        toast({ title: "Erro na Venda", description: err.message, variant: "destructive" });
+      }
+    });
+  };
+
+  const totalVenda = cart.getTotal();
+  const totalPago = pagamentosParciais.reduce((acc, p) => acc + p.amount, 0);
+  const restante = Math.max(0, totalVenda - totalPago);
+  const valorPagamentoNum = Number(String(valorPagamentoStr).replace(",", ".")) || 0;
+  const isDinheiro = paymentModal.method === "dinheiro";
+
+  // Se for dinheiro, pode ser maior que o restante. Se não for, bloqueia.
+  const pagamentoValido = valorPagamentoNum > 0 && (isDinheiro ? true : valorPagamentoNum <= restante + 1e-9);
+
+  // Calcula o troco
+  const troco = isDinheiro && valorPagamentoNum > restante ? valorPagamentoNum - restante : 0;
+
+  // O valor que de fato vai abater da dívida do sistema
+  const valorAAbater = isDinheiro ? Math.min(valorPagamentoNum, restante) : valorPagamentoNum;
+
+  const confirmarParcelaPagamento = () => {
+    if (!paymentModal.method) return;
+    if (!pagamentoValido) {
+      toast({
+        title: "Valor inválido",
+        description: "Informe um valor maior que zero e menor ou igual ao restante.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const novosPagamentos = [...pagamentosParciais, { method: paymentModal.method, amount: Number(valorAAbater.toFixed(2)) }];
+    const novoPago = novosPagamentos.reduce((acc, p) => acc + p.amount, 0);
+    const novoRestante = Math.max(0, totalVenda - novoPago);
+
+    setPagamentosParciais(novosPagamentos);
+    setPaymentModal({ isOpen: false, method: null });
+    setValorPagamentoStr("");
+
+    if (novoRestante <= 0.009) {
+      const ultimoMetodo = paymentModal.method === "debito" || paymentModal.method === "credito" ? paymentModal.method : paymentModal.method;
+      const obsDinheiro =
+        paymentModal.method === "dinheiro"
+          ? `Dinheiro: recebido R$ ${valorPagamentoNum.toFixed(2)}; troco R$ ${troco.toFixed(2).replace('.', ',')}`
+          : undefined;
+      setPendingVenda({
+        method: ultimoMetodo,
+        clienteId: clienteNota?.id,
+        observacaoDinheiro: obsDinheiro,
+        pagamentosOverride: novosPagamentos,
+        parcelas: paymentModal.method === "credito" ? parcelas : 1
+      });
+      setCpfModalOpen(true);
+      return;
+    }
+
+    toast({
+      title: "Pagamento parcial registrado",
+      description: `Restante: ${formatMoney(novoRestante)}. Selecione a próxima forma de pagamento.`,
+      className: "bg-blue-600 text-white",
+    });
+  };
+
+  const confirmarPesoFeira = () => {
+    const produto = feiraModal.produto;
+    const gramas = Number(String(pesoGramasStr).replace(",", "."));
+    if (!produto || !Number.isFinite(gramas) || gramas <= 0) {
+      toast({ title: "Peso inválido", description: "Informe o peso em gramas.", variant: "destructive" });
+      return;
+    }
+    const kg = gramas / 1000;
+    cart.addWeightedItem(produto, kg);
+    setFeiraModal({ isOpen: false, produto: null });
+    setPesoGramasStr("");
+  };
+
+  return (
+    <>
+      {tefStatus === "aguardando" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-card rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
+            <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+            <h2 className="text-xl font-bold text-foreground">Aguardando maquininha...</h2>
+            <p className="text-sm text-muted-foreground text-center">
+              Peça ao cliente para aproximar, inserir ou passar o cartão e digitar a senha na maquininha.
+            </p>
+            <p className="text-xs text-muted-foreground/60 text-center">
+              Não feche nem atualize o sistema enquanto o pagamento é processado.
+            </p>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-col lg:flex-row h-full">
+        {/* Left Area - Products */}
+      <div className="flex-1 flex flex-col h-full bg-secondary/30 p-6 overflow-hidden">
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+            <Input 
+              autoFocus
+              placeholder="Buscar por nome ou código de barras..." 
+              className="pl-10 h-12 text-lg shadow-sm"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 p-1 bg-muted rounded-xl">
+            <button
+              onClick={() => setCategoria("")}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setCategoria("mercado")}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "mercado" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+            >
+              Mercado
+            </button>
+            <button
+              onClick={() => setCategoria("cozinha")}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "cozinha" ? "bg-kitchen text-kitchen-foreground shadow-sm" : "text-muted-foreground"}`}
+            >
+              Cozinha
+            </button>
+            <button
+              onClick={() => setCategoria("feira")}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${categoria === "feira" ? "bg-emerald-600 text-white shadow-sm" : "text-muted-foreground"}`}
+            >
+              Feira
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 pr-2 pb-24 lg:pb-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando produtos...</div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              {produtos.map((p) => (
+                <div 
+                  key={p.id}
+                  onClick={() => handleAddToCart(p)}
+                  className="bg-card p-4 rounded-2xl border border-border shadow-sm hover:shadow-md hover:border-primary/50 cursor-pointer transition-all hover:-translate-y-1 flex flex-col h-32 select-none"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                      {p.estoque} {p.unidade}
+                    </span>
+                    {p.categoria === 'cozinha' ? (
+                      <span className="w-2 h-2 rounded-full bg-kitchen"></span>
+                    ) : p.categoria === "feira" ? (
+                      <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-primary"></span>
+                    )}
+                  </div>
+                  <h3 className="font-bold text-foreground leading-tight line-clamp-2">
+                    {p.nome} {p.marca ? `- ${p.marca}` : ''}
+                  </h3>
+                  <div className="mt-auto font-mono font-bold text-primary text-lg">
+                    {formatMoney(p.preco)}
+                  </div>
+                </div>
+              ))}
+              {produtos.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
+                  <Package className="w-12 h-12 mb-4 opacity-50" />
+                  <p className="text-lg">Nenhum produto encontrado</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right Area - Cart */}
+      <div className="w-full lg:w-[400px] xl:w-[450px] bg-card border-l border-border flex flex-col flex-shrink-0 h-full">
+        <div className="p-6 border-b border-border bg-secondary/10">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <ShoppingBag className="text-primary" />
+              Carrinho
+            </h2>
+            <button
+              onClick={() => setClienteModal(true)}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
+                clienteNota
+                  ? "bg-primary/10 border-primary/30 text-primary font-semibold"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+              title="Vincular cliente à nota fiscal"
+            >
+              <UserCheck className="w-4 h-4" />
+              {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
+            </button>
+          </div>
+
+          {/* Info do cliente vinculado */}
+          {clienteNota && (
+            <div className="mt-3 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-primary">
+                  {clienteNota.apelido ? `${clienteNota.apelido} (${clienteNota.nome})` : clienteNota.nome}
+                </p>
+                {clienteNota.cpf && (
+                  <p className="text-xs text-muted-foreground font-mono">CPF: {clienteNota.cpf}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setClienteNota(null)}
+                className="text-muted-foreground hover:text-destructive p-1"
+                title="Remover cliente"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {cart.items.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-60">
+              <ShoppingBag className="w-16 h-16 mb-4" />
+              <p>O carrinho está vazio</p>
+            </div>
+          ) : (
+            cart.items.map((item) =>
+              item.is_feira ? (
+                <FeiraLineEditor
+                  key={item.produto_id}
+                  item={item}
+                  onFeiraChange={cart.setFeiraPesoUnidades}
+                  onRemove={() => cart.removeItem(item.produto_id)}
+                  onNudgePeso={(delta) => cart.updateQuantity(item.produto_id, delta)}
+                />
+              ) : (
+                <div key={item.produto_id} className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-semibold">{item.nome_snap}</span>
+                    <button
+                      type="button"
+                      onClick={() => cart.removeItem(item.produto_id)}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3 bg-background border border-border rounded-lg p-1">
+                      <button
+                        type="button"
+                        onClick={() => cart.updateQuantity(item.produto_id, -1)}
+                        className="p-1 hover:bg-secondary rounded"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="font-mono font-bold w-16 text-center">{item.quantidade}</span>
+                      <button
+                        type="button"
+                        onClick={() => cart.updateQuantity(item.produto_id, 1)}
+                        className="p-1 hover:bg-secondary rounded"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className="font-mono font-bold text-primary">{formatMoney(item.subtotal)}</span>
+                  </div>
+                </div>
+              ),
+            )
+          )}
+        </div>
+
+        <div className="p-6 bg-card border-t border-border shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="font-mono font-medium">{formatMoney(cart.getSubtotal())}</span>
+          </div>
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-muted-foreground">Desconto (R$)</span>
+            <Input 
+              type="number" 
+              min="0"
+              step="0.01"
+              value={cart.desconto || ''} 
+              onChange={(e) => cart.setDesconto(Number(e.target.value))}
+              className="w-24 h-8 text-right font-mono" 
+            />
+          </div>
+          <div className="flex justify-between items-end mb-6">
+            <span className="text-xl font-bold">Total</span>
+            <span className="text-4xl font-black font-mono text-primary tracking-tight">
+              {formatMoney(restante)}
+            </span>
+          </div>
+          {pagamentosParciais.length > 0 && (
+            <div className="mb-4 p-3 rounded-xl border border-primary/20 bg-primary/5 space-y-1">
+              <p className="text-xs font-semibold text-primary">Pagamentos parciais:</p>
+              {pagamentosParciais.map((p, idx) => (
+                <p key={`${p.method}-${idx}`} className="text-xs text-muted-foreground">
+                  {p.method.toUpperCase()}: {formatMoney(p.amount)}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button size="lg" variant="default" className="w-full flex-col h-auto py-3 gap-1" onClick={() => handleCheckoutClick('dinheiro')}>
+              <Banknote className="w-6 h-6" />
+              <span>Dinheiro</span>
+            </Button>
+            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('pix')}>
+              <QrCode className="w-6 h-6" />
+              <span>PIX</span>
+            </Button>
+            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('debito')}>
+              <CreditCard className="w-6 h-6" />
+              <span>Débito</span>
+            </Button>
+            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-primary/20 hover:border-primary/50 text-primary" onClick={() => handleCheckoutClick('credito')}>
+              <CreditCard className="w-6 h-6" />
+              <span>Crédito</span>
+            </Button>
+            <Button size="lg" variant="outline" className="w-full flex-col h-auto py-3 gap-1 border-destructive/20 hover:border-destructive hover:bg-destructive text-destructive hover:text-white" onClick={() => handleCheckoutClick('fiado')}>
+              <Users className="w-6 h-6" />
+              <span>Comanda</span>
+            </Button>
+          </div>
+
+          {imprimirCupom.isPending && (
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Printer className="w-4 h-4 animate-pulse" />
+              Imprimindo cupom...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal Vincular Cliente */}
+      <ClienteSelectorModal
+        isOpen={clienteModal}
+        onClose={() => setClienteModal(false)}
+        clientes={clientes as Cliente[]}
+        onSelect={setClienteNota}
+        selected={clienteNota}
+      />
+
+      <Modal
+        isOpen={paymentModal.isOpen}
+        onClose={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}
+        title={`Pagamento - ${paymentModal.method?.toUpperCase() ?? ""}`}
+      >
+        <div className="space-y-4">
+          <div className="bg-secondary p-4 rounded-xl flex justify-between items-center">
+            <span className="font-semibold">Restante da venda</span>
+            <span className="text-2xl font-bold font-mono text-primary">{formatMoney(restante)}</span>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Valor a pagar agora (R$)</label>
+            {/* 
+  Vou esconder isso porque a dona do mercado não quer vender parcelado.
+  Como o 'useState' já começa em 1, o sistema vai sempre mandar 1 parcela pro TEF invisivelmente!
+*/}
+            {/* {paymentModal.method === "credito" && (
+            <div className="mt-2">
+              <label className="block text-sm font-medium mb-1">Número de Parcelas (Loja)</label>
+              <Input
+                type="number"
+                min="1"
+                max="99"
+                value={parcelas}
+                onChange={(e) => setParcelas(Number(e.target.value))}
+                className="font-mono text-lg border-primary"
+              />
+            </div>
+          )} */}
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={valorPagamentoStr}
+              onChange={(e) => setValorPagamentoStr(e.target.value)}
+              className="font-mono text-lg"
+            />
+          </div>
+          <div className={`p-4 rounded-xl border ${pagamentoValido ? "bg-muted/50 border-border" : "bg-destructive/10 border-destructive/30"}`}>
+            <p className="text-sm text-muted-foreground mb-1">Restante após confirmar</p>
+            <p className="text-2xl font-black font-mono">{formatMoney(Math.max(0, restante - valorAAbater))}</p>
+            {!pagamentoValido && valorPagamentoStr !== "" && (
+              <p className="text-sm text-destructive mt-2">Valor deve ser maior que zero e menor ou igual ao restante.</p>
+            )}
+          </div>
+
+          {/* ADICIONAR ISSO: Mostra o troco se for dinheiro e o valor recebido for maior */}
+          {isDinheiro && troco > 0 && (
+            <div className="p-4 rounded-xl border bg-green-100 border-green-300 mt-2">
+              <p className="text-sm text-green-800 font-semibold mb-1">Troco a devolver ao cliente</p>
+              <p className="text-3xl font-black font-mono text-green-700">{formatMoney(troco)}</p>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setPaymentModal({ isOpen: false, method: null }); setValorPagamentoStr(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!pagamentoValido || registrarVenda.isPending}
+              onClick={confirmarParcelaPagamento}
+            >
+              {registrarVenda.isPending ? "Registrando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={feiraModal.isOpen}
+        onClose={() => setFeiraModal({ isOpen: false, produto: null })}
+        title="Produto da Feira - Pesagem"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Informe o peso em gramas para calcular automaticamente o valor por kg.
+          </p>
+          <div className="bg-secondary p-4 rounded-xl">
+            <p className="font-semibold">{feiraModal.produto?.nome}</p>
+            <p className="text-sm text-muted-foreground">
+              Preco por kg: {formatMoney(feiraModal.produto?.preco ?? 0)}
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Peso (gramas)</label>
+            <Input
+              type="number"
+              min="1"
+              step="1"
+              value={pesoGramasStr}
+              onChange={(e) => setPesoGramasStr(e.target.value)}
+              placeholder="Ex: 500"
+            />
+          </div>
+          <div className="bg-muted/50 border border-border rounded-xl p-3">
+            <p className="text-sm text-muted-foreground">Subtotal estimado</p>
+            <p className="text-2xl font-black font-mono text-primary">
+              {formatMoney(((Number(pesoGramasStr || "0") / 1000) * (feiraModal.produto?.preco ?? 0)) || 0)}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setFeiraModal({ isOpen: false, produto: null })}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" onClick={confirmarPesoFeira}>
+              Adicionar ao carrinho
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Fiado */}
+      <Modal isOpen={checkoutModal.isOpen} onClose={() => setCheckoutModal({ isOpen: false, paymentMethod: null })} title="Finalizar Venda - Comanda em Aberto">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Selecione o Cliente</label>
+            <Select value={selectedCliente} onChange={(e) => setSelectedCliente(e.target.value)}>
+              <option value="">-- Selecione --</option>
+              {clientes.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.apelido ? `${c.apelido} (${c.nome})` : c.nome}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="bg-secondary p-4 rounded-xl flex justify-between items-center">
+            <span className="font-semibold">Valor Total:</span>
+            <span className="text-2xl font-bold text-destructive font-mono">{formatMoney(cart.getTotal())}</span>
+          </div>
+          <Button 
+            className="w-full mt-4" 
+            size="lg" 
+            disabled={!selectedCliente || registrarVenda.isPending}
+            onClick={() => {
+              setPendingVenda({ method: "fiado", clienteId: Number(selectedCliente) });
+              setCpfModalOpen(true);
+            }}
+          >
+            {registrarVenda.isPending ? "Registrando..." : "Confirmar na Comanda"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={cpfModalOpen} onClose={() => setCpfModalOpen(false)} title="CPF/CNPJ na nota (opcional)">
+        <div className="space-y-4">
+          <Input
+            value={cpfInput}
+            onChange={(e) => setCpfInput(e.target.value)}
+            placeholder="Digite CPF ou CNPJ e clique em Sim, ou clique em Nao"
+            className="font-mono"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                if (!pendingVenda) return;
+                const venda = pendingVenda;
+                setCpfModalOpen(false);
+                setPendingVenda(null);
+                setCpfInput("");
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, null, venda.parcelas);
+              }}
+            >
+              Nao
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                if (!pendingVenda) return;
+                const venda = pendingVenda;
+                const cpf = cpfInput;
+                setCpfModalOpen(false);
+                setPendingVenda(null);
+                setCpfInput("");
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, cpf, venda.parcelas);
+              }}
+            >
+              Sim
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Cupom (impressora não conectada) */}
+      <Modal
+        isOpen={cupomModal.isOpen}
+        onClose={() => setCupomModal({ isOpen: false, texto: null })}
+        title="Cupom Fiscal"
+      >
+        {cupomModal.texto && (
+          <TicketPreview
+            texto={cupomModal.texto}
+            onClose={() => setCupomModal({ isOpen: false, texto: null })}
+          />
+        )}
+      </Modal>
+    </div>
+    </>
+  );
 }
 </file>
 

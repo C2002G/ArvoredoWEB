@@ -53,7 +53,7 @@ const FORMA_PAGAMENTO: Record<string, number> = {
 };
 
 const STATUS_APROVADO = 10;
-const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+const STATUS_NEGADOS = [15, 20, 25];
 
 async function pollingIntencao(
   baseUrl: string,
@@ -74,10 +74,12 @@ async function pollingIntencao(
         data?.intencaoVenda?.intencaoVendaStatus?.id ??
         data?.statusId ??
         data?.status?.id;
+      const statusNome = data?.intencaoVenda?.intencaoVendaStatus?.nome;
+      console.log(`[TEF] poll ${intencaoVendaId}: status=${status} (${statusNome})`);
       if (status === STATUS_APROVADO) return { aprovado: true, data };
       if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
-    } catch {
-      // falha de rede temporária — continua tentando
+    } catch (e) {
+      console.log(`[TEF] poll ${intencaoVendaId}: erro de rede, seguindo...`, e);
     }
   }
   return { aprovado: false, data: null, timeout: true };
@@ -116,8 +118,10 @@ router.post("/enviar", async (req, res) => {
 
   const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
   const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
-  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0; 
+  // tempo para maquina reconhecer a transação e o cliente interagir com a maquininha (em ms) 
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
+  
 
   if (!key) {
     return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
@@ -171,10 +175,15 @@ router.post("/enviar", async (req, res) => {
   const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
 
   if (!resultado.aprovado) {
-    const motivo = resultado.timeout
-      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
-      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
-    return res.status(402).json({ ok: false, mensagem: motivo });
+  const statusId = resultado.data?.intencaoVenda?.intencaoVendaStatus?.id;
+  const motivo = resultado.timeout
+    ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+    : statusId === 20
+      ? "Operação Cancelada"
+      : statusId === 25
+        ? "Transação negada pelo host."
+        : `Transação negada ou cancelada. Status: ${statusId ?? "desconhecido"}`;
+  return res.status(402).json({ ok: false, mensagem: motivo });
   }
 
   const pagamento =
@@ -197,7 +206,7 @@ router.post("/enviar", async (req, res) => {
     pagamento?.nomeBandeira ??
     null;
   const tipoPagamento =
-    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05";
+    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "17";
 
   return res.json({
     ok: true,
