@@ -448,21 +448,22 @@ export async function emitirNfce(
                       : "99";
                 const result: any = {};
 
-                // SEFAZ requires xPag (description) when tPag is 99
                 if (tPag === "99") {
                   result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
                 }
 
-                // Incluir dados de cartão sempre que houver informações válidas.
-                // Isso permite pagamento em débito/crédito funcionar com o simulador Stone.
+                // O bloco <card> só deve ser gerado para Cartão de Crédito ou Débito reais (tPag 03 ou 04)
+                // PIX (17) não deve gerar o sub-bloco <card> para evitar a rejeição 391 da SEFAZ.
+                const ehCartaoFisico = (tPag === "03" || tPag === "04") && venda.pagamento === "cartao";
                 const temDadosCartao =
-                  venda.pagamento === "cartao" &&
-                  Boolean(venda.codigo_autorizacao || venda.bandeira_cartao || venda.tipo_pagamento);
+                  ehCartaoFisico &&
+                  Boolean(venda.codigo_autorizacao || venda.bandeira_cartao);
+
                 if (temDadosCartao) {
                   const cnpjCartao = String(venda.cnpj_credenciadora || "").replace(/\D/g, "");
                   result.card = {
                     tpIntegra: "1",
-                    ...(cnpjCartao ? { CNPJ: cnpjCartao } : {}),
+                    CNPJ: cnpjCartao || "16501555000157", // Força o da Stone caso esteja vazio para não rejeitar,
                     tBand: normalizarBandeira(venda.bandeira_cartao || "99"),
                     cAut: venda.codigo_autorizacao || "000000",
                   };

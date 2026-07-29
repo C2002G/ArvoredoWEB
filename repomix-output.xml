@@ -288,20 +288,6 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="artifacts/api-server/data/maquininha-config.json">
-{
-  "ativo": true,
-  "modo_conexao": "usb_bridge",
-  "api_url": "https://sandbox.controlpay.com.br",
-  "api_token": "ItHktKa3hqNqKJlS0fJC7TVBi3LFXUdHzkXRFLhxNcujnOujlmlvb59PzaZlRQGJNWIwoE59btDygfx9ugb5mS4KjUuckd2%2b083iJZqPHx%2bboklwxyE%2fHoTGrvkIu50%2b",
-  "timeout_ms": 60000,
-  "empresa_nome": "NOME DA EMPRESA",
-  "empresa_cnpj": "00.000.000/0000-00",
-  "empresa_regra_padrao": "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  "cnpj_credenciadora": ""
-}
-</file>
-
 <file path="artifacts/api-server/src/lib/.gitkeep">
 
 </file>
@@ -7780,6 +7766,20 @@ testUSBConnection();
 }
 </file>
 
+<file path="artifacts/api-server/data/maquininha-config.json">
+{
+  "ativo": true,
+  "modo_conexao": "usb_bridge",
+  "api_url": "https://sandbox.controlpay.com.br",
+  "api_token": "ItHktKa3hqNqKJlS0fJC7TVBi3LFXUdHzkXRFLhxNcujnOujlmlvb59PzaZlRQGJNWIwoE59btDygfx9ugb5mS4KjUuckd2%2b083iJZqPHx%2bboklwxyE%2fHoTGrvkIu50%2b",
+  "timeout_ms": 60000,
+  "empresa_nome": "Mercado Arvoredo Ltda",
+  "empresa_cnpj": "60242783000141",
+  "empresa_regra_padrao": "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  "cnpj_credenciadora": "16501555000157"
+}
+</file>
+
 <file path="artifacts/api-server/src/lib/printer.ts">
 import { promises as fs } from "node:fs";
 import { execFile } from "node:child_process";
@@ -13171,106 +13171,6 @@ export * from "./fiscal";
 }
 </file>
 
-<file path="artifacts/api-server/src/routes/nfce.ts">
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable } from "@workspace/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { reimprimirDanfeSimplificado } from "../services/danfe.service";
-
-const router: IRouter = Router();
-
-router.get("/status/:vendaId", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
-
-  const [log] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
-
-  if (!log) {
-    res.json({ ok: true, status: "sem_emissao", log: null });
-    return;
-  }
-  res.json({ ok: true, status: log.status, log });
-});
-
-router.post("/:vendaId/reimprimir", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
-
-  const [log] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
-
-  if (log?.xml_autorizado) {
-    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
-    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
-    return;
-  }
-
-  const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
-  if (!venda) {
-    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
-    return;
-  }
-
-  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, vendaId));
-  const [cliente] = venda.cliente_id
-    ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
-    : [undefined];
-
-  const { buildCupomText } = await import("../lib/print-layout");
-  const { printTextToWindowsPrinter } = await import("../lib/printer");
-  const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined); 
-  await printTextToWindowsPrinter(text);
-  res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
-});
-
-router.post("/:vendaId/cancelar", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
-
-  const [lastLog] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
-
-  await db.insert(nfceLogsTable).values({
-    venda_id: vendaId,
-    ambiente: lastLog?.ambiente || "homologacao",
-    status: "erro",
-    chave_acesso: lastLog?.chave_acesso || null,
-    mensagem_status_sefaz:
-      "Cancelamento NFC-e solicitado. Rota em modo esboco aguardando integracao node-dfe.",
-  });
-
-  res.status(202).json({
-    ok: true,
-    message: "Solicitacao de cancelamento registrada (esboco).",
-  });
-});
-
-export default router;
-</file>
-
 <file path="artifacts/arvoredo/src/components/layout.tsx">
 import React, { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
@@ -14124,270 +14024,131 @@ router.use("/nfce", nfceRouter);
 export default router;
 </file>
 
-<file path="artifacts/api-server/src/routes/maquininha.ts">
+<file path="artifacts/api-server/src/routes/nfce.ts">
 import { Router, type IRouter } from "express";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-
-type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
-
-type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: ModoConexao;
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
+import { db } from "@workspace/db";
+import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable } from "@workspace/db/schema";
+import { desc, eq } from "drizzle-orm";
+import { reimprimirDanfeSimplificado } from "../services/danfe.service";
 
 const router: IRouter = Router();
 
-const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  ativo: true,
-  modo_conexao: "manual",
-  api_url: "",
-  api_token: "",
-  timeout_ms: 60000,
-  empresa_nome: "NOME DA EMPRESA",
-  empresa_cnpj: "00.000.000/0000-00",
-  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  cnpj_credenciadora: "",
-};
-
-async function loadConfig(): Promise<MaquininhaConfig> {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_CONFIG;
+// Rota para consultar o status da NFC-e
+router.get("/status/:vendaId", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
   }
-}
 
-async function saveConfig(config: MaquininhaConfig): Promise<void> {
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
-}
+  const [log] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
 
-const FORMA_PAGAMENTO: Record<string, number> = {
-  credito: 21,
-  debito: 22,
-  pix: 25,
-};
+  if (!log) {
+    res.json({ ok: true, status: "sem_emissao", log: null });
+    return;
+  }
+  res.json({ ok: true, status: log.status, log });
+});
 
-const STATUS_APROVADO = 10;
-const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+// Rota para reimprimir o cupom ou DANFE
+router.post("/:vendaId/reimprimir", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
 
-async function pollingIntencao(
-  baseUrl: string,
-  key: string,
-  intencaoVendaId: number,
-  timeoutMs: number,
-): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
-  const inicio = Date.now();
-  while (Date.now() - inicio < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    try {
-      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
-        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+  const [log] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  if (log?.xml_autorizado) {
+    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
+    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
+    return;
+  }
+
+  const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+  if (!venda) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, vendaId));
+  const [cliente] = venda.cliente_id
+    ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
+    : [undefined];
+
+  const { buildCupomText } = await import("../lib/print-layout");
+  const { printTextToWindowsPrinter } = await import("../lib/printer");
+  const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined); 
+  await printTextToWindowsPrinter(text);
+  res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
+});
+
+// Rota de Cancelamento Integrada (Maquininha + Banco de Dados)
+router.post("/:vendaId/cancelar", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    return res.status(400).json({ ok: false, message: "vendaId invalido" });
+  }
+
+  try {
+    // 1. Buscar a venda no banco para pegar o tef_intencao_id
+    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+    
+    if (!venda) {
+      return res.status(404).json({ ok: false, message: "Venda não encontrada" });
+    }
+
+    // 2. Se a venda foi em cartão e tem ID do TEF, aciona o estorno na PayGo
+    if (venda.pagamento === "cartao" && venda.tef_intencao_id) {
+      console.log(`[TEF] Iniciando estorno PayGo para Intenção: ${venda.tef_intencao_id}`);
+      
+      const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+      const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+      const respTef = await fetch(`${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intencaoVendaId: venda.tef_intencao_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159", 
+        }),
       });
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as any;
-      const status: number =
-        data?.intencaoVenda?.intencaoVendaStatus?.id ??
-        data?.statusId ??
-        data?.status?.id;
-      if (status === STATUS_APROVADO) return { aprovado: true, data };
-      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
-    } catch {
-      // falha de rede temporária — continua tentando
+
+      if (!respTef.ok) {
+        throw new Error("Falha ao comunicar estorno com a PayGo");
+      }
+      console.log("[TEF] Comando de estorno enviado para a maquininha.");
     }
+
+    // 3. Registrar o log de tentativa de cancelamento fiscal
+    await db.insert(nfceLogsTable).values({
+      venda_id: vendaId,
+      ambiente: "homologacao", 
+      status: "processando",
+      mensagem_status_sefaz: "Cancelamento solicitado (TEF acionado).",
+    });
+
+    res.status(202).json({
+      ok: true,
+      message: "Estorno acionado na maquininha. Siga as instruções no terminal físico.",
+    });
+
+  } catch (error: any) {
+    console.error("[CANCELAR] Erro:", error);
+    res.status(500).json({ ok: false, message: error.message });
   }
-  return { aprovado: false, data: null, timeout: true };
-}
-
-router.get("/config", async (_req, res) => {
-  const config = await loadConfig();
-  res.json(config);
-});
-
-router.post("/config", async (req, res) => {
-  const current = await loadConfig();
-  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
-  const merged: MaquininhaConfig = {
-    ...current,
-    ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
-  };
-  await saveConfig(merged);
-  res.json({ ok: true, config: merged });
-});
-
-router.post("/enviar", async (req, res) => {
-  const config = await loadConfig();
-
-  const payload = req.body as {
-    venda_local_id?: string;
-    metodo: "debito" | "credito" | "pix";
-    valor_total: number; // em reais, ex: 10.50
-  };
-
-  if (!config.ativo) {
-    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
-  }
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
-  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
-
-  if (!key) {
-    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
-  }
-
-  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
-  if (!formaPagamentoId) {
-    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
-  }
-
-  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
-
-  let intencaoVendaId: number;
-  try {
-    const criarResp = await fetch(
-      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          aguardarTefIniciarTransacao: true,
-          formaPagamentoId,
-          valorTotalVendido: valorStr,
-          terminalId,
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!criarResp.ok) {
-      const txt = await criarResp.text();
-      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
-    }
-    const criarData = (await criarResp.json()) as any;
-    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
-    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-
-  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
-
-  if (!resultado.aprovado) {
-    const motivo = resultado.timeout
-      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
-      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
-    return res.status(402).json({ ok: false, mensagem: motivo });
-  }
-
-  const pagamento =
-    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentoExterno ??
-    {};
-
-  const codigoAutorizacao =
-    pagamento?.codigoAutorizacao ??
-    pagamento?.codigo_autorizacao ??
-    pagamento?.autorizacao ??
-    pagamento?.authorizationCode ??
-    pagamento?.codigo ??
-    null;
-  const bandeiraCartao =
-    pagamento?.bandeiraCartao ??
-    pagamento?.bandeira_cartao ??
-    pagamento?.bandeira ??
-    pagamento?.nomeBandeira ??
-    null;
-  const tipoPagamento =
-    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05";
-
-  return res.json({
-    ok: true,
-    aprovado: true,
-    dados_cartao: {
-      cnpj_credenciadora: config.cnpj_credenciadora || null,
-      codigo_autorizacao: codigoAutorizacao,
-      bandeira_cartao: bandeiraCartao,
-      tipo_pagamento: tipoPagamento,
-      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
-      tef_intencao_id: intencaoVendaId,
-    },
-    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
-    comprovante_cliente: pagamento.comprovanteCliente ?? null,
-  });
-});
-
-router.post("/cancelar", async (req, res) => {
-  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          intencaoVendaId: intencao_venda_id,
-          aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159",
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    const data = (await resp.json()) as any;
-    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-});
-
-router.post("/testar", async (_req, res) => {
-  const config = await loadConfig();
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  let paygoOnline = false;
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    paygoOnline = resp.ok;
-  } catch {
-    paygoOnline = false;
-  }
-
-  return res.json({
-    ok: true,
-    ativo: config.ativo,
-    modo_conexao: config.modo_conexao,
-    paygo_online: paygoOnline,
-    mensagem: paygoOnline
-      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
-      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
-  });
 });
 
 export default router;
@@ -17248,6 +17009,275 @@ router.post("/comprovante-tef", async (req, res) => {
     logger.error(`Erro na rota /comprovante-tef: ${message}`);
     return res.status(500).json({ ok: false, erro: message });
   }
+});
+
+export default router;
+</file>
+
+<file path="artifacts/api-server/src/routes/maquininha.ts">
+import { Router, type IRouter } from "express";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
+
+type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: ModoConexao;
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+const router: IRouter = Router();
+
+const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  ativo: true,
+  modo_conexao: "manual",
+  api_url: "",
+  api_token: "",
+  timeout_ms: 60000,
+  empresa_nome: "NOME DA EMPRESA",
+  empresa_cnpj: "00.000.000/0000-00",
+  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
+};
+
+async function loadConfig(): Promise<MaquininhaConfig> {
+  try {
+    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function saveConfig(config: MaquininhaConfig): Promise<void> {
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [7, 8, 9, 13, 15, 20];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number =
+        data?.intencaoVenda?.intencaoVendaStatus?.id ??
+        data?.statusId ??
+        data?.status?.id;
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch {
+      // falha de rede temporária — continua tentando
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
+}
+
+router.get("/config", async (_req, res) => {
+  const config = await loadConfig();
+  res.json(config);
+});
+
+router.post("/config", async (req, res) => {
+  const current = await loadConfig();
+  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
+  const merged: MaquininhaConfig = {
+    ...current,
+    ...body,
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
+  };
+  await saveConfig(merged);
+  res.json({ ok: true, config: merged });
+});
+
+router.post("/enviar", async (req, res) => {
+  const config = await loadConfig();
+
+  const payload = req.body as {
+    venda_local_id?: string;
+    metodo: "debito" | "credito" | "pix";
+    valor_total: number; // em reais, ex: 10.50
+  };
+
+  if (!config.ativo) {
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
+  }
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;  
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 60000;
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
+  }
+
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
+  }
+
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+          terminalId,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+    const motivo = resultado.timeout
+      ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+      : `Transação negada ou cancelada. Status: ${resultado.data?.statusId ?? "desconhecido"}`;
+    return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  const codigoAutorizacao =
+    pagamento?.codigoAutorizacao ??
+    pagamento?.codigo_autorizacao ??
+    pagamento?.autorizacao ??
+    pagamento?.authorizationCode ??
+    pagamento?.codigo ??
+    null;
+  const bandeiraCartao =
+    pagamento?.bandeiraCartao ??
+    pagamento?.bandeira_cartao ??
+    pagamento?.bandeira ??
+    pagamento?.nomeBandeira ??
+    null;
+  const tipoPagamento =
+    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "05";
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: codigoAutorizacao,
+      bandeira_cartao: bandeiraCartao,
+      tipo_pagamento: tipoPagamento,
+      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+});
+
+router.post("/testar", async (_req, res) => {
+  const config = await loadConfig();
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
+    ok: true,
+    ativo: config.ativo,
+    modo_conexao: config.modo_conexao,
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
+  });
 });
 
 export default router;
@@ -20471,16 +20501,17 @@ export async function emitirNfce(
                       : "99";
                 const result: any = {};
 
-                // SEFAZ requires xPag (description) when tPag is 99
                 if (tPag === "99") {
                   result.xPag = venda.tipo_pagamento || "Outro meio de pagamento";
                 }
 
-                // Incluir dados de cartão sempre que houver informações válidas.
-                // Isso permite pagamento em débito/crédito funcionar com o simulador Stone.
+                // O bloco <card> só deve ser gerado para Cartão de Crédito ou Débito reais (tPag 03 ou 04)
+                // PIX (17) não deve gerar o sub-bloco <card> para evitar a rejeição 391 da SEFAZ.
+                const ehCartaoFisico = (tPag === "03" || tPag === "04") && venda.pagamento === "cartao";
                 const temDadosCartao =
-                  venda.pagamento === "cartao" &&
-                  Boolean(venda.codigo_autorizacao || venda.bandeira_cartao || venda.tipo_pagamento);
+                  ehCartaoFisico &&
+                  Boolean(venda.codigo_autorizacao || venda.bandeira_cartao);
+
                 if (temDadosCartao) {
                   const cnpjCartao = String(venda.cnpj_credenciadora || "").replace(/\D/g, "");
                   result.card = {

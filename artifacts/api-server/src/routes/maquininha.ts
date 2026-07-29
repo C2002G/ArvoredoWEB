@@ -107,6 +107,7 @@ router.post("/enviar", async (req, res) => {
     venda_local_id?: string;
     metodo: "debito" | "credito" | "pix";
     valor_total: number; // em reais, ex: 10.50
+    parcelas?: number; // opcional, apenas para crédito
   };
 
   if (!config.ativo) {
@@ -129,6 +130,9 @@ router.post("/enviar", async (req, res) => {
 
   const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
 
+  const quantidadeParcelas = payload.parcelas && payload.parcelas > 1 ? payload.parcelas : 1;
+  const tipoParcelamentoId = quantidadeParcelas > 1 ? 3 : 1; // 3 = Parcelado Estabelecimento (Loja)
+
   let intencaoVendaId: number;
   try {
     const criarResp = await fetch(
@@ -144,6 +148,8 @@ router.post("/enviar", async (req, res) => {
           formaPagamentoId,
           valorTotalVendido: valorStr,
           terminalId,
+          quantidadeParcelas,
+          tipoParcelamentoId,
         }),
         signal: AbortSignal.timeout(15000),
       },
@@ -155,6 +161,9 @@ router.post("/enviar", async (req, res) => {
     const criarData = (await criarResp.json()) as any;
     intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
     if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+    console.log("\n=======================================================");
+    console.log(`🧾 ID PARA A PLANILHA DA PAYGO: ${intencaoVendaId}`);
+    console.log("=======================================================\n");
   } catch (err: any) {
     return res.status(502).json({ ok: false, mensagem: err.message });
   }

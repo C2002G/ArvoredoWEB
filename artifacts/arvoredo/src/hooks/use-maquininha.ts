@@ -18,6 +18,7 @@ type EnvioMaquininhaInput = {
   venda_local_id?: string;
   metodo: "debito" | "credito" | "pix";
   valor_total: number;
+  parcelas?: number;
   desconto?: number;
   itens: Array<{
     produto_id: number;

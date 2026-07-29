@@ -198,6 +198,7 @@ export default function Pdv() {
     method: null,
   });
   const [valorPagamentoStr, setValorPagamentoStr] = useState("");
+      const [parcelas, setParcelas] = useState(1); // <--- ADICIONE ESTA LINHA
   const [pagamentosParciais, setPagamentosParciais] = useState<PaymentAllocation[]>([]);
   const [feiraModal, setFeiraModal] = useState<{ isOpen: boolean; produto: Produto | null }>({ isOpen: false, produto: null });
   const [pesoGramasStr, setPesoGramasStr] = useState("");
@@ -208,6 +209,7 @@ export default function Pdv() {
     clienteId?: number;
     observacaoDinheiro?: string | null;
     pagamentosOverride?: PaymentAllocation[];
+    parcelas?: number;
   } | null>(null);
 
   const [cupomModal, setCupomModal] = useState<{ isOpen: boolean; texto: string | null }>({
@@ -279,6 +281,7 @@ export default function Pdv() {
     observacaoDinheiro?: string | null,
     pagamentosOverride?: PaymentAllocation[],
     cpfNota?: string | null,
+    parcelasVenda: number = 1 
   ) => {
     const hasCozinha = cart.items.some(i => i.is_cozinha);
     const hasFeira = cart.items.some((i) => i.is_feira);
@@ -305,6 +308,7 @@ export default function Pdv() {
           venda_local_id: `local-${Date.now()}`,
           metodo: method === "pix" ? "pix" : method,
           valor_total: cart.getTotal(),
+          parcelas: parcelasVenda,
           desconto: cart.desconto,
           itens: cart.items.map((item) => ({
             produto_id: item.produto_id,
@@ -456,6 +460,7 @@ export default function Pdv() {
         clienteId: clienteNota?.id,
         observacaoDinheiro: obsDinheiro,
         pagamentosOverride: novosPagamentos,
+        parcelas: paymentModal.method === "credito" ? parcelas : 1
       });
       setCpfModalOpen(true);
       return;
@@ -765,6 +770,23 @@ export default function Pdv() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Valor a pagar agora (R$)</label>
+            {/* 
+  Vou esconder isso porque a dona do mercado não quer vender parcelado.
+  Como o 'useState' já começa em 1, o sistema vai sempre mandar 1 parcela pro TEF invisivelmente!
+*/}
+            {/* {paymentModal.method === "credito" && (
+            <div className="mt-2">
+              <label className="block text-sm font-medium mb-1">Número de Parcelas (Loja)</label>
+              <Input
+                type="number"
+                min="1"
+                max="99"
+                value={parcelas}
+                onChange={(e) => setParcelas(Number(e.target.value))}
+                className="font-mono text-lg border-primary"
+              />
+            </div>
+          )} */}
             <Input
               type="number"
               min="0"
@@ -895,7 +917,7 @@ export default function Pdv() {
                 setCpfModalOpen(false);
                 setPendingVenda(null);
                 setCpfInput("");
-                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, null);
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, null, venda.parcelas);
               }}
             >
               Nao
@@ -909,7 +931,7 @@ export default function Pdv() {
                 setCpfModalOpen(false);
                 setPendingVenda(null);
                 setCpfInput("");
-                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, cpf);
+                processVenda(venda.method, venda.clienteId, venda.observacaoDinheiro, venda.pagamentosOverride, cpf, venda.parcelas);
               }}
             >
               Sim
