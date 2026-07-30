@@ -6,6 +6,7 @@ import { Button, Input, Modal } from "@/components/ui-elements";
 import { Wallet, LogOut, Download, LockOpen, Lock, AlertCircle, Printer, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+
 export default function Caixa() {
   const { data: status, isLoading: loadingStatus } = useCaixaStatus();
   const { data: historico = [] } = useCaixaHistorico();
@@ -252,11 +253,20 @@ export default function Caixa() {
                   <th className="px-6 py-4 font-medium text-right">Fundo</th>
                   <th className="px-6 py-4 font-medium text-right">Vendas</th>
                   <th className="px-6 py-4 font-medium text-center">Status</th>
+                  <th className="px-6 py-4 font-medium text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {historico.map(h => (
                   <tr key={h.id} className="hover:bg-muted/30">
+                    <td className="px-6 py-4 flex justify-center gap-2">
+                      <button onClick={() => window.open(`/api/caixa/${h.id}/relatorio.xlsx`)} title="Baixar XLSX">
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => imprimirSangria.mutate({ data: { data_inicio: h.aberto_em.slice(0,10), data_fim: (h.fechado_em ?? h.aberto_em).slice(0,10), sessao_id: h.id } })} title="Imprimir">
+                        <Printer className="w-4 h-4" />
+                      </button>
+                    </td>
                     <td className="px-6 py-4">{formatDate(h.aberto_em)}</td>
                     <td className="px-6 py-4">{h.fechado_em ? formatDate(h.fechado_em) : '-'}</td>
                     <td className="px-6 py-4 text-right font-mono">{formatMoney(h.fundo_inicial)}</td>
