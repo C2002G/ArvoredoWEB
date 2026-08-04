@@ -675,6 +675,12 @@ components:
         categoria:
           type: string
           enum: [mercado, cozinha, feira]
+        ncm:
+          type: string
+          nullable: true
+        cst:
+          type: string
+          nullable: true
         preco:
           type: number
         custo:
@@ -711,6 +717,12 @@ components:
         categoria:
           type: string
           enum: [mercado, cozinha, feira]
+        ncm:
+          type: string
+          nullable: true
+        cst:
+          type: string
+          nullable: true
         preco:
           type: number
         custo:
@@ -739,6 +751,10 @@ components:
         unidades:
           type: number
           description: "Feira: número de unidades (peças). A quantidade continua em kg (peso) para cálculo."
+        descricao:
+          type: string
+          nullable: true
+          description: "Descrição livre do item. Usada apenas pelo produto 'Diversos' para identificar o que foi vendido; sobrescreve o nome_snap padrão."
       required:
         - produto_id
         - quantidade

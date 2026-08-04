@@ -378,11 +378,12 @@ export async function emitirNfce(
           } : {}),
           det: itens.map((item, index) => {
             const p = produtos.find((x) => x.id === item.produto_id);
+            const codigoBarras = p?.codigo && p.codigo !== "DIVERSOS" ? p.codigo : "SEM GTIN";
             return {
               "@_nItem": String(index + 1),
               prod: {
                 cProd: String(item.produto_id),
-                cEAN: p?.codigo || "SEM GTIN",
+                cEAN: codigoBarras,
                 xProd:
                   config.ambiente === "homologacao" && index === 0
                     ? "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL"
@@ -393,7 +394,7 @@ export async function emitirNfce(
                 qCom: item.quantidade.toFixed(4),
                 vUnCom: item.preco_unit.toFixed(4),
                 vProd: item.subtotal.toFixed(2),
-                cEANTrib: p?.codigo || "SEM GTIN",
+                cEANTrib: codigoBarras,
                 uTrib: p?.unidade || "UN",
                 qTrib: item.quantidade.toFixed(4),
                 vUnTrib: item.preco_unit.toFixed(4),

@@ -152,7 +152,13 @@ router.post("/", async (req, res) => {
     const produto = await db.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
     if (!produto) continue;
 
-    const nome_snap = produto.marca ? `${produto.nome} - ${produto.marca}` : produto.nome;
+    const isDiversos = produto.codigo === "DIVERSOS";
+    const descricaoCustom = item.descricao?.trim();
+    const nome_snap = descricaoCustom
+      ? `${produto.nome} - ${descricaoCustom}`
+      : produto.marca
+        ? `${produto.nome} - ${produto.marca}`
+        : produto.nome;
 
     const [insertedItem] = await db.insert(itensVendaTable).values({
       venda_id: venda.id,
@@ -165,10 +171,12 @@ router.post("/", async (req, res) => {
     }).returning();
     insertedItensVenda.push(insertedItem);
 
-    const qtdBaixaEstoque = item.quantidade;
-    const novoEstoque = produto.estoque - qtdBaixaEstoque;
-    await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
-  }
+    // "Diversos" não representa estoque real — não baixa.
+    if (!isDiversos) {
+      const qtdBaixaEstoque = item.quantidade;
+      const novoEstoque = produto.estoque - qtdBaixaEstoque;
+      await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
+    }}
 
   if (data.pagamento === "fiado" && data.cliente_id) {
     await db.insert(fiadosTable).values({

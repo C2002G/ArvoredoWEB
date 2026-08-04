@@ -15,7 +15,25 @@ export interface CartItem {
   unidades: number;
 }
 
+export const DIVERSOS_CODIGO = "DIVERSOS";
+
+export interface CartItem {
+  produto_id: number;
+  nome_snap: string;
+  quantidade: number;
+  preco_unit: number;
+  subtotal: number;
+  is_cozinha: boolean;
+  is_feira: boolean;
+  is_diversos: boolean;
+  descricao?: string;
+  unidade: string;
+  unidades: number;
+}
+
 interface CartStore {
+  setDiversosPreco: (produtoId: number, novoPreco: number) => void;
+  setDiversosDescricao: (produtoId: number, descricao: string) => void;
   items: CartItem[];
   desconto: number;
   addItem: (produto: Produto) => void;
@@ -33,6 +51,25 @@ interface CartStore {
 export const useCart = create<CartStore>((set, get) => ({
   items: [],
   desconto: 0,
+  
+  setDiversosPreco: (produtoId, novoPreco) => {
+    const preco = Math.max(0, novoPreco);
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.produto_id === produtoId && i.is_diversos
+          ? { ...i, preco_unit: preco, subtotal: Number((i.quantidade * preco).toFixed(2)) }
+          : i,
+      ),
+    }));
+  },
+
+  setDiversosDescricao: (produtoId, descricao) => {
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.produto_id === produtoId && i.is_diversos ? { ...i, descricao } : i,
+      ),
+    }));
+  },
 
   addItem: (produto) => {
     set((state) => {
@@ -56,6 +93,7 @@ export const useCart = create<CartStore>((set, get) => ({
       }
 
       const nomeCompleto = produto.marca ? `${produto.nome} - ${produto.marca}` : produto.nome;
+      const isDiversos = produto.codigo === DIVERSOS_CODIGO;
       return {
         items: [
           ...state.items,
@@ -67,6 +105,8 @@ export const useCart = create<CartStore>((set, get) => ({
             subtotal: produto.preco,
             is_cozinha: produto.categoria === "cozinha",
             is_feira: produto.categoria === "feira",
+            is_diversos: isDiversos,
+            descricao: isDiversos ? "" : undefined,
             unidade: produto.unidade,
             unidades: 1,
           },
@@ -109,6 +149,8 @@ export const useCart = create<CartStore>((set, get) => ({
             subtotal: Number((peso * produto.preco).toFixed(2)),
             is_cozinha: false,
             is_feira: true,
+            is_diversos: false,
+            descricao: undefined,
             unidade: produto.unidade,
             unidades: 0,
           },
@@ -185,6 +227,9 @@ export const useCart = create<CartStore>((set, get) => ({
         quantidade: i.quantidade,
         preco_unit: i.preco_unit,
       };
+      if (i.is_diversos && i.descricao?.trim()) {
+        o.descricao = i.descricao.trim();
+      }
       return o;
     });
   },

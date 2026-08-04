@@ -1,5 +1,5 @@
 import React, { useState, useDeferredValue, useCallback, useEffect } from "react";
-import { useCart, type CartItem } from "@/store/use-cart";
+import { DIVERSOS_CODIGO, useCart, type CartItem } from "@/store/use-cart";
 import { useProdutos } from "@/hooks/use-produtos";
 import { useRegistrarVendaWrapper } from "@/hooks/use-vendas";
 import { useCaixaStatus } from "@/hooks/use-caixa";
@@ -170,6 +170,88 @@ function FeiraLineEditor({
     </div>
   );
 }
+function DiversosLineEditor({
+  item,
+  onDescricaoChange,
+  onPrecoChange,
+  onRemove,
+  onQuantidadeChange,
+}: {
+  item: CartItem;
+  onDescricaoChange: (id: number, descricao: string) => void;
+  onPrecoChange: (id: number, preco: number) => void;
+  onRemove: () => void;
+  onQuantidadeChange: (delta: number) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [precoStr, setPrecoStr] = useState(() => item.preco_unit.toFixed(2));
+
+  useEffect(() => {
+    if (!editando) setPrecoStr(item.preco_unit.toFixed(2));
+  }, [item.preco_unit, editando]);
+
+  const confirmar = () => {
+    const valor = Number(String(precoStr).replace(",", "."));
+    if (Number.isFinite(valor) && valor >= 0) {
+      onPrecoChange(item.produto_id, valor);
+    } else {
+      setPrecoStr(item.preco_unit.toFixed(2));
+    }
+    setEditando(false);
+  };
+
+  return (
+    <div className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-amber-400/50">
+      <div className="flex justify-between items-start mb-2">
+        <span className="font-semibold">Diversos</span>
+        <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-destructive p-1">
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+      <Input
+        placeholder="Descrição do item (aparece no histórico)"
+        value={item.descricao ?? ""}
+        onChange={(e) => onDescricaoChange(item.produto_id, e.target.value)}
+        className="mb-2 h-9 text-sm"
+      />
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2 bg-background border border-border rounded-lg p-1">
+          <button type="button" onClick={() => onQuantidadeChange(-1)} className="p-1 hover:bg-secondary rounded">
+            <Minus className="w-4 h-4" />
+          </button>
+          <span className="font-mono font-bold w-10 text-center">{item.quantidade}</span>
+          <button type="button" onClick={() => onQuantidadeChange(1)} className="p-1 hover:bg-secondary rounded">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] text-muted-foreground leading-none mb-1">Valor (un.)</p>
+          {editando ? (
+            <Input
+              autoFocus
+              type="text"
+              inputMode="decimal"
+              value={precoStr}
+              onChange={(e) => setPrecoStr(e.target.value)}
+              onBlur={confirmar}
+              onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+              className="w-24 h-8 font-mono text-right"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditando(true)}
+              className="font-mono font-bold text-primary underline decoration-dashed underline-offset-4"
+              title="Clique para alterar o valor"
+            >
+              {formatMoney(item.preco_unit)}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Pdv() {
   const [search, setSearch] = useState("");
@@ -178,6 +260,12 @@ export default function Pdv() {
   
   const { data: produtos = [], isLoading } = useProdutos({ q: deferredSearch, categoria: categoria || undefined });
   const { data: statusCaixa } = useCaixaStatus();
+  const produtosOrdenados = React.useMemo(() => {
+    const idx = produtos.findIndex((p) => p.codigo === DIVERSOS_CODIGO);
+    if (idx <= 0) return produtos;
+    const diversos = produtos[idx];
+    return [diversos, ...produtos.filter((_, i) => i !== idx)];
+  }, [produtos]);
   
   const cart = useCart();
   const registrarVenda = useRegistrarVendaWrapper();
@@ -240,6 +328,11 @@ export default function Pdv() {
     }
     if (cart.items.length === 0) {
       toast({ title: "Carrinho Vazio", description: "Adicione produtos antes de finalizar.", variant: "destructive" });
+      return;
+    }
+    const diversosSemDescricao = cart.items.some((i) => i.is_diversos && !i.descricao?.trim());
+    if (diversosSemDescricao) {
+      toast({ title: "Descrição obrigatória", description: "Preencha a descrição do item 'Diversos' antes de finalizar.", variant: "destructive" });
       return;
     }
     if (method === 'fiado') {
@@ -549,7 +642,7 @@ export default function Pdv() {
             <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando produtos...</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-              {produtos.map((p) => (
+              {produtosOrdenados.map((p) => (
                 <div 
                   key={p.id}
                   onClick={() => handleAddToCart(p)}
@@ -575,7 +668,7 @@ export default function Pdv() {
                   </div>
                 </div>
               ))}
-              {produtos.length === 0 && (
+              {produtosOrdenados.length === 0 && (
                 <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground">
                   <Package className="w-12 h-12 mb-4 opacity-50" />
                   <p className="text-lg">Nenhum produto encontrado</p>
@@ -645,6 +738,15 @@ export default function Pdv() {
                   onFeiraChange={cart.setFeiraPesoUnidades}
                   onRemove={() => cart.removeItem(item.produto_id)}
                   onNudgePeso={(delta) => cart.updateQuantity(item.produto_id, delta)}
+                />
+              ) : item.is_diversos ? (
+                <DiversosLineEditor
+                  key={item.produto_id}
+                  item={item}
+                  onDescricaoChange={cart.setDiversosDescricao}
+                  onPrecoChange={cart.setDiversosPreco}
+                  onRemove={() => cart.removeItem(item.produto_id)}
+                  onQuantidadeChange={(delta) => cart.updateQuantity(item.produto_id, delta)}
                 />
               ) : (
                 <div key={item.produto_id} className="flex flex-col bg-secondary/30 p-3 rounded-xl border border-border/50">
