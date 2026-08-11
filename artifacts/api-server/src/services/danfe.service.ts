@@ -467,7 +467,11 @@ Write-Output "Impressão completa concluída"
   }
 }
 
-export async function reimprimirDanfeSimplificado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string) {
+export async function reimprimirDanfeSimplificado(xmlAutorizado: string,
+  qrCodeUrl?: string,
+  chaveAcesso?: string,
+  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
+) {
   const parsed = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado);
+  await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado, vendaDados);
 }

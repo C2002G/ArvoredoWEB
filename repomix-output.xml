@@ -280,6 +280,7 @@ package.json
 pnpm-workspace.yaml
 README.md
 simulador-stone.js
+start_arvoredo - Atalho.lnk
 start_arvoredo.bat
 test-usb-connection.js
 tsconfig.base.json

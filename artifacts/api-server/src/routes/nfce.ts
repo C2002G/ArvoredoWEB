@@ -43,12 +43,6 @@ router.post("/:vendaId/reimprimir", async (req, res) => {
     .orderBy(desc(nfceLogsTable.criado_em))
     .limit(1);
 
-  if (log?.xml_autorizado) {
-    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
-    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
-    return;
-  }
-
   const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
   if (!venda) {
     res.status(404).json({ ok: false, message: "Venda nao encontrada" });
@@ -60,9 +54,19 @@ router.post("/:vendaId/reimprimir", async (req, res) => {
     ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
     : [undefined];
 
+  if (log?.xml_autorizado) {
+    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined, {
+      venda,
+      itens,
+      clienteNome: cliente?.nome,
+    });
+    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
+    return;
+  }
+
   const { buildCupomText } = await import("../lib/print-layout");
   const { printTextToWindowsPrinter } = await import("../lib/printer");
-  const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined); 
+  const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined);
   await printTextToWindowsPrinter(text);
   res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
 });
