@@ -269,6 +269,7 @@ export default function Historico() {
                   <th className="px-6 py-4 font-medium">Categoria</th>
                   <th className="px-6 py-4 font-medium">Pagamento</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
+                  <th className="px-6 py-4 font-medium text-center">Usuário</th>
                   <th className="px-6 py-4 font-medium text-right">Total</th>
                   <th className="px-6 py-4 font-medium text-center">Status NFC-e</th>
                   <th className="px-6 py-4 font-medium text-center">Opções</th>
@@ -291,6 +292,19 @@ export default function Historico() {
                     </td>
                     <td className="px-6 py-4 capitalize font-medium">{v.pagamento}</td>
                     <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
+                    <td className="px-6 py-4 text-center"> {/* NOVO */}
+                      {(v as any).operador_iniciais ? (
+                        <span
+                          title={(v as any).operador_nome}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-full text-white text-xs font-bold"
+                          style={{ backgroundColor: (v as any).operador_cor || "#94a3b8" }}
+                        >
+                          {(v as any).operador_iniciais}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
                     <td className="px-6 py-4 text-center text-sm font-medium">
                       {loadingStatus ? (
@@ -329,7 +343,7 @@ export default function Historico() {
                   </tr>
                 ))}
                 {vendasFiltradas.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -416,3 +430,4 @@ export default function Historico() {
     </div>
   );
 }
+

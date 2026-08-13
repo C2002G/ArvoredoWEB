@@ -290,10 +290,10 @@ export default function Produtos() {
       marca: p.marca || "",
       codigo: p.codigo || "",
       categoria: p.categoria,
-      ncm: p.ncm || "",
+      ncm: (p as any).ncm || "",
       cfop: (p as any).cfop || "5102",
       cest: (p as any).cest || "",
-      cst: p.cst || "",
+      cst: (p as any).cst || "",
       preco: p.preco.toString(),
       custo: p.custo.toString(),
       estoque: p.estoque.toString(),
@@ -451,8 +451,8 @@ export default function Produtos() {
         const existing = item.codigoBarras ? produtosPorCodigo.get(item.codigoBarras) : undefined;
         if (existing) {
           await runEditarProduto(existing.id, {
-            ncm: existing.ncm || item.ncm,
-            cst: existing.cst || item.cst,
+            ncm: (existing as any).ncm || item.ncm,
+            cst: (existing as any).cst || item.cst,
             custo: item.valorUnitario,
             preco: existing.preco > 0 ? existing.preco : item.valorUnitario,
             estoque: existing.estoque + item.quantidade,

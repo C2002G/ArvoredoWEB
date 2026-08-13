@@ -7,6 +7,7 @@ import {
   clientesTable,
   sangriasTable,
   nfceLogsTable,
+  usuariosTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { printTextToWindowsPrinter, resolvePrinterName } from "../lib/printer";
@@ -144,7 +145,17 @@ router.post("/sangria", async (req, res) => {
       conditions.push(eq(vendasTable.sessao_id, payload.sessao_id));
     }
 
-    const vendas = await db.select().from(vendasTable).where(and(...conditions));
+    const vendasRaw = await db
+      .select({ venda: vendasTable, operador_nome: usuariosTable.nome, operador_sobrenome: usuariosTable.sobrenome })
+      .from(vendasTable)
+      .leftJoin(usuariosTable, eq(vendasTable.operador_id, usuariosTable.id))
+      .where(and(...conditions));
+
+    const vendas = vendasRaw.map(({ venda, operador_nome, operador_sobrenome }) => ({
+      ...venda,
+      operador_nome: operador_nome ? `${operador_nome}${operador_sobrenome ? " " + operador_sobrenome : ""}` : null,
+    }));
+
     const sangrias = await db
       .select()
       .from(sangriasTable)

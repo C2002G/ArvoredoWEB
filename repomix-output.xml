@@ -50,6 +50,7 @@ artifacts/
         logger.ts
         print-layout.ts
         printer.ts
+        senha.ts
       middlewares/
         .gitkeep
       routes/
@@ -62,6 +63,7 @@ artifacts/
         maquininha.ts
         nfce.ts
         produtos.ts
+        usuarios.ts
         vendas.ts
       services/
         danfe.service.ts
@@ -137,6 +139,7 @@ artifacts/
           toggle.tsx
           tooltip.tsx
         layout.tsx
+        OperadorBubble.tsx
         ui-elements.tsx
       hooks/
         use-caixa.ts
@@ -161,6 +164,7 @@ artifacts/
         produtos.tsx
       store/
         use-cart.ts
+        use-operador.ts
       App.tsx
       index.css
       main.tsx
@@ -262,6 +266,7 @@ lib/
         fiscal.ts
         index.ts
         produtos.ts
+        usuarios.ts
         vendas.ts
       index.ts
     drizzle.config.cjs
@@ -289,6 +294,302 @@ tsconfig.json
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="artifacts/api-server/src/lib/senha.ts">
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+
+const KEYLEN = 64; 
+
+export function hashSenha(senhaPlana: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(senhaPlana, salt, KEYLEN).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verificarSenha(senhaPlana: string, senhaHash: string): boolean {
+  const [salt, hash] = senhaHash.split(":");
+  if (!salt || !hash) return false;
+  const calculado = scryptSync(senhaPlana, salt, KEYLEN);
+  const armazenado = Buffer.from(hash, "hex");
+  if (calculado.length !== armazenado.length) return false;
+  return timingSafeEqual(calculado, armazenado);
+}
+</file>
+
+<file path="artifacts/api-server/src/routes/usuarios.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { usuariosTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
+import { hashSenha, verificarSenha } from "../lib/senha";
+
+const router: IRouter = Router();
+
+function iniciais(nome: string, sobrenome?: string | null): string {
+  const i1 = nome.trim()[0] ?? "";
+  const i2 = sobrenome?.trim()[0] ?? "";
+  return (i1 + i2).toUpperCase();
+}
+
+// Lista usuarios ativos (sem senha) — usado na tela de troca
+router.get("/", async (_req, res) => {
+  const usuarios = await db.select().from(usuariosTable).where(eq(usuariosTable.ativo, true));
+  res.json(
+    usuarios.map(({ senha_hash, ...u }) => ({
+      ...u,
+      iniciais: iniciais(u.nome, u.sobrenome),
+      criado_em: u.criado_em.toISOString(),
+    })),
+  );
+});
+
+router.post("/", async (req, res) => {
+  const { nome, sobrenome, usuario, senha, cor } = req.body as {
+    nome: string; sobrenome?: string; usuario: string; senha: string; cor?: string;
+  };
+  if (!nome?.trim() || !usuario?.trim() || !senha) {
+    res.status(400).json({ ok: false, message: "nome, usuario e senha sao obrigatorios" });
+    return;
+  }
+
+  const [criado] = await db.insert(usuariosTable).values({
+    nome: nome.trim(),
+    sobrenome: sobrenome?.trim() || null,
+    usuario: usuario.trim().toLowerCase(),
+    senha_hash: hashSenha(senha),
+    cor: cor || "#3b82f6",
+  }).returning();
+
+  const { senha_hash, ...resto } = criado;
+  res.status(201).json({ ...resto, iniciais: iniciais(criado.nome, criado.sobrenome), criado_em: criado.criado_em.toISOString() });
+});
+
+router.patch("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { nome, sobrenome, cor, ativo, senha } = req.body as {
+    nome?: string; sobrenome?: string; cor?: string; ativo?: boolean; senha?: string;
+  };
+
+  const updates: Record<string, unknown> = {};
+  if (nome !== undefined) updates.nome = nome;
+  if (sobrenome !== undefined) updates.sobrenome = sobrenome;
+  if (cor !== undefined) updates.cor = cor;
+  if (ativo !== undefined) updates.ativo = ativo;
+  if (senha) updates.senha_hash = hashSenha(senha);
+
+  const [usuario] = await db.update(usuariosTable).set(updates).where(eq(usuariosTable.id, id)).returning();
+  if (!usuario) {
+    res.status(404).json({ ok: false, message: "Usuario nao encontrado" });
+    return;
+  }
+  const { senha_hash, ...resto } = usuario;
+  res.json({ ...resto, iniciais: iniciais(usuario.nome, usuario.sobrenome), criado_em: usuario.criado_em.toISOString() });
+});
+
+router.post("/login", async (req, res) => {
+  const { usuario, senha } = req.body as { usuario: string; senha: string };
+  if (!usuario?.trim() || !senha) {
+    res.status(400).json({ ok: false, message: "usuario e senha sao obrigatorios" });
+    return;
+  }
+
+  const [encontrado] = await db
+    .select()
+    .from(usuariosTable)
+    .where(eq(usuariosTable.usuario, usuario.trim().toLowerCase()));
+
+  if (!encontrado || !encontrado.ativo || !verificarSenha(senha, encontrado.senha_hash)) {
+    res.status(401).json({ ok: false, message: "Usuario ou senha invalidos" });
+    return;
+  }
+
+  const { senha_hash, ...resto } = encontrado;
+  res.json({
+    ok: true,
+    usuario: { ...resto, iniciais: iniciais(encontrado.nome, encontrado.sobrenome), criado_em: encontrado.criado_em.toISOString() },
+  });
+});
+
+export default router;
+</file>
+
+<file path="artifacts/arvoredo/src/components/OperadorBubble.tsx">
+import { useState } from "react";
+import { Modal, Button, Input } from "@/components/ui-elements";
+import { useOperador, type Operador } from "@/store/use-operador";
+
+const CORES_DISPONIVEIS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
+
+export function OperadorBubble() {
+  const { operador, setOperador } = useOperador();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modo, setModo] = useState<"login" | "criar">("login");
+  const [usuarioInput, setUsuarioInput] = useState("");
+  const [senhaInput, setSenhaInput] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const [novoNome, setNovoNome] = useState("");
+  const [novoSobrenome, setNovoSobrenome] = useState("");
+  const [novoUsuario, setNovoUsuario] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [novaCor, setNovaCor] = useState(CORES_DISPONIVEIS[5]);
+
+  const resetForm = () => {
+    setUsuarioInput(""); setSenhaInput(""); setErro(null); setModo("login");
+  };
+
+  const handleLogin = async () => {
+    setErro(null); setLoading(true);
+    try {
+      const res = await fetch("/api/usuarios/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario: usuarioInput.trim(), senha: senhaInput }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setErro(data.message || "Usuario ou senha invalidos"); return; }
+      setOperador(data.usuario as Operador);
+      setModalOpen(false); resetForm();
+    } catch {
+      setErro("Erro de conexao com o servidor");
+    } finally { setLoading(false); }
+  };
+
+  const handleCriar = async () => {
+    setErro(null); setLoading(true);
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: novoNome.trim(), sobrenome: novoSobrenome.trim() || undefined,
+          usuario: novoUsuario.trim(), senha: novaSenha, cor: novaCor,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErro(data.message || "Erro ao criar operador"); return; }
+      setOperador({ ...data, iniciais: data.iniciais } as Operador);
+      setModalOpen(false); resetForm();
+    } catch {
+      setErro("Erro de conexao com o servidor");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setModalOpen(true)}
+        title={operador ? `${operador.nome} ${operador.sobrenome ?? ""}`.trim() : "Entrar"}
+        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 border-2 border-white/40 shadow-sm hover:scale-105 transition-transform"
+        style={{ backgroundColor: operador?.cor ?? "#94a3b8" }}
+      >
+        {operador ? operador.iniciais : "?"}
+      </button>
+
+      <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title={modo === "login" ? "Identificar operador" : "Novo operador"}>
+        <div className="space-y-4">
+          {operador && modo === "login" && (
+            <div className="flex items-center gap-2 bg-secondary/40 rounded-lg px-3 py-2">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: operador.cor }}>
+                {operador.iniciais}
+              </div>
+              <p className="text-sm">Logado como <strong>{operador.nome}</strong>. Entre com outro usuario pra trocar.</p>
+            </div>
+          )}
+
+          {modo === "login" ? (
+            <>
+              <Input placeholder="Usuario" value={usuarioInput} onChange={(e) => setUsuarioInput(e.target.value)} />
+              <Input type="password" placeholder="Senha" value={senhaInput}
+                onChange={(e) => setSenhaInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
+              {erro && <p className="text-sm text-destructive">{erro}</p>}
+              <Button onClick={handleLogin} disabled={loading || !usuarioInput || !senhaInput} className="w-full">
+                {loading ? "Entrando..." : "Entrar"}
+              </Button>
+              <button onClick={() => setModo("criar")} className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center">
+                Criar novo operador
+              </button>
+            </>
+          ) : (
+            <>
+              <Input placeholder="Nome" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
+              <Input placeholder="Sobrenome (opcional)" value={novoSobrenome} onChange={(e) => setNovoSobrenome(e.target.value)} />
+              <Input placeholder="Usuario (login)" value={novoUsuario} onChange={(e) => setNovoUsuario(e.target.value)} />
+              <Input type="password" placeholder="Senha" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
+              <div className="flex gap-2 flex-wrap">
+                {CORES_DISPONIVEIS.map((cor) => (
+                  <button key={cor} onClick={() => setNovaCor(cor)}
+                    className={`w-7 h-7 rounded-full border-2 ${novaCor === cor ? "border-foreground" : "border-transparent"}`}
+                    style={{ backgroundColor: cor }} />
+                ))}
+              </div>
+              {erro && <p className="text-sm text-destructive">{erro}</p>}
+              <Button onClick={handleCriar} disabled={loading || !novoNome || !novoUsuario || !novaSenha} className="w-full">
+                {loading ? "Criando..." : "Criar e entrar"}
+              </Button>
+              <button onClick={() => setModo("login")} className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center">
+                Voltar para login
+              </button>
+            </>
+          )}
+        </div>
+      </Modal>
+    </>
+  );
+}
+</file>
+
+<file path="artifacts/arvoredo/src/store/use-operador.ts">
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+export interface Operador {
+  id: number;
+  nome: string;
+  sobrenome?: string | null;
+  cor: string;
+  iniciais: string;
+}
+
+interface OperadorState {
+  operador: Operador | null;
+  setOperador: (op: Operador | null) => void;
+}
+
+export const useOperador = create<OperadorState>()(
+  persist(
+    (set) => ({
+      operador: null,
+      setOperador: (operador) => set({ operador }),
+    }),
+    { name: "arvoredo-operador" },
+  ),
+);
+</file>
+
+<file path="lib/db/src/schema/usuarios.ts">
+import { pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+
+export const usuariosTable = pgTable("usuarios", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  sobrenome: text("sobrenome"),
+  usuario: text("usuario").notNull().unique(), // login
+  senha_hash: text("senha_hash").notNull(),
+  cor: text("cor").notNull().default("#3b82f6"), // hex, cor da bolinha
+  ativo: boolean("ativo").notNull().default(true), 
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertUsuarioSchema = createInsertSchema(usuariosTable).omit({
+  id: true,
+  criado_em: true,
+  senha_hash: true,
+});
+</file>
 
 <file path="artifacts/api-server/src/lib/.gitkeep">
 
@@ -7454,6 +7755,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
 
+
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
@@ -9523,7 +9825,10 @@ function formatSessao(s: typeof sessoesCaixaTable.$inferSelect) {
 router.get("/:sessaoId/relatorio.xlsx", async (req, res) => {
   const sessaoId = Number(req.params.sessaoId);
   const [sessao] = await db.select().from(sessoesCaixaTable).where(eq(sessoesCaixaTable.id, sessaoId));
-  if (!sessao) return res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+  if (!sessao) {
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+    return;
+  }
 
   const vendas = await db.select().from(vendasTable).where(eq(vendasTable.sessao_id, sessaoId));
   const sangriasSessao = await db.select().from(sangriasTable).where(eq(sangriasTable.sessao_id, sessaoId));
@@ -9571,6 +9876,7 @@ router.get("/:sessaoId/relatorio.xlsx", async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename=caixa-${sessaoId}.xlsx`);
   await wb.xlsx.write(res);
   res.end();
+  return;
 });
 
 router.get("/status", async (_req, res) => {
@@ -9615,7 +9921,7 @@ router.post("/fechar", async (_req, res) => {
     .limit(1);
 
   if (!sessao) {
-    res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
     return;
   }
 
@@ -9636,7 +9942,7 @@ router.post("/sangria", async (req, res) => {
     .limit(1);
 
   if (!sessao) {
-    res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
     return;
   }
 
@@ -9660,6 +9966,7 @@ router.post("/sangria", async (req, res) => {
     ...sangria,
     criado_em: sangria.criado_em.toISOString(),
   });
+  return;
 });
 
 router.get("/sangrias", async (req, res) => {
@@ -10199,6 +10506,7 @@ export * from "./caixa";
 export * from "./clientes";
 export * from "./vendas";
 export * from "./fiscal";
+export * from "./usuarios";
 </file>
 
 <file path="lib/db/package.json">
@@ -13804,6 +14112,8 @@ import caixaRouter from "./caixa";
 import maquininhaRouter from "./maquininha";
 import impressoraRouter from "./impressora";
 import nfceRouter from "./nfce";
+import usuariosRouter from "./usuarios";
+
 
 const router: IRouter = Router();
 
@@ -13816,6 +14126,7 @@ router.use("/caixa", caixaRouter);
 router.use("/maquininha", maquininhaRouter);
 router.use("/impressora", impressoraRouter);
 router.use("/nfce", nfceRouter);
+router.use("/usuarios", usuariosRouter);
 
 export default router;
 </file>
@@ -15574,6 +15885,8 @@ import { z } from "zod/v4";
 import { sessoesCaixaTable } from "./caixa";
 import { clientesTable } from "./clientes";
 import { produtosTable } from "./produtos";
+import { usuariosTable } from "./usuarios";
+
 
 export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
 export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
@@ -15593,6 +15906,7 @@ export const vendasTable = pgTable("vendas", {
   tipo_pagamento: text("tipo_pagamento"),
   nsu_tef: text("nsu_tef"),
   tef_intencao_id: integer("tef_intencao_id"),
+  operador_id: integer("operador_id").references(() => usuariosTable.id), // NOVO — nullable
   criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -15878,146 +16192,6 @@ router.post("/comprovante-tef", async (req, res) => {
     const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
     logger.error(`Erro na rota /comprovante-tef: ${message}`);
     return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/routes/nfce.ts">
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable } from "@workspace/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { reimprimirDanfeSimplificado } from "../services/danfe.service";
-
-const router: IRouter = Router();
-
-// Rota para consultar o status da NFC-e
-router.get("/status/:vendaId", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
-
-  const [log] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
-
-  if (!log) {
-    res.json({ ok: true, status: "sem_emissao", log: null });
-    return;
-  }
-  res.json({ ok: true, status: log.status, log });
-});
-
-// Rota para reimprimir o cupom ou DANFE
-router.post("/:vendaId/reimprimir", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    res.status(400).json({ ok: false, message: "vendaId invalido" });
-    return;
-  }
-
-  const [log] = await db
-    .select()
-    .from(nfceLogsTable)
-    .where(eq(nfceLogsTable.venda_id, vendaId))
-    .orderBy(desc(nfceLogsTable.criado_em))
-    .limit(1);
-
-  if (log?.xml_autorizado) {
-    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined);
-    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
-    return;
-  }
-
-  const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
-  if (!venda) {
-    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
-    return;
-  }
-
-  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, vendaId));
-  const [cliente] = venda.cliente_id
-    ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
-    : [undefined];
-
-  const { buildCupomText } = await import("../lib/print-layout");
-  const { printTextToWindowsPrinter } = await import("../lib/printer");
-  const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined); 
-  await printTextToWindowsPrinter(text);
-  res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
-});
-
-// Rota de Cancelamento Integrada (Maquininha + Banco de Dados)
-router.post("/:vendaId/cancelar", async (req, res) => {
-  const vendaId = Number(req.params.vendaId);
-  if (!Number.isFinite(vendaId)) {
-    return res.status(400).json({ ok: false, message: "vendaId invalido" });
-  }
-
-  try {
-    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
-    if (!venda) {
-      return res.status(404).json({ ok: false, message: "Venda não encontrada" });
-    }
-
-    let tefNegado = false;
-
-    // Cartão E Pix passam pelo mesmo fluxo TEF/ControlPay — os dois
-    // precisam acionar o cancelamento, não só cartão.
-    if ((venda.pagamento === "cartao" || venda.pagamento === "pix") && venda.tef_intencao_id) {
-      console.log(`[TEF] Iniciando cancelamento PayGo para Intenção: ${venda.tef_intencao_id}`);
-
-      const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-      const key = process.env.CONTROLPAY_KEY?.trim() || "";
-      const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;
-
-      const respTef = await fetch(`${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          intencaoVendaId: venda.tef_intencao_id,
-          terminalId, // doc: mandatório, mesmo terminal da venda original
-          aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159",
-        }),
-      });
-
-      if (!respTef.ok) throw new Error("Falha ao comunicar cancelamento com a PayGo");
-
-      const tefData = (await respTef.json()) as any;
-      const statusCancelamento = tefData?.intencaoVenda?.intencaoVendaStatus;
-      console.log("[TEF] Status retornado pelo cancelamento:", statusCancelamento);
-
-      // 20 = Cancelado (sucesso real). Qualquer outro valor aqui = o host
-      // não efetivou — é exatamente o que o roteiro espera pro PIX.
-      if (statusCancelamento?.id !== 20) {
-        tefNegado = true;
-        console.log("[TEF] Cancelamento negado pelo host.");
-      }
-    }
-
-    await db.insert(nfceLogsTable).values({
-      venda_id: vendaId,
-      ambiente: "homologacao",
-      status: "processando",
-      mensagem_status_sefaz: tefNegado ? "TRANSAÇÃO NEGADA PELO HOST" : "Cancelamento solicitado (TEF acionado).",
-    });
-
-    if (tefNegado) {
-      return res.status(402).json({ ok: false, message: "TRANSAÇÃO NEGADA PELO HOST" });
-    }
-
-    res.status(202).json({ ok: true, message: "Estorno acionado na maquininha. Siga as instruções no terminal físico." });
-  } catch (error: any) {
-    console.error("[CANCELAR] Erro:", error);
-    res.status(500).json({ ok: false, message: error.message });
   }
 });
 
@@ -17349,6 +17523,152 @@ components:
 }
 </file>
 
+<file path="artifacts/api-server/src/routes/nfce.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable } from "@workspace/db/schema";
+import { desc, eq } from "drizzle-orm";
+import { reimprimirDanfeSimplificado } from "../services/danfe.service";
+
+const router: IRouter = Router();
+
+// Rota para consultar o status da NFC-e
+router.get("/status/:vendaId", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
+
+  const [log] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  if (!log) {
+    res.json({ ok: true, status: "sem_emissao", log: null });
+    return;
+  }
+  res.json({ ok: true, status: log.status, log });
+});
+
+// Rota para reimprimir o cupom ou DANFE
+router.post("/:vendaId/reimprimir", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
+
+  const [log] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+  if (!venda) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, vendaId));
+  const [cliente] = venda.cliente_id
+    ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
+    : [undefined];
+
+  if (log?.xml_autorizado) {
+    await reimprimirDanfeSimplificado(log.xml_autorizado, undefined, log.chave_acesso || undefined, {
+      venda,
+      itens,
+      clienteNome: cliente?.nome,
+    });
+    res.json({ ok: true, message: "DANFE reimpresso com sucesso" });
+    return;
+  }
+
+  const { buildCupomText } = await import("../lib/print-layout");
+  const { printTextToWindowsPrinter } = await import("../lib/printer");
+  const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined);
+  await printTextToWindowsPrinter(text);
+  res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
+});
+
+// Rota de Cancelamento Integrada (Maquininha + Banco de Dados)
+router.post("/:vendaId/cancelar", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    return res.status(400).json({ ok: false, message: "vendaId invalido" });
+  }
+
+  try {
+    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+    if (!venda) {
+      return res.status(404).json({ ok: false, message: "Venda não encontrada" });
+    }
+
+    let tefNegado = false;
+
+    // Cartão E Pix passam pelo mesmo fluxo TEF/ControlPay — os dois
+    // precisam acionar o cancelamento, não só cartão.
+    if ((venda.pagamento === "cartao" || venda.pagamento === "pix") && venda.tef_intencao_id) {
+      console.log(`[TEF] Iniciando cancelamento PayGo para Intenção: ${venda.tef_intencao_id}`);
+
+      const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+      const key = process.env.CONTROLPAY_KEY?.trim() || "";
+      const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0;
+
+      const respTef = await fetch(`${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intencaoVendaId: venda.tef_intencao_id,
+          terminalId, // doc: mandatório, mesmo terminal da venda original
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+      });
+
+      if (!respTef.ok) throw new Error("Falha ao comunicar cancelamento com a PayGo");
+
+      const tefData = (await respTef.json()) as any;
+      const statusCancelamento = tefData?.intencaoVenda?.intencaoVendaStatus;
+      console.log("[TEF] Status retornado pelo cancelamento:", statusCancelamento);
+
+      // 20 = Cancelado (sucesso real). Qualquer outro valor aqui = o host
+      // não efetivou — é exatamente o que o roteiro espera pro PIX.
+      if (statusCancelamento?.id !== 20) {
+        tefNegado = true;
+        console.log("[TEF] Cancelamento negado pelo host.");
+      }
+    }
+
+    await db.insert(nfceLogsTable).values({
+      venda_id: vendaId,
+      ambiente: "homologacao",
+      status: "processando",
+      mensagem_status_sefaz: tefNegado ? "TRANSAÇÃO NEGADA PELO HOST" : "Cancelamento solicitado (TEF acionado).",
+    });
+
+    if (tefNegado) {
+      return res.status(402).json({ ok: false, message: "TRANSAÇÃO NEGADA PELO HOST" });
+    }
+
+    res.status(202).json({ ok: true, message: "Estorno acionado na maquininha. Siga as instruções no terminal físico." });
+    return; // NOVO — só isso, nada mais muda nessa função
+  } catch (error: any) {
+    console.error("[CANCELAR] Erro:", error);
+    res.status(500).json({ ok: false, message: error.message });
+    return; // NOVO
+  }
+});
+
+export default router;
+</file>
+
 <file path="artifacts/arvoredo/src/pages/historico.tsx">
 import React, { useEffect, useMemo, useState } from "react";
 import { useVendasList, useVendasResumoHoje, useVendaItens } from "@/hooks/use-vendas";
@@ -18388,10 +18708,10 @@ export default function Produtos() {
       marca: p.marca || "",
       codigo: p.codigo || "",
       categoria: p.categoria,
-      ncm: p.ncm || "",
+      ncm: (p as any).ncm || "",
       cfop: (p as any).cfop || "5102",
       cest: (p as any).cest || "",
-      cst: p.cst || "",
+      cst: (p as any).cst || "",
       preco: p.preco.toString(),
       custo: p.custo.toString(),
       estoque: p.estoque.toString(),
@@ -18549,8 +18869,8 @@ export default function Produtos() {
         const existing = item.codigoBarras ? produtosPorCodigo.get(item.codigoBarras) : undefined;
         if (existing) {
           await runEditarProduto(existing.id, {
-            ncm: existing.ncm || item.ncm,
-            cst: existing.cst || item.cst,
+            ncm: (existing as any).ncm || item.ncm,
+            cst: (existing as any).cst || item.cst,
             custo: item.valorUnitario,
             preco: existing.preco > 0 ? existing.preco : item.valorUnitario,
             estoque: existing.estoque + item.quantidade,
@@ -20061,6 +20381,7 @@ router.get("/:id/itens", async (req, res) => {
 router.post("/", async (req, res) => {
   const data = RegistrarVendaBody.parse(req.body);
   const rawBody = req.body as Record<string, unknown>;
+  const operadorId = typeof rawBody.operador_id === "number" ? rawBody.operador_id : null;
 
   const sessao = await db.query.sessoesCaixaTable.findFirst({
     where: eq(sessoesCaixaTable.status, "aberto"),
@@ -20084,6 +20405,8 @@ router.post("/", async (req, res) => {
       tipo_pagamento: (data as any).tipo_pagamento ?? null,
       nsu_tef: (data as any).nsu_tef ?? null,
       tef_intencao_id: (data as any).tef_intencao_id ?? null,
+      operador_id: operadorId, // NOVO 
+
     } as any)
     .returning();
 
@@ -20156,6 +20479,7 @@ router.post("/", async (req, res) => {
       const produtosIds = data.itens.map((i) => i.produto_id);
       const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
       const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
+      const operadorId = typeof rawBody.operador_id === "number" ? rawBody.operador_id : null;
 
       const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
       const vendaParaSefaz = {
@@ -20167,6 +20491,7 @@ router.post("/", async (req, res) => {
               ? `${venda.observacao ? `${venda.observacao} | ` : ""}CNPJ_NA_NOTA:${cpfNota}`
               : venda.observacao,
       };
+      
 
       const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
 
@@ -20510,482 +20835,6 @@ export function buildSangriaText(
   rows.push("");
 
   return normalizeText(rows.join("\n"));
-}
-</file>
-
-<file path="artifacts/api-server/src/services/danfe.service.ts">
-import { XMLParser } from "fast-xml-parser";
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import QRCode from "qrcode";
-import { printTextToWindowsPrinter } from "../lib/printer";
-import { buildCupomText, type CupomVenda, type CupomItem } from "../lib/print-layout";
-
-type DanfeData = {
-  emitente: string;
-  destinatario: string;
-  documentoTipo?: string;
-  documentoDestinatario?: string;
-  numero: string;
-  serie: string;
-  dataEmissao: string;
-  itens: Array<{ descricao: string; qtd: number; unidade: string; valorUnit: number; total: number }>;
-  total: number;
-  desconto: number;
-  valorPago: number;
-  troco: number;
-  pagamentos: Array<{ meio: string; valor: number }>;
-  qrCodeUrl: string;
-  chaveAcesso: string;
-  nProt?: string;
-  dhRecbto?: string;
-  vTotTrib?: number;
-};
-
-function toNumber(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function asArray<T>(value: T | T[] | undefined): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function meioPagamento(cod: string): string {
-  const map: Record<string, string> = { "01": "Dinheiro", "03": "Cartao Credito", "04": "Cartao Debito", "05": "Credito Loja", "17": "PIX", "99": "Outros" };
-  return map[cod] || cod;
-}
-
-function formatarDataEmissao(dhEmi: string | undefined): string {
-  if (!dhEmi) return formatarHorarioBrasil(new Date());
-  try {
-    // dhEmi vem no formato "2026-05-11T19:26:42-03:00" com timezone já incluído
-    // Parse direto sem ajustes manuais de timezone
-    const d = new Date(dhEmi);
-    return formatarHorarioBrasil(d);
-    // Resultado: "11/05/2026 19:26:42"
-  } catch {
-    return dhEmi;
-  }
-}
-
-/**
- * Formata data/hora usando o fuso horário Brasil explicitamente.
- * Remove conversões manuais de timezone que causam problemas.
- */
-function formatarHorarioBrasil(data: Date | string): string {
-  const date = new Date(data);
-  
-  // Remove conversão manual de timezone - usa o timezone do sistema automaticamente
-  // O JavaScript já converte automaticamente datas ISO com timezone para o local
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit", 
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: "America/Sao_Paulo"
-  });
-}
-
-function formatDocumentoFiscal(dest: any) {
-  const raw = String(dest?.CNPJ || dest?.CPF || dest?.cnpj || dest?.cpf || "").trim();
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 14) return { tipo: "CNPJ", valor: digits };
-  if (digits.length === 11) return { tipo: "CPF", valor: digits };
-  return null;
-}
-
-function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
-  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
-  const parsed = parser.parse(xmlAutorizado);
-  const nfeProc = parsed?.nfeProc || parsed?.NFe || parsed;
-  const infNFe = nfeProc?.NFe?.infNFe || nfeProc?.infNFe;
-
-  const ide = infNFe?.ide || {};
-  const emit = infNFe?.emit || {};
-  const dest = infNFe?.dest || {};
-  const total = infNFe?.total?.ICMSTot || {};
-  const pag = infNFe?.pag || {};
-  const prot = nfeProc?.protNFe?.infProt || {};
-
-  const det = asArray(infNFe?.det);
-  const detPag = asArray(pag?.detPag);
-
-  const documentoFiscal = formatDocumentoFiscal(dest);
-
-  // Extrair QR Code de forma limpa e direta
-  const infNFeSupl = infNFe?.infNFeSupl || {};
-  let extractedQrCode = infNFeSupl?.qrCode || "";
-  
-  // Se não encontrou no XML parseado, tentar regex como fallback
-  if (!extractedQrCode) {
-    const qrMatch = xmlAutorizado.match(/<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i);
-    extractedQrCode = qrMatch ? qrMatch[1].trim() : "";
-  }
-  
-  const chave = chaveAcesso || prot?.chNFe || String(infNFe?.Id || "").replace(/^NFe/, "");
-  
-  // Priorizar QR Code do parâmetro, depois do XML, depois gerar via chave
-  const finalQrCode = qrCodeUrl || extractedQrCode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${chave}|3|2` : "");
-
-  return {
-    emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
-    destinatario: dest?.xNome || "Consumidor Final",
-    documentoTipo: documentoFiscal?.tipo,
-    documentoDestinatario: documentoFiscal?.valor,
-    numero: String(ide?.nNF || "000"),
-    serie: String(ide?.serie || "1"),
-    dataEmissao: formatarDataEmissao(ide?.dhEmi),
-    itens: det.map((item: any) => ({
-      descricao: item?.prod?.xProd || "Produto Nao Identificado",
-      qtd: toNumber(item?.prod?.qCom) || 1,
-      unidade: item?.prod?.uCom || "UN",
-      valorUnit: toNumber(item?.prod?.vUnCom) || 0,
-      total: toNumber(item?.prod?.vProd) || 0,
-    })),
-    total: toNumber(total?.vNF) || 0,
-    desconto: toNumber(total?.vDesc) || 0,
-    valorPago: toNumber(pag?.vTroco ? toNumber(total?.vNF) + toNumber(pag?.vTroco) : total?.vNF) || 0,
-    troco: toNumber(pag?.vTroco) || 0,
-    pagamentos: detPag.map((item: any) => ({
-      meio: meioPagamento(String(item?.tPag || "01")),
-      valor: toNumber(item?.vPag) || 0,
-    })),
-    qrCodeUrl: finalQrCode,
-    chaveAcesso: chave || "CHAVE_NAO_ENCONTRADA",
-    nProt: prot?.nProt || "",
-    dhRecbto: prot?.dhRecbto || "",
-    vTotTrib: toNumber(total?.vTotTrib),
-  };
-}
-
-function renderDanfeSimplificadoText(data: DanfeData): string {
-  const W = 48; // Largura do cupom em colunas
-  const rows: string[] = [];
-  const drawLine = () => "-".repeat(W);
-  const center = (str: string) => {
-    const text = str.trim().slice(0, W);
-    const pad = Math.max(0, Math.floor((W - text.length) / 2));
-    return " ".repeat(pad) + text + " ".repeat(W - text.length - pad);
-  };
-
-  rows.push(center(data.emitente));
-  rows.push(center("DANFE NFC-e"));
-  rows.push(center("Documento Auxiliar da Nota Fiscal"));
-  rows.push(drawLine());
-  rows.push(`NF: ${data.numero}  Serie: ${data.serie}`);
-  rows.push(`Emissao: ${data.dataEmissao}`);
-  rows.push(`Destinatario: ${data.destinatario}`);
-  if (data.documentoTipo && data.documentoDestinatario) {
-    rows.push(`${data.documentoTipo}: ${data.documentoDestinatario}`);
-  }
-  rows.push(drawLine());
-  rows.push("Qtd Und x Vlr.Unit = Total");
-
-  for (const item of data.itens) {
-    rows.push(item.descricao.slice(0, W));
-    rows.push(`  ${item.qtd} ${item.unidade} x R$ ${item.valorUnit.toFixed(2)} = R$ ${item.total.toFixed(2)}`);
-  }
-
-  rows.push(drawLine());
-  rows.push(`Valor Total: R$ ${data.total.toFixed(2)}`);
-  if (data.desconto > 0) rows.push(`Desconto: R$ ${data.desconto.toFixed(2)}`);
-  rows.push(`Valor Pago:  R$ ${data.valorPago.toFixed(2)}`);
-
-  if (data.pagamentos.length > 0) {
-    rows.push("Pagamentos:");
-    for (const p of data.pagamentos) rows.push(`  ${p.meio}: R$ ${p.valor.toFixed(2)}`);
-  }
-  if (data.troco > 0) rows.push(`Troco: R$ ${data.troco.toFixed(2)}`);
-
-  // Seção fiscal unificada - sem duplicações
-  rows.push(drawLine());
-  rows.push(center("Consulte pela chave de acesso em:"));
-  rows.push(center("www.sefaz.rs.gov.br/nfce/consulta"));
-  rows.push(center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()));
-
-  if (data.qrCodeUrl) {
-    rows.push(drawLine());
-    rows.push(center("Consulta via QR Code:"));
-    rows.push(center("Aponte a câmera para o QR Code abaixo"));
-    // QR Code será impresso como imagem via ESC/POS, não como texto
-  }
-
-  rows.push(drawLine());
-  rows.push(center("Obrigado pela preferencia!"));
-  rows.push("\r\n\r\n\r\n\r\n"); // Folga para corte
-
-  return rows.map((r) => r.trimEnd()).join("\r\n");
-}
-
-export async function imprimirDanfeSimplificado(
-  qrCodeUrl: string,
-  chaveAcesso: string,
-  xmlAutorizado: string,
-  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string; nProt?: string; dhRecbto?: string; vTotTrib?: number },
-) {
-  const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  
-  // Usar dados reais da venda quando disponíveis, senão fallback para XML
-  let text: string;
-  if (vendaDados) {
-    text = await buildCupomText(
-      vendaDados.venda,
-      vendaDados.itens,
-      vendaDados.clienteNome,
-      data.chaveAcesso,
-      data.qrCodeUrl,
-      {
-        nProt: vendaDados.nProt ?? data.nProt,
-        dhRecbto: vendaDados.dhRecbto ?? data.dhRecbto,
-        vTotTrib: vendaDados.vTotTrib ?? data.vTotTrib,
-      },
-    );
-  } else {
-    text = renderDanfeSimplificadoText(data);
-  }
-  
-  const mode = (process.env.DANFE_PRINT_MODE || "auto").toLowerCase();
-  const openTimeoutMs = Number(process.env.DANFE_USB_OPEN_TIMEOUT_MS || "5000");
-  const totalTimeoutMs = Number(process.env.DANFE_USB_TOTAL_TIMEOUT_MS || "12000");
-
-  const printViaUsb = async () => {
-    try {
-      // Importação correta do escpos com USB
-      const escposMod = await import("escpos");
-      const escpos = escposMod.default || escposMod;
-      
-      // Importar USB separadamente - corrigindo para usar a exportação correta
-      const escposUsbMod = await import("escpos-usb");
-      const UsbCtor = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
-      
-      // Configurar USB no escpos
-      escpos.USB = UsbCtor;
-      
-      console.log("[DANFE] Bibliotecas carregadas, verificando impressora USB...");
-      
-      // Tentar usar o método USB
-      const device = new escpos.USB();
-      const printer = new escpos.Printer(device);
-      
-      await new Promise<void>((resolve, reject) => {
-        const totalTimer = setTimeout(() => {
-          reject(new Error(`Timeout geral ao imprimir DANFE via USB (${totalTimeoutMs}ms)`));
-        }, totalTimeoutMs);
-        
-        const openTimer = setTimeout(() => {
-          clearTimeout(totalTimer);
-          reject(new Error(`Timeout ao abrir impressora USB (${openTimeoutMs}ms)`));
-        }, openTimeoutMs);
-        
-        device.open(async (err: Error | null) => {
-          clearTimeout(openTimer);
-          if (err) {
-            clearTimeout(totalTimer);
-            console.error("[DANFE] Erro ao abrir impressora USB:", err.message);
-            reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
-            return;
-          }
-          
-          console.log("[DANFE] Impressora USB conectada com sucesso!");
-          let qrTempPath: string | null = null;
-          
-          try {
-            const lines = text.split(/\r?\n/);
-            // Modo mais escuro para texto (double-strike + emphasized).
-            printer.raw(Buffer.from([0x1b, 0x47, 0x01])); // ESC G 1
-            printer.raw(Buffer.from([0x1b, 0x45, 0x01])); // ESC E 1
-            printer.align("ct").font("a").size(1, 1).text(" ");
-            for (const line of lines) {
-              printer.text(line);
-            }
-            printer.raw(Buffer.from([0x1b, 0x45, 0x00])); // ESC E 0
-            printer.raw(Buffer.from([0x1b, 0x47, 0x00])); // ESC G 0
-
-            if (data.qrCodeUrl) {
-              try {
-                printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "M");
-              } catch (qrError) {
-                try {
-                  const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
-                    type: "png",
-                    width: 160,
-                    margin: 2,
-                    errorCorrectionLevel: "M",
-                  });
-                  qrTempPath = path.join(
-                    os.tmpdir(),
-                    `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
-                  );
-                  await fs.writeFile(qrTempPath, qrBuffer);
-                  
-                  const image = await new Promise<any>((res, rej) => {
-                    escpos.Image.load(qrTempPath, (img: any) => {
-                      if (!img) rej(new Error("Falha ao carregar imagem QR"));
-                      res(img);
-                    });
-                  });
-                  printer.align("ct").raster(image);
-                } catch (imgError) {
-                  printer.align("ct").text("QR Code: " + data.qrCodeUrl);
-                }
-              }
-            }
-
-            printer.text(" ").cut().close(() => {
-              clearTimeout(totalTimer);
-              resolve();
-            });
-          } catch (printErr) {
-            clearTimeout(totalTimer);
-            reject(printErr);
-          } finally {
-            if (qrTempPath) {
-              await fs.rm(qrTempPath, { force: true }).catch(() => undefined);
-            }
-          }
-        });
-      });
-      
-    } catch (error) {
-      console.error("[DANFE] Erro ao inicializar impressora USB:", error);
-      throw error;
-    }
-  };
-
-  // Priorizar USB para QR Code como imagem
-  if (mode === "usb" || mode === "auto") {
-    try {
-      await printViaUsb();
-      return;
-    } catch (usbError) {
-      console.log("[DANFE] Falha na impressão USB, usando fallback Windows:", usbError);
-    }
-  }
-
-  // Fallback Windows: imprimir tudo em um único comando
-  if (data.qrCodeUrl) {
-    try {
-      const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { 
-        type: "png", 
-        width: 120,
-        margin: 1,
-        errorCorrectionLevel: "L"
-      });
-      const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
-      await fs.writeFile(qrTempPath, qrBuffer);
-      
-      // O texto já contém a seção fiscal do buildCupomText, não duplicar
-      
-      // Criar script PowerShell que imprime texto E QR Code em um único job
-      const psScript = `
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
-
-$textContent = "${text.replace(/"/g, '""').replace(/\r\n/g, '`r`n')}"
-$img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, '\\\\')}')
-
-# Configurar papel personalizado para impressora térmica (58mm)
-# 48 colunas = aprox. 384px @ 80dpi (densidade típica de impressoras térmicas)
-$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 384, 3000)
-$paperSize.RawKind = 256 # Custom paper size
-
-$pd = New-Object System.Drawing.Printing.PrintDocument
-$pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
-$pd.PrinterSettings.PrinterName = '${process.env.PRINTER_NAME || "ELGIN i7(USB)"}'
-$pd.DefaultPageSettings.PaperSize = $paperSize
-$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(2, 2, 5, 5) # Margens mínimas
-
-$pd.add_PrintPage({
-  param($s, $e)
-  
-  # Configurar fonte para impressora térmica
-  $font = New-Object System.Drawing.Font("Courier New", 6, [System.Drawing.FontStyle]::Regular)
-  $brush = [System.Drawing.Brushes]::Black
-  $x = 2
-  $y = 5
-  $lineHeight = 10
-  $maxWidth = 380 # Largura útil para 48 colunas @ 80dpi
-  
-  # Desenhar cada linha do texto
-  $lines = $textContent -split '\r\n'
-  foreach ($line in $lines) {
-    if ($y -lt 2800) { # Limite de altura para papel contínuo
-      $e.Graphics.DrawString($line, $font, $brush, $x, $y)
-      $y += $lineHeight
-    }
-  }
-  
-  # Desenhar QR Code centralizado com tamanho adequado para 48 colunas
-  $qrSize = 120 # Tamanho ajustado para 48 colunas
-  $qrX = ($maxWidth - $qrSize) / 2
-  $qrY = $y + 5
-  $e.Graphics.DrawImage($img, $qrX, $qrY, $qrSize, $qrSize)
-  
-  # Indicar que não há mais páginas
-  $e.HasMorePages = $false
-})
-
-$pd.Print()
-$img.Dispose()
-Write-Output "Impressão completa concluída"
-`;
-      
-      const psScriptPath = path.join(os.tmpdir(), `complete_print_${Date.now()}.ps1`);
-      await fs.writeFile(psScriptPath, psScript);
-      
-      const { exec } = await import("node:child_process");
-      await new Promise<void>((res, rej) => {
-        const psCommand = `powershell -ExecutionPolicy Bypass -File "${psScriptPath}"`;
-        exec(psCommand, { timeout: 20000 }, (err, stdout, stderr) => {
-          if (err) {
-            rej(err);
-          } else {
-            res();
-          }
-        });
-      });
-      
-      // Limpar arquivos temporários
-      await fs.rm(qrTempPath, { force: true }).catch(() => {});
-      await fs.rm(psScriptPath, { force: true }).catch(() => {});
-      
-    } catch (qrPrintErr) {
-      // Fallback final: imprimir texto com QR Code como URL
-      const W = 48;
-      const drawLine = () => "-".repeat(W);
-      const center = (str: string) => {
-        const textStr = str.trim().slice(0, W);
-        const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
-        return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
-      };
-      
-      text += "\r\n\r\n" + drawLine() + "\r\n";
-      text += center("QR Code - ESCANEAR ABAIXO") + "\r\n";
-      text += drawLine() + "\r\n";
-      
-      const qrLines = data.qrCodeUrl.match(/.{1,48}/g) || [data.qrCodeUrl];
-      text += qrLines.join("\r\n");
-      
-      text += "\r\n" + drawLine() + "\r\n";
-      text += center("Use o celular para escanear") + "\r\n";
-      
-      await printTextToWindowsPrinter(text);
-    }
-  } else {
-    // Sem QR Code - imprimir apenas texto
-    await printTextToWindowsPrinter(text);
-  }
-}
-
-export async function reimprimirDanfeSimplificado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string) {
-  const parsed = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
-  await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado);
 }
 </file>
 
@@ -21659,6 +21508,486 @@ export async function emitirNfce(
 }
 </file>
 
+<file path="artifacts/api-server/src/services/danfe.service.ts">
+import { XMLParser } from "fast-xml-parser";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import QRCode from "qrcode";
+import { printTextToWindowsPrinter } from "../lib/printer";
+import { buildCupomText, type CupomVenda, type CupomItem } from "../lib/print-layout";
+
+type DanfeData = {
+  emitente: string;
+  destinatario: string;
+  documentoTipo?: string;
+  documentoDestinatario?: string;
+  numero: string;
+  serie: string;
+  dataEmissao: string;
+  itens: Array<{ descricao: string; qtd: number; unidade: string; valorUnit: number; total: number }>;
+  total: number;
+  desconto: number;
+  valorPago: number;
+  troco: number;
+  pagamentos: Array<{ meio: string; valor: number }>;
+  qrCodeUrl: string;
+  chaveAcesso: string;
+  nProt?: string;
+  dhRecbto?: string;
+  vTotTrib?: number;
+};
+
+function toNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function asArray<T>(value: T | T[] | undefined): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function meioPagamento(cod: string): string {
+  const map: Record<string, string> = { "01": "Dinheiro", "03": "Cartao Credito", "04": "Cartao Debito", "05": "Credito Loja", "17": "PIX", "99": "Outros" };
+  return map[cod] || cod;
+}
+
+function formatarDataEmissao(dhEmi: string | undefined): string {
+  if (!dhEmi) return formatarHorarioBrasil(new Date());
+  try {
+    // dhEmi vem no formato "2026-05-11T19:26:42-03:00" com timezone já incluído
+    // Parse direto sem ajustes manuais de timezone
+    const d = new Date(dhEmi);
+    return formatarHorarioBrasil(d);
+    // Resultado: "11/05/2026 19:26:42"
+  } catch {
+    return dhEmi;
+  }
+}
+
+/**
+ * Formata data/hora usando o fuso horário Brasil explicitamente.
+ * Remove conversões manuais de timezone que causam problemas.
+ */
+function formatarHorarioBrasil(data: Date | string): string {
+  const date = new Date(data);
+  
+  // Remove conversão manual de timezone - usa o timezone do sistema automaticamente
+  // O JavaScript já converte automaticamente datas ISO com timezone para o local
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "America/Sao_Paulo"
+  });
+}
+
+function formatDocumentoFiscal(dest: any) {
+  const raw = String(dest?.CNPJ || dest?.CPF || dest?.cnpj || dest?.cpf || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 14) return { tipo: "CNPJ", valor: digits };
+  if (digits.length === 11) return { tipo: "CPF", valor: digits };
+  return null;
+}
+
+function parseXmlAutorizado(xmlAutorizado: string, qrCodeUrl?: string, chaveAcesso?: string): DanfeData {
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
+  const parsed = parser.parse(xmlAutorizado);
+  const nfeProc = parsed?.nfeProc || parsed?.NFe || parsed;
+  const infNFe = nfeProc?.NFe?.infNFe || nfeProc?.infNFe;
+
+  const ide = infNFe?.ide || {};
+  const emit = infNFe?.emit || {};
+  const dest = infNFe?.dest || {};
+  const total = infNFe?.total?.ICMSTot || {};
+  const pag = infNFe?.pag || {};
+  const prot = nfeProc?.protNFe?.infProt || {};
+
+  const det = asArray(infNFe?.det);
+  const detPag = asArray(pag?.detPag);
+
+  const documentoFiscal = formatDocumentoFiscal(dest);
+
+  // Extrair QR Code de forma limpa e direta
+  const infNFeSupl = infNFe?.infNFeSupl || {};
+  let extractedQrCode = infNFeSupl?.qrCode || "";
+  
+  // Se não encontrou no XML parseado, tentar regex como fallback
+  if (!extractedQrCode) {
+    const qrMatch = xmlAutorizado.match(/<qrCode[^>]*>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/qrCode>/i);
+    extractedQrCode = qrMatch ? qrMatch[1].trim() : "";
+  }
+  
+  const chave = chaveAcesso || prot?.chNFe || String(infNFe?.Id || "").replace(/^NFe/, "");
+  
+  // Priorizar QR Code do parâmetro, depois do XML, depois gerar via chave
+  const finalQrCode = qrCodeUrl || extractedQrCode || (chave ? `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${chave}|3|2` : "");
+
+  return {
+    emitente: emit?.xFant || emit?.xNome || "Emitente Nao Identificado",
+    destinatario: dest?.xNome || "Consumidor Final",
+    documentoTipo: documentoFiscal?.tipo,
+    documentoDestinatario: documentoFiscal?.valor,
+    numero: String(ide?.nNF || "000"),
+    serie: String(ide?.serie || "1"),
+    dataEmissao: formatarDataEmissao(ide?.dhEmi),
+    itens: det.map((item: any) => ({
+      descricao: item?.prod?.xProd || "Produto Nao Identificado",
+      qtd: toNumber(item?.prod?.qCom) || 1,
+      unidade: item?.prod?.uCom || "UN",
+      valorUnit: toNumber(item?.prod?.vUnCom) || 0,
+      total: toNumber(item?.prod?.vProd) || 0,
+    })),
+    total: toNumber(total?.vNF) || 0,
+    desconto: toNumber(total?.vDesc) || 0,
+    valorPago: toNumber(pag?.vTroco ? toNumber(total?.vNF) + toNumber(pag?.vTroco) : total?.vNF) || 0,
+    troco: toNumber(pag?.vTroco) || 0,
+    pagamentos: detPag.map((item: any) => ({
+      meio: meioPagamento(String(item?.tPag || "01")),
+      valor: toNumber(item?.vPag) || 0,
+    })),
+    qrCodeUrl: finalQrCode,
+    chaveAcesso: chave || "CHAVE_NAO_ENCONTRADA",
+    nProt: prot?.nProt || "",
+    dhRecbto: prot?.dhRecbto || "",
+    vTotTrib: toNumber(total?.vTotTrib),
+  };
+}
+
+function renderDanfeSimplificadoText(data: DanfeData): string {
+  const W = 48; // Largura do cupom em colunas
+  const rows: string[] = [];
+  const drawLine = () => "-".repeat(W);
+  const center = (str: string) => {
+    const text = str.trim().slice(0, W);
+    const pad = Math.max(0, Math.floor((W - text.length) / 2));
+    return " ".repeat(pad) + text + " ".repeat(W - text.length - pad);
+  };
+
+  rows.push(center(data.emitente));
+  rows.push(center("DANFE NFC-e"));
+  rows.push(center("Documento Auxiliar da Nota Fiscal"));
+  rows.push(drawLine());
+  rows.push(`NF: ${data.numero}  Serie: ${data.serie}`);
+  rows.push(`Emissao: ${data.dataEmissao}`);
+  rows.push(`Destinatario: ${data.destinatario}`);
+  if (data.documentoTipo && data.documentoDestinatario) {
+    rows.push(`${data.documentoTipo}: ${data.documentoDestinatario}`);
+  }
+  rows.push(drawLine());
+  rows.push("Qtd Und x Vlr.Unit = Total");
+
+  for (const item of data.itens) {
+    rows.push(item.descricao.slice(0, W));
+    rows.push(`  ${item.qtd} ${item.unidade} x R$ ${item.valorUnit.toFixed(2)} = R$ ${item.total.toFixed(2)}`);
+  }
+
+  rows.push(drawLine());
+  rows.push(`Valor Total: R$ ${data.total.toFixed(2)}`);
+  if (data.desconto > 0) rows.push(`Desconto: R$ ${data.desconto.toFixed(2)}`);
+  rows.push(`Valor Pago:  R$ ${data.valorPago.toFixed(2)}`);
+
+  if (data.pagamentos.length > 0) {
+    rows.push("Pagamentos:");
+    for (const p of data.pagamentos) rows.push(`  ${p.meio}: R$ ${p.valor.toFixed(2)}`);
+  }
+  if (data.troco > 0) rows.push(`Troco: R$ ${data.troco.toFixed(2)}`);
+
+  // Seção fiscal unificada - sem duplicações
+  rows.push(drawLine());
+  rows.push(center("Consulte pela chave de acesso em:"));
+  rows.push(center("www.sefaz.rs.gov.br/nfce/consulta"));
+  rows.push(center(data.chaveAcesso.replace(/(\d{4})/g, "$1 ").trim()));
+
+  if (data.qrCodeUrl) {
+    rows.push(drawLine());
+    rows.push(center("Consulta via QR Code:"));
+    rows.push(center("Aponte a câmera para o QR Code abaixo"));
+    // QR Code será impresso como imagem via ESC/POS, não como texto
+  }
+
+  rows.push(drawLine());
+  rows.push(center("Obrigado pela preferencia!"));
+  rows.push("\r\n\r\n\r\n\r\n"); // Folga para corte
+
+  return rows.map((r) => r.trimEnd()).join("\r\n");
+}
+
+export async function imprimirDanfeSimplificado(
+  qrCodeUrl: string,
+  chaveAcesso: string,
+  xmlAutorizado: string,
+  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string; nProt?: string; dhRecbto?: string; vTotTrib?: number },
+) {
+  const data = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
+  
+  // Usar dados reais da venda quando disponíveis, senão fallback para XML
+  let text: string;
+  if (vendaDados) {
+    text = await buildCupomText(
+      vendaDados.venda,
+      vendaDados.itens,
+      vendaDados.clienteNome,
+      data.chaveAcesso,
+      data.qrCodeUrl,
+      {
+        nProt: vendaDados.nProt ?? data.nProt,
+        dhRecbto: vendaDados.dhRecbto ?? data.dhRecbto,
+        vTotTrib: vendaDados.vTotTrib ?? data.vTotTrib,
+      },
+    );
+  } else {
+    text = renderDanfeSimplificadoText(data);
+  }
+  
+  const mode = (process.env.DANFE_PRINT_MODE || "auto").toLowerCase();
+  const openTimeoutMs = Number(process.env.DANFE_USB_OPEN_TIMEOUT_MS || "5000");
+  const totalTimeoutMs = Number(process.env.DANFE_USB_TOTAL_TIMEOUT_MS || "12000");
+
+  const printViaUsb = async () => {
+    try {
+      // Importação correta do escpos com USB
+      const escposMod = await import("escpos");
+      const escpos = escposMod.default || escposMod;
+      
+      // Importar USB separadamente - corrigindo para usar a exportação correta
+      const escposUsbMod = await import("escpos-usb");
+      const UsbCtor = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
+      
+      // Configurar USB no escpos
+      escpos.USB = UsbCtor;
+      
+      console.log("[DANFE] Bibliotecas carregadas, verificando impressora USB...");
+      
+      // Tentar usar o método USB
+      const device = new escpos.USB();
+      const printer = new escpos.Printer(device);
+      
+      await new Promise<void>((resolve, reject) => {
+        const totalTimer = setTimeout(() => {
+          reject(new Error(`Timeout geral ao imprimir DANFE via USB (${totalTimeoutMs}ms)`));
+        }, totalTimeoutMs);
+        
+        const openTimer = setTimeout(() => {
+          clearTimeout(totalTimer);
+          reject(new Error(`Timeout ao abrir impressora USB (${openTimeoutMs}ms)`));
+        }, openTimeoutMs);
+        
+        device.open(async (err: Error | null) => {
+          clearTimeout(openTimer);
+          if (err) {
+            clearTimeout(totalTimer);
+            console.error("[DANFE] Erro ao abrir impressora USB:", err.message);
+            reject(new Error(`Falha ao abrir impressora USB: ${String(err)}`));
+            return;
+          }
+          
+          console.log("[DANFE] Impressora USB conectada com sucesso!");
+          let qrTempPath: string | null = null;
+          
+          try {
+            const lines = text.split(/\r?\n/);
+            // Modo mais escuro para texto (double-strike + emphasized).
+            printer.raw(Buffer.from([0x1b, 0x47, 0x01])); // ESC G 1
+            printer.raw(Buffer.from([0x1b, 0x45, 0x01])); // ESC E 1
+            printer.align("ct").font("a").size(1, 1).text(" ");
+            for (const line of lines) {
+              printer.text(line);
+            }
+            printer.raw(Buffer.from([0x1b, 0x45, 0x00])); // ESC E 0
+            printer.raw(Buffer.from([0x1b, 0x47, 0x00])); // ESC G 0
+
+            if (data.qrCodeUrl) {
+              try {
+                printer.align("ct").qrcode(data.qrCodeUrl, 2, 6, "M");
+              } catch (qrError) {
+                try {
+                  const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, {
+                    type: "png",
+                    width: 160,
+                    margin: 2,
+                    errorCorrectionLevel: "M",
+                  });
+                  qrTempPath = path.join(
+                    os.tmpdir(),
+                    `arvoredo_qr_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
+                  );
+                  await fs.writeFile(qrTempPath, qrBuffer);
+                  
+                  const image = await new Promise<any>((res, rej) => {
+                    escpos.Image.load(qrTempPath, (img: any) => {
+                      if (!img) rej(new Error("Falha ao carregar imagem QR"));
+                      res(img);
+                    });
+                  });
+                  printer.align("ct").raster(image);
+                } catch (imgError) {
+                  printer.align("ct").text("QR Code: " + data.qrCodeUrl);
+                }
+              }
+            }
+
+            printer.text(" ").cut().close(() => {
+              clearTimeout(totalTimer);
+              resolve();
+            });
+          } catch (printErr) {
+            clearTimeout(totalTimer);
+            reject(printErr);
+          } finally {
+            if (qrTempPath) {
+              await fs.rm(qrTempPath, { force: true }).catch(() => undefined);
+            }
+          }
+        });
+      });
+      
+    } catch (error) {
+      console.error("[DANFE] Erro ao inicializar impressora USB:", error);
+      throw error;
+    }
+  };
+
+  // Priorizar USB para QR Code como imagem
+  if (mode === "usb" || mode === "auto") {
+    try {
+      await printViaUsb();
+      return;
+    } catch (usbError) {
+      console.log("[DANFE] Falha na impressão USB, usando fallback Windows:", usbError);
+    }
+  }
+
+  // Fallback Windows: imprimir tudo em um único comando
+  if (data.qrCodeUrl) {
+    try {
+      const qrBuffer = await QRCode.toBuffer(data.qrCodeUrl, { 
+        type: "png", 
+        width: 120,
+        margin: 1,
+        errorCorrectionLevel: "L"
+      });
+      const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
+      await fs.writeFile(qrTempPath, qrBuffer);
+      
+      // O texto já contém a seção fiscal do buildCupomText, não duplicar
+      
+      // Criar script PowerShell que imprime texto E QR Code em um único job
+      const psScript = `
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+
+$textContent = "${text.replace(/"/g, '""').replace(/\r\n/g, '`r`n')}"
+$img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, '\\\\')}')
+
+# Configurar papel personalizado para impressora térmica (58mm)
+# 48 colunas = aprox. 384px @ 80dpi (densidade típica de impressoras térmicas)
+$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 384, 3000)
+$paperSize.RawKind = 256 # Custom paper size
+
+$pd = New-Object System.Drawing.Printing.PrintDocument
+$pd.PrinterSettings = New-Object System.Drawing.Printing.PrinterSettings
+$pd.PrinterSettings.PrinterName = '${process.env.PRINTER_NAME || "ELGIN i7(USB)"}'
+$pd.DefaultPageSettings.PaperSize = $paperSize
+$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(2, 2, 5, 5) # Margens mínimas
+
+$pd.add_PrintPage({
+  param($s, $e)
+  
+  # Configurar fonte para impressora térmica
+  $font = New-Object System.Drawing.Font("Courier New", 6, [System.Drawing.FontStyle]::Regular)
+  $brush = [System.Drawing.Brushes]::Black
+  $x = 2
+  $y = 5
+  $lineHeight = 10
+  $maxWidth = 380 # Largura útil para 48 colunas @ 80dpi
+  
+  # Desenhar cada linha do texto
+  $lines = $textContent -split '\r\n'
+  foreach ($line in $lines) {
+    if ($y -lt 2800) { # Limite de altura para papel contínuo
+      $e.Graphics.DrawString($line, $font, $brush, $x, $y)
+      $y += $lineHeight
+    }
+  }
+  
+  # Desenhar QR Code centralizado com tamanho adequado para 48 colunas
+  $qrSize = 120 # Tamanho ajustado para 48 colunas
+  $qrX = ($maxWidth - $qrSize) / 2
+  $qrY = $y + 5
+  $e.Graphics.DrawImage($img, $qrX, $qrY, $qrSize, $qrSize)
+  
+  # Indicar que não há mais páginas
+  $e.HasMorePages = $false
+})
+
+$pd.Print()
+$img.Dispose()
+Write-Output "Impressão completa concluída"
+`;
+      
+      const psScriptPath = path.join(os.tmpdir(), `complete_print_${Date.now()}.ps1`);
+      await fs.writeFile(psScriptPath, psScript);
+      
+      const { exec } = await import("node:child_process");
+      await new Promise<void>((res, rej) => {
+        const psCommand = `powershell -ExecutionPolicy Bypass -File "${psScriptPath}"`;
+        exec(psCommand, { timeout: 20000 }, (err, stdout, stderr) => {
+          if (err) {
+            rej(err);
+          } else {
+            res();
+          }
+        });
+      });
+      
+      // Limpar arquivos temporários
+      await fs.rm(qrTempPath, { force: true }).catch(() => {});
+      await fs.rm(psScriptPath, { force: true }).catch(() => {});
+      
+    } catch (qrPrintErr) {
+      // Fallback final: imprimir texto com QR Code como URL
+      const W = 48;
+      const drawLine = () => "-".repeat(W);
+      const center = (str: string) => {
+        const textStr = str.trim().slice(0, W);
+        const pad = Math.max(0, Math.floor((W - textStr.length) / 2));
+        return " ".repeat(pad) + textStr + " ".repeat(W - textStr.length - pad);
+      };
+      
+      text += "\r\n\r\n" + drawLine() + "\r\n";
+      text += center("QR Code - ESCANEAR ABAIXO") + "\r\n";
+      text += drawLine() + "\r\n";
+      
+      const qrLines = data.qrCodeUrl.match(/.{1,48}/g) || [data.qrCodeUrl];
+      text += qrLines.join("\r\n");
+      
+      text += "\r\n" + drawLine() + "\r\n";
+      text += center("Use o celular para escanear") + "\r\n";
+      
+      await printTextToWindowsPrinter(text);
+    }
+  } else {
+    // Sem QR Code - imprimir apenas texto
+    await printTextToWindowsPrinter(text);
+  }
+}
+
+export async function reimprimirDanfeSimplificado(xmlAutorizado: string,
+  qrCodeUrl?: string,
+  chaveAcesso?: string,
+  vendaDados?: { venda: CupomVenda; itens: CupomItem[]; clienteNome?: string },
+) {
+  const parsed = parseXmlAutorizado(xmlAutorizado, qrCodeUrl, chaveAcesso);
+  await imprimirDanfeSimplificado(parsed.qrCodeUrl, parsed.chaveAcesso, xmlAutorizado, vendaDados);
+}
+</file>
+
 <file path="artifacts/arvoredo/src/pages/pdv.tsx">
 import React, { useState, useDeferredValue, useCallback, useEffect } from "react";
 import { DIVERSOS_CODIGO, useCart, type CartItem } from "@/store/use-cart";
@@ -21673,6 +22002,8 @@ import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode,
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
+import { OperadorBubble } from "@/components/OperadorBubble";
+import { useOperador } from "@/store/use-operador";
 
 type Cliente = { id: number; nome: string; apelido?: string | null; cpf?: string | null };
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "debito" | "credito" | "fiado";
@@ -21934,6 +22265,7 @@ export default function Pdv() {
   const imprimirCupom = useImprimirCupom();
   const enviarMaquininha = useEnviarParaMaquininha();
   const cancelarPagamento = useCancelarPagamento();
+  const { operador } = useOperador(); 
   const [tefStatus, setTefStatus] = useState<"idle" | "aguardando" | "aprovado" | "negado">("idle");
   const { toast } = useToast();
   const { data: clientes = [] } = useFiadoClientes();
@@ -22138,6 +22470,7 @@ export default function Pdv() {
       cliente_id: clienteId,
       observacao: observacaoComCpf,
       cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
+      operador_id: operador?.id, // NOVO
       itens: cart.getPayloadItens(),
       ...dadosCartao,
     } as any;
@@ -22345,22 +22678,24 @@ export default function Pdv() {
       <div className="w-full lg:w-[400px] xl:w-[450px] bg-card border-l border-border flex flex-col flex-shrink-0 h-full">
         <div className="p-6 border-b border-border bg-secondary/10">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
               <ShoppingBag className="text-primary" />
               Carrinho
             </h2>
-            <button
-              onClick={() => setClienteModal(true)}
-              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
-                clienteNota
-                  ? "bg-primary/10 border-primary/30 text-primary font-semibold"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              }`}
-              title="Vincular cliente à nota fiscal"
-            >
-              <UserCheck className="w-4 h-4" />
-              {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setClienteModal(true)}
+                      className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
+                        clienteNota
+                          ? "bg-primary/10 border-primary/30 text-primary font-semibold"
+                          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                      title="Vincular cliente à nota fiscal"
+                    >
+                <UserCheck className="w-4 h-4" />
+                {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
+              </button>
+              <OperadorBubble />
+            </div>
           </div>
 
           {/* Info do cliente vinculado */}

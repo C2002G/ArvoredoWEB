@@ -11,7 +11,7 @@ export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' |
   tipo_pagamento?: string | null;
 };
 export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
-export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
+export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'> & { operador_nome?: string | null }; // alterado
 export type SangriaItem = { valor: number; };
 
 
@@ -269,6 +269,18 @@ export function buildSangriaText(
   rows.push(`Cartao: ${formatMoney(totalCartao)}`.slice(0, W));
   rows.push(`Fiado: ${formatMoney(totalFiado)}`.slice(0, W));
   rows.push(drawLine(W));
+  const porOperador = new Map<string, number>();
+  for (const v of vendas) {
+    const chave = v.operador_nome || "Sem operador";
+    porOperador.set(chave, (porOperador.get(chave) ?? 0) + v.total);
+  }
+  if (porOperador.size > 0) {
+    rows.push("VENDAS POR OPERADOR".slice(0, W));
+    for (const [nome, total] of porOperador) {
+      rows.push(`${nome}: ${formatMoney(total)}`.slice(0, W));
+    }
+    rows.push(drawLine(W));
+  }
   rows.push(`Sangrias: ${sangrias.length}`.slice(0, W));
   rows.push(`Total sangria: ${formatMoney(totalSangrias)}`.slice(0, W));
   rows.push(drawLine(W));

@@ -20,7 +20,10 @@ function formatSessao(s: typeof sessoesCaixaTable.$inferSelect) {
 router.get("/:sessaoId/relatorio.xlsx", async (req, res) => {
   const sessaoId = Number(req.params.sessaoId);
   const [sessao] = await db.select().from(sessoesCaixaTable).where(eq(sessoesCaixaTable.id, sessaoId));
-  if (!sessao) return res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+  if (!sessao) {
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+    return;
+  }
 
   const vendas = await db.select().from(vendasTable).where(eq(vendasTable.sessao_id, sessaoId));
   const sangriasSessao = await db.select().from(sangriasTable).where(eq(sangriasTable.sessao_id, sessaoId));
@@ -68,6 +71,7 @@ router.get("/:sessaoId/relatorio.xlsx", async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename=caixa-${sessaoId}.xlsx`);
   await wb.xlsx.write(res);
   res.end();
+  return;
 });
 
 router.get("/status", async (_req, res) => {
@@ -112,7 +116,7 @@ router.post("/fechar", async (_req, res) => {
     .limit(1);
 
   if (!sessao) {
-    res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
     return;
   }
 
@@ -133,7 +137,7 @@ router.post("/sangria", async (req, res) => {
     .limit(1);
 
   if (!sessao) {
-    res.status(400).json({ ok: false, message: "Nenhum caixa aberto" });
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
     return;
   }
 
@@ -157,6 +161,7 @@ router.post("/sangria", async (req, res) => {
     ...sangria,
     criado_em: sangria.criado_em.toISOString(),
   });
+  return;
 });
 
 router.get("/sangrias", async (req, res) => {

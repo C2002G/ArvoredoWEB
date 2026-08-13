@@ -8,6 +8,7 @@ import {
   fiadosTable,
   clientesTable,
   nfceLogsTable,
+  usuariosTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, desc, inArray, ilike, or } from "drizzle-orm";
 import { RegistrarVendaBody } from "@workspace/api-zod";
@@ -17,7 +18,7 @@ import { imprimirDanfeSimplificado } from "../services/danfe.service";
 const router: IRouter = Router();
 
 router.get("/", async (req, res) => {
-  const { data, data_inicio, data_fim, categoria, limit, page, q } = req.query as {
+  const { data, data_inicio, data_fim, categoria, limit, page, q, operador_id } = req.query as {
     data?: string;
     data_inicio?: string;
     data_fim?: string;
@@ -25,6 +26,8 @@ router.get("/", async (req, res) => {
     limit?: string;
     page?: string;
     q?: string;
+    operador_id?: string; 
+
   };
 
   const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
@@ -40,6 +43,8 @@ router.get("/", async (req, res) => {
     conditions.push(gte(vendasTable.criado_em, start));
     conditions.push(lte(vendasTable.criado_em, end));
   }
+  if (operador_id) conditions.push(eq(vendasTable.operador_id, Number(operador_id))); // NOVO
+
   if (data_inicio) {
     const start = new Date(data_inicio);
     start.setHours(0, 0, 0, 0);
@@ -63,18 +68,24 @@ router.get("/", async (req, res) => {
   }
 
   const vendas = await db
-    .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
+    .select({ venda: vendasTable, cliente_nome: clientesTable.nome, operador_nome: usuariosTable.nome,
+      operador_sobrenome: usuariosTable.sobrenome, // NOVO
+      operador_cor: usuariosTable.cor,  })
     .from(vendasTable)
     .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
+    .leftJoin(usuariosTable, eq(vendasTable.operador_id, usuariosTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(vendasTable.criado_em))
     .limit(lim)
     .offset(offset);
 
   res.json(
-    vendas.map(({ venda, cliente_nome }) => ({
+    vendas.map(({ venda, cliente_nome, operador_nome, operador_sobrenome, operador_cor }) => ({
       ...venda,
       cliente_nome,
+      operador_nome: operador_nome ? `${operador_nome}${operador_sobrenome ? " " + operador_sobrenome : ""}` : null, // NOVO
+      operador_iniciais: operador_nome ? (operador_nome[0] + (operador_sobrenome?.[0] ?? "")).toUpperCase() : null,  // NOVO
+      operador_cor: operador_cor ?? null,          // NOVO
       criado_em: venda.criado_em.toISOString(),
     })),
   );
@@ -121,6 +132,7 @@ router.get("/:id/itens", async (req, res) => {
 router.post("/", async (req, res) => {
   const data = RegistrarVendaBody.parse(req.body);
   const rawBody = req.body as Record<string, unknown>;
+  const operadorId = typeof rawBody.operador_id === "number" ? rawBody.operador_id : null;
 
   const sessao = await db.query.sessoesCaixaTable.findFirst({
     where: eq(sessoesCaixaTable.status, "aberto"),
@@ -144,6 +156,8 @@ router.post("/", async (req, res) => {
       tipo_pagamento: (data as any).tipo_pagamento ?? null,
       nsu_tef: (data as any).nsu_tef ?? null,
       tef_intencao_id: (data as any).tef_intencao_id ?? null,
+      operador_id: operadorId, // NOVO 
+
     } as any)
     .returning();
 
@@ -216,6 +230,7 @@ router.post("/", async (req, res) => {
       const produtosIds = data.itens.map((i) => i.produto_id);
       const produtos = await db.query.produtosTable.findMany({ where: inArray(produtosTable.id, produtosIds) });
       const cliente = venda.cliente_id ? await db.query.clientesTable.findFirst({ where: eq(clientesTable.id, venda.cliente_id) }) : null;
+      const operadorId = typeof rawBody.operador_id === "number" ? rawBody.operador_id : null;
 
       const cpfNota = typeof rawBody.cpf_nota === "string" ? rawBody.cpf_nota.replace(/\D/g, "") : "";
       const vendaParaSefaz = {
@@ -227,6 +242,7 @@ router.post("/", async (req, res) => {
               ? `${venda.observacao ? `${venda.observacao} | ` : ""}CNPJ_NA_NOTA:${cpfNota}`
               : venda.observacao,
       };
+      
 
       const emissao = await emitirNfce(vendaParaSefaz, insertedItensVenda, produtos, cliente);
 
@@ -271,16 +287,16 @@ router.put("/:id", async (req, res) => {
     pagamento: "dinheiro" | "pix" | "cartao" | "fiado";
     cliente_id: number | null;
     observacao: string | null;
+    operador_id: number | null; // NOVO
+
   }>;
-  const [updated] = await db
-    .update(vendasTable)
-    .set({
-      pagamento: payload.pagamento,
-      cliente_id: payload.cliente_id,
-      observacao: payload.observacao,
-    })
-    .where(eq(vendasTable.id, id))
-    .returning();
+  const updates: Record<string, unknown> = {};
+  if (payload.pagamento !== undefined) updates.pagamento = payload.pagamento;
+  if (payload.cliente_id !== undefined) updates.cliente_id = payload.cliente_id;
+  if (payload.observacao !== undefined) updates.observacao = payload.observacao;
+  if (payload.operador_id !== undefined) updates.operador_id = payload.operador_id; // NOVO
+
+  const [updated] = await db.update(vendasTable).set(updates).where(eq(vendasTable.id, id)).returning();
   if (!updated) {
     res.status(404).json({ ok: false, message: "Venda nao encontrada" });
     return;

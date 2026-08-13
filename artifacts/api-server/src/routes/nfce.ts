@@ -132,9 +132,11 @@ router.post("/:vendaId/cancelar", async (req, res) => {
     }
 
     res.status(202).json({ ok: true, message: "Estorno acionado na maquininha. Siga as instruções no terminal físico." });
+    return; // NOVO — só isso, nada mais muda nessa função
   } catch (error: any) {
     console.error("[CANCELAR] Erro:", error);
     res.status(500).json({ ok: false, message: error.message });
+    return; // NOVO
   }
 });
 

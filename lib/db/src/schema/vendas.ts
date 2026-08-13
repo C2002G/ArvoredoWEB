@@ -4,6 +4,8 @@ import { z } from "zod/v4";
 import { sessoesCaixaTable } from "./caixa";
 import { clientesTable } from "./clientes";
 import { produtosTable } from "./produtos";
+import { usuariosTable } from "./usuarios";
+
 
 export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
 export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
@@ -23,6 +25,7 @@ export const vendasTable = pgTable("vendas", {
   tipo_pagamento: text("tipo_pagamento"),
   nsu_tef: text("nsu_tef"),
   tef_intencao_id: integer("tef_intencao_id"),
+  operador_id: integer("operador_id").references(() => usuariosTable.id), // NOVO — nullable
   criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 

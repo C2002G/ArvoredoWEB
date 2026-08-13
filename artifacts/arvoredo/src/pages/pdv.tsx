@@ -11,6 +11,8 @@ import { Search, ShoppingBag, Plus, Minus, Trash2, CreditCard, Banknote, QrCode,
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
 import { useToast } from "@/hooks/use-toast";
 import type { Produto } from "@workspace/api-client-react/src/generated/api.schemas";
+import { OperadorBubble } from "@/components/OperadorBubble";
+import { useOperador } from "@/store/use-operador";
 
 type Cliente = { id: number; nome: string; apelido?: string | null; cpf?: string | null };
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "debito" | "credito" | "fiado";
@@ -272,6 +274,7 @@ export default function Pdv() {
   const imprimirCupom = useImprimirCupom();
   const enviarMaquininha = useEnviarParaMaquininha();
   const cancelarPagamento = useCancelarPagamento();
+  const { operador } = useOperador(); 
   const [tefStatus, setTefStatus] = useState<"idle" | "aguardando" | "aprovado" | "negado">("idle");
   const { toast } = useToast();
   const { data: clientes = [] } = useFiadoClientes();
@@ -476,6 +479,7 @@ export default function Pdv() {
       cliente_id: clienteId,
       observacao: observacaoComCpf,
       cpf_nota: cpfDigits.length === 11 || cpfDigits.length === 14 ? cpfDigits : undefined,
+      operador_id: operador?.id, // NOVO
       itens: cart.getPayloadItens(),
       ...dadosCartao,
     } as any;
@@ -683,22 +687,24 @@ export default function Pdv() {
       <div className="w-full lg:w-[400px] xl:w-[450px] bg-card border-l border-border flex flex-col flex-shrink-0 h-full">
         <div className="p-6 border-b border-border bg-secondary/10">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
               <ShoppingBag className="text-primary" />
               Carrinho
             </h2>
-            <button
-              onClick={() => setClienteModal(true)}
-              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
-                clienteNota
-                  ? "bg-primary/10 border-primary/30 text-primary font-semibold"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              }`}
-              title="Vincular cliente à nota fiscal"
-            >
-              <UserCheck className="w-4 h-4" />
-              {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setClienteModal(true)}
+                      className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all ${
+                        clienteNota
+                          ? "bg-primary/10 border-primary/30 text-primary font-semibold"
+                          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                      title="Vincular cliente à nota fiscal"
+                    >
+                <UserCheck className="w-4 h-4" />
+                {clienteNota ? (clienteNota.apelido || clienteNota.nome) : "Vincular cliente"}
+              </button>
+              <OperadorBubble />
+            </div>
           </div>
 
           {/* Info do cliente vinculado */}
