@@ -67,6 +67,10 @@ function normalizeBarcode(code: string): string | null {
   return trimmed;
 }
 
+function normalizeNome(nome: string): string {
+  return nome.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function parseNfeXml(xmlText: string): NfeImportPreview {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, "application/xml");
@@ -199,7 +203,7 @@ function CodigoBarrasInput({
 export default function Produtos() {
   const [search, setSearch] = useState("");
   const { data: produtos = [], isLoading } = useProdutos({ q: search });
-  
+
   const criar = useCriarProdutoWrapper();
   const editar = useEditarProdutoWrapper();
   const deletar = useDeletarProdutoWrapper();
@@ -211,8 +215,13 @@ export default function Produtos() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [xmlRaw, setXmlRaw] = useState("");
   const [xmlPreview, setXmlPreview] = useState<NfeImportPreview | null>(null);
+  const [xmlItens, setXmlItens] = useState<NfeItem[]>([]);
   const [importingXml, setImportingXml] = useState(false);
-  
+
+  const updateXmlItem = (idx: number, patch: Partial<NfeItem>) => {
+    setXmlItens((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
+  };
+
   const defaultForm = {
     nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria,
     ncm: "", cfop: "5102", cest: "", cst: "", preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
@@ -280,6 +289,7 @@ export default function Produtos() {
   const handleOpenImport = () => {
     setXmlRaw("");
     setXmlPreview(null);
+    setXmlItens([]);
     setImportModalOpen(true);
   };
 
@@ -360,6 +370,7 @@ export default function Produtos() {
     try {
       const parsed = parseNfeXml(xmlRaw);
       setXmlPreview(parsed);
+      setXmlItens(parsed.itens);
       toast({
         title: "XML lido com sucesso",
         description: `${parsed.itens.length} item(ns) encontrado(s).`,
@@ -369,6 +380,7 @@ export default function Produtos() {
       const message = err instanceof Error ? err.message : "Falha ao ler XML";
       toast({ title: "Erro no XML", description: message, variant: "destructive" });
       setXmlPreview(null);
+      setXmlItens([]);
     }
   };
 
@@ -388,11 +400,11 @@ export default function Produtos() {
     unidade: string;
     validade?: string | null;
   }) =>
-    new Promise<void>((resolve, reject) => {
+    new Promise<Produto>((resolve, reject) => {
       criar.mutate(
         { data },
         {
-          onSuccess: () => resolve(),
+          onSuccess: (produtoCriado) => resolve(produtoCriado),
           onError: (err) => reject(err),
         }
       );
@@ -428,7 +440,7 @@ export default function Produtos() {
     });
 
   const handleImportarXml = async () => {
-    if (!xmlPreview) {
+    if (!xmlPreview || xmlItens.length === 0) {
       toast({
         title: "Leia o XML primeiro",
         description: "Clique em \"Ler XML\" antes de importar.",
@@ -441,26 +453,42 @@ export default function Produtos() {
     try {
       let criados = 0;
       let atualizados = 0;
+
       const produtosPorCodigo = new Map(
         produtos
           .filter((p) => !!p.codigo)
           .map((p) => [p.codigo!.trim(), p] as const)
       );
+      const produtosPorNome = new Map(
+        produtos.map((p) => [normalizeNome(p.nome), p] as const)
+      );
 
-      for (const item of xmlPreview.itens) {
-        const existing = item.codigoBarras ? produtosPorCodigo.get(item.codigoBarras) : undefined;
+      for (const item of xmlItens) {
+        const existing =
+          (item.codigoBarras ? produtosPorCodigo.get(item.codigoBarras) : undefined) ??
+          produtosPorNome.get(normalizeNome(item.descricao));
+
         if (existing) {
+          const novoEstoque = existing.estoque + item.quantidade;
+          const novoCodigo = existing.codigo || item.codigoBarras || null;
+
           await runEditarProduto(existing.id, {
+            codigo: novoCodigo,
             ncm: (existing as any).ncm || item.ncm,
             cst: (existing as any).cst || item.cst,
             custo: item.valorUnitario,
             preco: existing.preco > 0 ? existing.preco : item.valorUnitario,
-            estoque: existing.estoque + item.quantidade,
+            estoque: novoEstoque,
             unidade: existing.unidade || item.unidade,
           });
           atualizados++;
+
+          // mantém os mapas locais em dia pra casar itens repetidos dentro do mesmo XML
+          const atualizado = { ...existing, estoque: novoEstoque, codigo: novoCodigo ?? existing.codigo };
+          if (atualizado.codigo) produtosPorCodigo.set(atualizado.codigo.trim(), atualizado);
+          produtosPorNome.set(normalizeNome(atualizado.nome), atualizado);
         } else {
-          await runCriarProduto({
+          const criado = await runCriarProduto({
             nome: item.descricao,
             marca: null,
             codigo: item.codigoBarras,
@@ -475,6 +503,9 @@ export default function Produtos() {
             validade: null,
           });
           criados++;
+
+          if (criado.codigo) produtosPorCodigo.set(criado.codigo.trim(), criado);
+          produtosPorNome.set(normalizeNome(criado.nome), criado);
         }
       }
 
@@ -515,8 +546,8 @@ export default function Produtos() {
         <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative w-full max-w-md flex-1">
             <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-            <Input 
-              placeholder="Buscar por nome, marca ou código..." 
+            <Input
+              placeholder="Buscar por nome, marca ou código..."
               className="pl-10 h-12"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -538,7 +569,7 @@ export default function Produtos() {
             </Button>
           )}
         </div>
-        
+
         <div className="overflow-x-auto flex-1">
           {isLoading ? (
             <div className="p-12 text-center text-muted-foreground">Carregando catálogo...</div>
@@ -615,13 +646,12 @@ export default function Produtos() {
                       <td className="px-4 py-4 font-bold">{p.nome}</td>
                       <td className="px-4 py-4 text-muted-foreground">{p.marca || '-'}</td>
                       <td className="px-4 py-4">
-                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                          p.categoria === "cozinha"
-                            ? "bg-orange-100 text-orange-700"
-                            : p.categoria === "feira"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-primary/10 text-primary"
-                        }`}>
+                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.categoria === "cozinha"
+                          ? "bg-orange-100 text-orange-700"
+                          : p.categoria === "feira"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-primary/10 text-primary"
+                          }`}>
                           {p.categoria}
                         </span>
                       </td>
@@ -631,9 +661,8 @@ export default function Produtos() {
                       </td>
                       <td className="px-4 py-4">
                         {p.validade ? (
-                          <span className={`flex items-center gap-1 text-sm font-medium ${
-                            vs === 'vencido' ? 'text-destructive' : vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
-                          }`}>
+                          <span className={`flex items-center gap-1 text-sm font-medium ${vs === 'vencido' ? 'text-destructive' : vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
+                            }`}>
                             <Calendar className="w-4 h-4" />
                             {formatValidade(p.validade)}
                             {vs === 'vencido' && <span className="text-xs font-bold bg-destructive/10 px-1 rounded">VENCIDO</span>}
@@ -677,11 +706,11 @@ export default function Produtos() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Nome Base (ID) *</label>
-              <Input required value={formData.nome} onChange={e => setFormData({...formData, nome: e.target.value})} placeholder="Ex: Arroz" />
+              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Ex: Arroz" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Marca / Variação</label>
-              <Input value={formData.marca} onChange={e => setFormData({...formData, marca: e.target.value})} placeholder="Ex: PratoFino 5kg" />
+              <Input value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: PratoFino 5kg" />
             </div>
           </div>
 
@@ -690,13 +719,13 @@ export default function Produtos() {
             <label className="block text-sm font-medium mb-2">Código de Barras</label>
             <CodigoBarrasInput
               value={formData.codigo}
-              onChange={v => setFormData({...formData, codigo: v})}
+              onChange={v => setFormData({ ...formData, codigo: v })}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">Categoria *</label>
-            <Select required value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value as CriarProdutoInputCategoria})}>
+            <Select required value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value as CriarProdutoInputCategoria })}>
               <option value="mercado">Mercado</option>
               <option value="cozinha">Cozinha / Lanchonete</option>
               <option value="feira">Feira (peso)</option>
@@ -709,49 +738,49 @@ export default function Produtos() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">NCM</label>
-              <Input value={formData.ncm} onChange={e => setFormData({...formData, ncm: e.target.value})} placeholder="Ex: 22011000" />
+              <Input value={formData.ncm} onChange={e => setFormData({ ...formData, ncm: e.target.value })} placeholder="Ex: 22011000" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">CST / CSOSN</label>
-              <Input value={formData.cst} onChange={e => setFormData({...formData, cst: e.target.value})} placeholder="Ex: 060 ou 102" />
+              <Input value={formData.cst} onChange={e => setFormData({ ...formData, cst: e.target.value })} placeholder="Ex: 060 ou 102" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">CFOP</label>
-              <Input value={(formData as any).cfop} onChange={e => setFormData({...formData, cfop: e.target.value} as any)} placeholder="Ex: 5102" />
+              <Input value={(formData as any).cfop} onChange={e => setFormData({ ...formData, cfop: e.target.value } as any)} placeholder="Ex: 5102" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">CEST</label>
-              <Input value={(formData as any).cest} onChange={e => setFormData({...formData, cest: e.target.value} as any)} placeholder="Ex: 1234567" />
+              <Input value={(formData as any).cest} onChange={e => setFormData({ ...formData, cest: e.target.value } as any)} placeholder="Ex: 1234567" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Custo (R$)</label>
-              <Input type="number" step="0.01" min="0" value={formData.custo} onChange={e => setFormData({...formData, custo: e.target.value})} />
+              <Input type="number" step="0.01" min="0" value={formData.custo} onChange={e => setFormData({ ...formData, custo: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Preço Venda (R$) *</label>
-              <Input required type="number" step="0.01" min="0" value={formData.preco} onChange={e => setFormData({...formData, preco: e.target.value})} />
+              <Input required type="number" step="0.01" min="0" value={formData.preco} onChange={e => setFormData({ ...formData, preco: e.target.value })} />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Estoque Inicial</label>
-              <Input type="number" step="0.01" value={formData.estoque} onChange={e => setFormData({...formData, estoque: e.target.value})} />
+              <Input type="number" step="0.01" value={formData.estoque} onChange={e => setFormData({ ...formData, estoque: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Estoque Min.</label>
-              <Input type="number" step="0.01" value={formData.estoque_min} onChange={e => setFormData({...formData, estoque_min: e.target.value})} />
+              <Input type="number" step="0.01" value={formData.estoque_min} onChange={e => setFormData({ ...formData, estoque_min: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Unidade</label>
               <Input
                 value={formData.categoria === "feira" ? "kg" : formData.unidade}
-                onChange={e => setFormData({...formData, unidade: e.target.value})}
+                onChange={e => setFormData({ ...formData, unidade: e.target.value })}
                 placeholder="un, kg, L"
                 disabled={formData.categoria === "feira"}
               />
@@ -764,7 +793,7 @@ export default function Produtos() {
             <Input
               type="date"
               value={formData.validade}
-              onChange={e => setFormData({...formData, validade: e.target.value})}
+              onChange={e => setFormData({ ...formData, validade: e.target.value })}
             />
           </div>
           <div className="pt-6 flex justify-end gap-3">
@@ -834,14 +863,54 @@ export default function Produtos() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {xmlPreview.itens.slice(0, 100).map((item, idx) => (
+                    {xmlItens.slice(0, 100).map((item, idx) => (
                       <tr key={`${item.codigoInterno}-${idx}`}>
-                        <td className="px-3 py-2">{item.descricao}</td>
-                        <td className="px-3 py-2 font-mono">{item.codigoBarras || "-"}</td>
-                        <td className="px-3 py-2">{item.ncm || "-"}</td>
-                        <td className="px-3 py-2">{item.cst || "-"}</td>
-                        <td className="px-3 py-2 text-right font-mono">{item.quantidade}</td>
-                        <td className="px-3 py-2 text-right font-mono">{formatMoney(item.valorUnitario)}</td>
+                        <td className="px-2 py-1">
+                          <input
+                            className="w-full min-w-[180px] bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                            value={item.descricao}
+                            onChange={(e) => updateXmlItem(idx, { descricao: e.target.value })}
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <input
+                            className="w-28 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                            value={item.codigoBarras ?? ""}
+                            onChange={(e) => updateXmlItem(idx, { codigoBarras: e.target.value || null })}
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <input
+                            className="w-20 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                            value={item.ncm ?? ""}
+                            onChange={(e) => updateXmlItem(idx, { ncm: e.target.value || null })}
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <input
+                            className="w-16 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                            value={item.cst ?? ""}
+                            onChange={(e) => updateXmlItem(idx, { cst: e.target.value || null })}
+                          />
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          <input
+                            type="number"
+                            step="0.0001"
+                            className="w-20 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                            value={item.quantidade}
+                            onChange={(e) => updateXmlItem(idx, { quantidade: Number(e.target.value) || 0 })}
+                          />
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-24 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                            value={item.valorUnitario}
+                            onChange={(e) => updateXmlItem(idx, { valorUnitario: Number(e.target.value) || 0 })}
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -883,3 +952,4 @@ export default function Produtos() {
     </div>
   );
 }
+

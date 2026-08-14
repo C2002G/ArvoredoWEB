@@ -162,6 +162,7 @@ artifacts/
         not-found.tsx
         pdv.tsx
         produtos.tsx
+        usuarios.tsx
       store/
         use-cart.ts
         use-operador.ts
@@ -295,6 +296,33 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
+<file path="artifacts/api-server/src/lib/.gitkeep">
+
+</file>
+
+<file path="artifacts/api-server/src/lib/logger.ts">
+import pino from "pino";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    "res.headers['set-cookie']",
+  ],
+  ...(isProduction
+    ? {}
+    : {
+        transport: {
+          target: "pino-pretty",
+          options: { colorize: true },
+        },
+      }),
+});
+</file>
+
 <file path="artifacts/api-server/src/lib/senha.ts">
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
@@ -316,11 +344,29 @@ export function verificarSenha(senhaPlana: string, senhaHash: string): boolean {
 }
 </file>
 
+<file path="artifacts/api-server/src/middlewares/.gitkeep">
+
+</file>
+
+<file path="artifacts/api-server/src/routes/health.ts">
+import { Router, type IRouter } from "express";
+import { HealthCheckResponse } from "@workspace/api-zod";
+
+const router: IRouter = Router();
+
+router.get("/healthz", (_req, res) => {
+  const data = HealthCheckResponse.parse({ status: "ok" });
+  res.json(data);
+});
+
+export default router;
+</file>
+
 <file path="artifacts/api-server/src/routes/usuarios.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usuariosTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usuariosTable, vendasTable } from "@workspace/db/schema";
+import { eq, sql } from "drizzle-orm"; 
 import { hashSenha, verificarSenha } from "../lib/senha";
 
 const router: IRouter = Router();
@@ -330,6 +376,36 @@ function iniciais(nome: string, sobrenome?: string | null): string {
   const i2 = sobrenome?.trim()[0] ?? "";
   return (i1 + i2).toUpperCase();
 }
+
+router.get("/resumo", async (_req, res) => {
+  const usuarios = await db.select().from(usuariosTable);
+
+  const totais = await db
+    .select({
+      operador_id: vendasTable.operador_id,
+      total: sql<number>`sum(${vendasTable.total})`.as("total"),
+      qtd: sql<number>`count(*)`.as("qtd"),
+    })
+    .from(vendasTable)
+    .where(sql`${vendasTable.operador_id} is not null`)
+    .groupBy(vendasTable.operador_id);
+
+  const totaisPorUsuario = new Map(totais.map((t) => [t.operador_id, t]));
+
+  res.json(
+    usuarios.map((u) => {
+      const { senha_hash, ...resto } = u;
+      const t = totaisPorUsuario.get(u.id);
+      return {
+        ...resto,
+        iniciais: iniciais(u.nome, u.sobrenome),
+        criado_em: u.criado_em.toISOString(),
+        total_vendido: t?.total ?? 0,
+        qtd_vendas: t?.qtd ?? 0,
+      };
+    }),
+  );
+});
 
 // Lista usuarios ativos (sem senha) — usado na tela de troca
 router.get("/", async (_req, res) => {
@@ -408,229 +484,6 @@ router.post("/login", async (req, res) => {
     ok: true,
     usuario: { ...resto, iniciais: iniciais(encontrado.nome, encontrado.sobrenome), criado_em: encontrado.criado_em.toISOString() },
   });
-});
-
-export default router;
-</file>
-
-<file path="artifacts/arvoredo/src/components/OperadorBubble.tsx">
-import { useState } from "react";
-import { Modal, Button, Input } from "@/components/ui-elements";
-import { useOperador, type Operador } from "@/store/use-operador";
-
-const CORES_DISPONIVEIS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
-
-export function OperadorBubble() {
-  const { operador, setOperador } = useOperador();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modo, setModo] = useState<"login" | "criar">("login");
-  const [usuarioInput, setUsuarioInput] = useState("");
-  const [senhaInput, setSenhaInput] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const [novoNome, setNovoNome] = useState("");
-  const [novoSobrenome, setNovoSobrenome] = useState("");
-  const [novoUsuario, setNovoUsuario] = useState("");
-  const [novaSenha, setNovaSenha] = useState("");
-  const [novaCor, setNovaCor] = useState(CORES_DISPONIVEIS[5]);
-
-  const resetForm = () => {
-    setUsuarioInput(""); setSenhaInput(""); setErro(null); setModo("login");
-  };
-
-  const handleLogin = async () => {
-    setErro(null); setLoading(true);
-    try {
-      const res = await fetch("/api/usuarios/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario: usuarioInput.trim(), senha: senhaInput }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setErro(data.message || "Usuario ou senha invalidos"); return; }
-      setOperador(data.usuario as Operador);
-      setModalOpen(false); resetForm();
-    } catch {
-      setErro("Erro de conexao com o servidor");
-    } finally { setLoading(false); }
-  };
-
-  const handleCriar = async () => {
-    setErro(null); setLoading(true);
-    try {
-      const res = await fetch("/api/usuarios", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nome: novoNome.trim(), sobrenome: novoSobrenome.trim() || undefined,
-          usuario: novoUsuario.trim(), senha: novaSenha, cor: novaCor,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setErro(data.message || "Erro ao criar operador"); return; }
-      setOperador({ ...data, iniciais: data.iniciais } as Operador);
-      setModalOpen(false); resetForm();
-    } catch {
-      setErro("Erro de conexao com o servidor");
-    } finally { setLoading(false); }
-  };
-
-  return (
-    <>
-      <button
-        onClick={() => setModalOpen(true)}
-        title={operador ? `${operador.nome} ${operador.sobrenome ?? ""}`.trim() : "Entrar"}
-        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 border-2 border-white/40 shadow-sm hover:scale-105 transition-transform"
-        style={{ backgroundColor: operador?.cor ?? "#94a3b8" }}
-      >
-        {operador ? operador.iniciais : "?"}
-      </button>
-
-      <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title={modo === "login" ? "Identificar operador" : "Novo operador"}>
-        <div className="space-y-4">
-          {operador && modo === "login" && (
-            <div className="flex items-center gap-2 bg-secondary/40 rounded-lg px-3 py-2">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: operador.cor }}>
-                {operador.iniciais}
-              </div>
-              <p className="text-sm">Logado como <strong>{operador.nome}</strong>. Entre com outro usuario pra trocar.</p>
-            </div>
-          )}
-
-          {modo === "login" ? (
-            <>
-              <Input placeholder="Usuario" value={usuarioInput} onChange={(e) => setUsuarioInput(e.target.value)} />
-              <Input type="password" placeholder="Senha" value={senhaInput}
-                onChange={(e) => setSenhaInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
-              {erro && <p className="text-sm text-destructive">{erro}</p>}
-              <Button onClick={handleLogin} disabled={loading || !usuarioInput || !senhaInput} className="w-full">
-                {loading ? "Entrando..." : "Entrar"}
-              </Button>
-              <button onClick={() => setModo("criar")} className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center">
-                Criar novo operador
-              </button>
-            </>
-          ) : (
-            <>
-              <Input placeholder="Nome" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
-              <Input placeholder="Sobrenome (opcional)" value={novoSobrenome} onChange={(e) => setNovoSobrenome(e.target.value)} />
-              <Input placeholder="Usuario (login)" value={novoUsuario} onChange={(e) => setNovoUsuario(e.target.value)} />
-              <Input type="password" placeholder="Senha" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
-              <div className="flex gap-2 flex-wrap">
-                {CORES_DISPONIVEIS.map((cor) => (
-                  <button key={cor} onClick={() => setNovaCor(cor)}
-                    className={`w-7 h-7 rounded-full border-2 ${novaCor === cor ? "border-foreground" : "border-transparent"}`}
-                    style={{ backgroundColor: cor }} />
-                ))}
-              </div>
-              {erro && <p className="text-sm text-destructive">{erro}</p>}
-              <Button onClick={handleCriar} disabled={loading || !novoNome || !novoUsuario || !novaSenha} className="w-full">
-                {loading ? "Criando..." : "Criar e entrar"}
-              </Button>
-              <button onClick={() => setModo("login")} className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center">
-                Voltar para login
-              </button>
-            </>
-          )}
-        </div>
-      </Modal>
-    </>
-  );
-}
-</file>
-
-<file path="artifacts/arvoredo/src/store/use-operador.ts">
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
-
-export interface Operador {
-  id: number;
-  nome: string;
-  sobrenome?: string | null;
-  cor: string;
-  iniciais: string;
-}
-
-interface OperadorState {
-  operador: Operador | null;
-  setOperador: (op: Operador | null) => void;
-}
-
-export const useOperador = create<OperadorState>()(
-  persist(
-    (set) => ({
-      operador: null,
-      setOperador: (operador) => set({ operador }),
-    }),
-    { name: "arvoredo-operador" },
-  ),
-);
-</file>
-
-<file path="lib/db/src/schema/usuarios.ts">
-import { pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-
-export const usuariosTable = pgTable("usuarios", {
-  id: serial("id").primaryKey(),
-  nome: text("nome").notNull(),
-  sobrenome: text("sobrenome"),
-  usuario: text("usuario").notNull().unique(), // login
-  senha_hash: text("senha_hash").notNull(),
-  cor: text("cor").notNull().default("#3b82f6"), // hex, cor da bolinha
-  ativo: boolean("ativo").notNull().default(true), 
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const insertUsuarioSchema = createInsertSchema(usuariosTable).omit({
-  id: true,
-  criado_em: true,
-  senha_hash: true,
-});
-</file>
-
-<file path="artifacts/api-server/src/lib/.gitkeep">
-
-</file>
-
-<file path="artifacts/api-server/src/lib/logger.ts">
-import pino from "pino";
-
-const isProduction = process.env.NODE_ENV === "production";
-
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
-  redact: [
-    "req.headers.authorization",
-    "req.headers.cookie",
-    "res.headers['set-cookie']",
-  ],
-  ...(isProduction
-    ? {}
-    : {
-        transport: {
-          target: "pino-pretty",
-          options: { colorize: true },
-        },
-      }),
-});
-</file>
-
-<file path="artifacts/api-server/src/middlewares/.gitkeep">
-
-</file>
-
-<file path="artifacts/api-server/src/routes/health.ts">
-import { Router, type IRouter } from "express";
-import { HealthCheckResponse } from "@workspace/api-zod";
-
-const router: IRouter = Router();
-
-router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
 });
 
 export default router;
@@ -6721,6 +6574,140 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 </file>
 
+<file path="artifacts/arvoredo/src/components/OperadorBubble.tsx">
+import { useState } from "react";
+import { Modal, Button, Input } from "@/components/ui-elements";
+import { useOperador, type Operador } from "@/store/use-operador";
+
+const CORES_DISPONIVEIS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
+
+export function OperadorBubble() {
+  const { operador, setOperador } = useOperador();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modo, setModo] = useState<"login" | "criar">("login");
+  const [usuarioInput, setUsuarioInput] = useState("");
+  const [senhaInput, setSenhaInput] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const [novoNome, setNovoNome] = useState("");
+  const [novoSobrenome, setNovoSobrenome] = useState("");
+  const [novoUsuario, setNovoUsuario] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [novaSenhaConfirm, setNovaSenhaConfirm] = useState("");
+  const [novaCor, setNovaCor] = useState(CORES_DISPONIVEIS[5]);
+
+  const resetForm = () => {
+  setUsuarioInput(""); setSenhaInput(""); setErro(null); setModo("login");
+  setNovoNome(""); setNovoSobrenome(""); setNovoUsuario(""); setNovaSenha(""); setNovaSenhaConfirm(""); // NOVO
+  };
+
+  const handleLogin = async () => {
+    setErro(null); setLoading(true);
+    try {
+      const res = await fetch("/api/usuarios/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario: usuarioInput.trim(), senha: senhaInput }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setErro(data.message || "Usuario ou senha invalidos"); return; }
+      setOperador(data.usuario as Operador);
+      setModalOpen(false); resetForm();
+    } catch {
+      setErro("Erro de conexao com o servidor");
+    } finally { setLoading(false); }
+  };
+
+  const handleCriar = async () => {
+    if (novaSenha !== novaSenhaConfirm) {
+        setErro("As senhas não coincidem");
+        return;
+    }
+    setErro(null); setLoading(true);
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: novoNome.trim(), sobrenome: novoSobrenome.trim() || undefined,
+          usuario: novoUsuario.trim(), senha: novaSenha, cor: novaCor,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErro(data.message || "Erro ao criar operador"); return; }
+      setOperador({ ...data, iniciais: data.iniciais } as Operador);
+      setModalOpen(false); resetForm();
+    } catch {
+      setErro("Erro de conexao com o servidor");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setModalOpen(true)}
+        title={operador ? `${operador.nome} ${operador.sobrenome ?? ""}`.trim() : "Entrar"}
+        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 border-2 border-white/40 shadow-sm hover:scale-105 transition-transform"
+        style={{ backgroundColor: operador?.cor ?? "#94a3b8" }}
+      >
+        {operador ? operador.iniciais : "?"}
+      </button>
+
+      <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title={modo === "login" ? "Identificar operador" : "Novo operador"}>
+        <div className="space-y-4">
+          {operador && modo === "login" && (
+            <div className="flex items-center gap-2 bg-secondary/40 rounded-lg px-3 py-2">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: operador.cor }}>
+                {operador.iniciais}
+              </div>
+              <p className="text-sm">Logado como <strong>{operador.nome}</strong>. Entre com outro usuario pra trocar.</p>
+            </div>
+          )}
+
+          {modo === "login" ? (
+            <>
+              <Input placeholder="Usuario" value={usuarioInput} onChange={(e) => setUsuarioInput(e.target.value)} />
+              <Input type="password" placeholder="Senha" value={senhaInput}
+                onChange={(e) => setSenhaInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
+              {erro && <p className="text-sm text-destructive">{erro}</p>}
+              <Button onClick={handleLogin} disabled={loading || !usuarioInput || !senhaInput} className="w-full">
+                {loading ? "Entrando..." : "Entrar"}
+              </Button>
+              <button onClick={() => setModo("criar")} className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center">
+                Criar novo operador
+              </button>
+            </>
+          ) : (
+            <>
+              <Input placeholder="Nome" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
+              <Input placeholder="Sobrenome (opcional)" value={novoSobrenome} onChange={(e) => setNovoSobrenome(e.target.value)} />
+              <Input placeholder="Usuario (login)" value={novoUsuario} onChange={(e) => setNovoUsuario(e.target.value)} />
+              <Input type="password" placeholder="Senha" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
+              <Input type="password" placeholder="Confirmar senha" value={novaSenhaConfirm} onChange={(e) => setNovaSenhaConfirm(e.target.value)} />
+              <div className="flex gap-2 flex-wrap">
+                {CORES_DISPONIVEIS.map((cor) => (
+                  <button key={cor} onClick={() => setNovaCor(cor)}
+                    className={`w-7 h-7 rounded-full border-2 ${novaCor === cor ? "border-foreground" : "border-transparent"}`}
+                    style={{ backgroundColor: cor }} />
+                ))}
+              </div>
+              {erro && <p className="text-sm text-destructive">{erro}</p>}
+              <Button onClick={handleCriar} disabled={loading || !novoNome || !novoUsuario || !novaSenha || novaSenha !== novaSenhaConfirm} className="w-full">                {loading ? "Criando..." : "Criar e entrar"}
+              </Button>
+              <button onClick={() => setModo("login")} className="text-xs text-muted-foreground hover:text-foreground underline w-full text-center">
+                Voltar para login
+              </button>
+            </>
+          )}
+        </div>
+      </Modal>
+    </>
+  );
+}
+</file>
+
 <file path="artifacts/arvoredo/src/components/ui-elements.tsx">
 import React, { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -7083,6 +7070,314 @@ export default function NotFound() {
     </div>
   );
 }
+</file>
+
+<file path="artifacts/arvoredo/src/pages/usuarios.tsx">
+import { useEffect, useState } from "react";
+import { Button, Input, Modal, Select } from "@/components/ui-elements";
+import { formatMoney, formatDate } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { UserCog, Trash2, ArrowLeftRight } from "lucide-react";
+
+type UsuarioResumo = {
+  id: number;
+  nome: string;
+  sobrenome?: string | null;
+  usuario: string;
+  cor: string;
+  ativo: boolean;
+  iniciais: string;
+  total_vendido: number;
+  qtd_vendas: number;
+};
+
+type VendaDoUsuario = {
+  id: number;
+  categoria: string;
+  pagamento: string;
+  total: number;
+  cliente_nome?: string | null;
+  criado_em: string;
+};
+
+type ItemVenda = {
+  id: number;
+  nome_snap: string;
+  quantidade: number;
+  unidades?: number | null;
+  preco_unit: number;
+  subtotal: number;
+};
+
+export default function Usuarios() {
+  const { toast } = useToast();
+  const [usuarios, setUsuarios] = useState<UsuarioResumo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [selecionado, setSelecionado] = useState<UsuarioResumo | null>(null);
+  const [vendas, setVendas] = useState<VendaDoUsuario[]>([]);
+  const [loadingVendas, setLoadingVendas] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState("10");
+  const pageLimit = pageSize === "all" ? 1000 : Number(pageSize);
+
+  const [vendaItens, setVendaItens] = useState<{ vendaId: number; itens: ItemVenda[] } | null>(null);
+  const [transferirVendaId, setTransferirVendaId] = useState<number | null>(null);
+  const [novoOperadorId, setNovoOperadorId] = useState<string>("");
+
+  const carregarUsuarios = async () => {
+    setLoading(true);
+    const resp = await fetch("/api/usuarios/resumo");
+    const data = await resp.json();
+    setUsuarios(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    carregarUsuarios();
+  }, []);
+
+  const abrirUsuario = async (u: UsuarioResumo) => {
+    setSelecionado(u);
+    setPage(1);
+  };
+
+  useEffect(() => {
+    if (!selecionado) return;
+    setLoadingVendas(true);
+    const params = new URLSearchParams({
+      operador_id: String(selecionado.id),
+      page: String(page),
+      limit: String(pageLimit === 1000 ? pageLimit : pageLimit + 1),
+    });
+    fetch(`/api/vendas?${params}`)
+      .then((r) => r.json())
+      .then((data) => setVendas(data))
+      .finally(() => setLoadingVendas(false));
+  }, [selecionado, page, pageSize]);
+
+  const vendasFiltradas = vendas.slice(0, pageLimit);
+  const hasNextPage = vendas.length > pageLimit;
+
+  const verItens = async (vendaId: number) => {
+    const resp = await fetch(`/api/vendas/${vendaId}/itens`);
+    const itens = await resp.json();
+    setVendaItens({ vendaId, itens });
+  };
+
+  const confirmarTransferencia = async () => {
+    if (!transferirVendaId || !novoOperadorId) return;
+    const resp = await fetch(`/api/vendas/${transferirVendaId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operador_id: Number(novoOperadorId) }),
+    });
+    if (resp.ok) {
+      toast({ title: "Venda transferida", className: "bg-green-600 text-white" });
+      setTransferirVendaId(null);
+      setNovoOperadorId("");
+      // recarrega a lista do usuario atual e os totais
+      if (selecionado) {
+        const params = new URLSearchParams({ operador_id: String(selecionado.id), page: String(page), limit: String(pageLimit) });
+        const r = await fetch(`/api/vendas?${params}`);
+        setVendas(await r.json());
+      }
+      carregarUsuarios();
+    } else {
+      toast({ title: "Erro ao transferir venda", variant: "destructive" });
+    }
+  };
+
+  const excluirUsuario = async (u: UsuarioResumo) => {
+    if (!confirm(`Inativar o operador "${u.nome}"? Ele não vai mais aparecer pra login, mas o histórico de vendas dele é mantido.`)) return;
+    const resp = await fetch(`/api/usuarios/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ativo: false }),
+    });
+    if (resp.ok) {
+      toast({ title: "Operador inativado", className: "bg-green-600 text-white" });
+      carregarUsuarios();
+      if (selecionado?.id === u.id) setSelecionado(null);
+    } else {
+      toast({ title: "Erro ao inativar operador", variant: "destructive" });
+    }
+  };
+
+  if (selecionado) {
+    return (
+      <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
+        <button onClick={() => setSelecionado(null)} className="text-sm text-primary hover:underline mb-4">
+          ← Voltar pra lista de usuários
+        </button>
+
+        <div className="flex items-center gap-3 mb-8">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold"
+            style={{ backgroundColor: selecionado.cor }}
+          >
+            {selecionado.iniciais}
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">{selecionado.nome} {selecionado.sobrenome ?? ""}</h1>
+            <p className="text-muted-foreground text-sm">
+              {selecionado.qtd_vendas} vendas · {formatMoney(selecionado.total_vendido)} em total vendido
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-border bg-background flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Itens por página:</span>
+              <Select value={pageSize} onChange={(e) => { setPageSize(e.target.value); setPage(1); }} className="w-28">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="100">100</option>
+                <option value="all">Todos</option>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Button size="sm" variant="outline" disabled={page <= 1 || loadingVendas} onClick={() => setPage((p) => Math.max(1, p - 1))}>Anterior</Button>
+              <span className="text-muted-foreground">Página {page}</span>
+              <Button size="sm" variant="outline" disabled={loadingVendas || !hasNextPage} onClick={() => setPage((p) => p + 1)}>Próxima</Button>
+            </div>
+          </div>
+
+          <table className="w-full text-left">
+            <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
+              <tr>
+                <th className="px-6 py-4 font-medium">Data/Hora</th>
+                <th className="px-6 py-4 font-medium">Categoria</th>
+                <th className="px-6 py-4 font-medium">Pagamento</th>
+                <th className="px-6 py-4 font-medium">Cliente</th>
+                <th className="px-6 py-4 font-medium text-right">Total</th>
+                <th className="px-6 py-4 font-medium text-center">Opções</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {loadingVendas ? (
+                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</td></tr>
+              ) : vendasFiltradas.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada.</td></tr>
+              ) : (
+                vendasFiltradas.map((v) => (
+                  <tr key={v.id} className="hover:bg-muted/30">
+                    <td className="px-6 py-4">{formatDate(v.criado_em)}</td>
+                    <td className="px-6 py-4 capitalize">{v.categoria}</td>
+                    <td className="px-6 py-4 capitalize">{v.pagamento}</td>
+                    <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || "-"}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold">{formatMoney(v.total)}</td>
+                    <td className="px-6 py-4 text-center flex items-center justify-center gap-3">
+                      <button onClick={() => verItens(v.id)} className="text-primary hover:underline text-sm">Ver itens</button>
+                      <button onClick={() => setTransferirVendaId(v.id)} title="Transferir pra outro usuário" className="text-muted-foreground hover:text-foreground">
+                        <ArrowLeftRight className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <Modal isOpen={!!vendaItens} onClose={() => setVendaItens(null)} title={`Itens da Venda #${vendaItens?.vendaId ?? ""}`}>
+          <div className="space-y-4">
+            {vendaItens?.itens.map((item) => (
+              <div key={item.id} className="flex justify-between items-center p-4 bg-secondary/30 rounded-xl border border-border">
+                <div>
+                  <p className="font-bold">{item.nome_snap}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {item.unidades != null && item.unidades > 0
+                      ? `${item.unidades} un — ${item.quantidade.toFixed(3)} kg × ${formatMoney(item.preco_unit)} /kg`
+                      : `${item.quantidade} × ${formatMoney(item.preco_unit)}`}
+                  </p>
+                </div>
+                <div className="font-mono font-bold">{formatMoney(item.subtotal)}</div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+
+        <Modal isOpen={!!transferirVendaId} onClose={() => { setTransferirVendaId(null); setNovoOperadorId(""); }} title={`Transferir Venda #${transferirVendaId ?? ""}`}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Escolha pra qual usuário essa venda deve ficar registrada.</p>
+            <Select value={novoOperadorId} onChange={(e) => setNovoOperadorId(e.target.value)}>
+              <option value="">Selecione...</option>
+              {usuarios.filter((u) => u.id !== selecionado.id).map((u) => (
+                <option key={u.id} value={u.id}>{u.nome} {u.sobrenome ?? ""}</option>
+              ))}
+            </Select>
+            <Button className="w-full" disabled={!novoOperadorId} onClick={confirmarTransferencia}>Confirmar transferência</Button>
+          </div>
+        </Modal>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
+        <p className="text-muted-foreground mt-1">Operadores do PDV e o total vendido por cada um</p>
+      </div>
+
+      {loading ? (
+        <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {usuarios.map((u) => (
+            <div key={u.id} className={`bg-card border border-border rounded-2xl p-5 shadow-sm flex items-center gap-4 ${!u.ativo ? "opacity-50" : ""}`}>
+              <button onClick={() => abrirUsuario(u)} className="flex items-center gap-4 flex-1 text-left">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: u.cor }}>
+                  {u.iniciais}
+                </div>
+                <div>
+                  <p className="font-bold">{u.nome} {u.sobrenome ?? ""} {!u.ativo && <span className="text-xs text-muted-foreground">(inativo)</span>}</p>
+                  <p className="text-sm text-muted-foreground">{u.qtd_vendas} vendas</p>
+                  <p className="font-mono font-bold text-primary">{formatMoney(u.total_vendido)}</p>
+                </div>
+              </button>
+              {u.ativo && (
+                <button onClick={() => excluirUsuario(u)} title="Inativar operador" className="text-muted-foreground hover:text-destructive p-2">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="artifacts/arvoredo/src/store/use-operador.ts">
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+export interface Operador {
+  id: number;
+  nome: string;
+  sobrenome?: string | null;
+  cor: string;
+  iniciais: string;
+}
+
+interface OperadorState {
+  operador: Operador | null;
+  setOperador: (op: Operador | null) => void;
+}
+
+export const useOperador = create<OperadorState>()(
+  persist(
+    (set) => ({
+      operador: null,
+      setOperador: (operador) => set({ operador }),
+    }),
+    { name: "arvoredo-operador" },
+  ),
+);
 </file>
 
 <file path="artifacts/arvoredo/src/main.tsx">
@@ -7750,24 +8045,26 @@ export * from "./generated/types";
 }
 </file>
 
-<file path="lib/db/src/index.ts">
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "./schema";
+<file path="lib/db/src/schema/usuarios.ts">
+import { pgTable, serial, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 
+export const usuariosTable = pgTable("usuarios", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  sobrenome: text("sobrenome"),
+  usuario: text("usuario").notNull().unique(), // login
+  senha_hash: text("senha_hash").notNull(),
+  cor: text("cor").notNull().default("#3b82f6"), // hex, cor da bolinha
+  ativo: boolean("ativo").notNull().default(true), 
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
 
-const { Pool } = pg;
-
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
-
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
-
-export * from "./schema";
+export const insertUsuarioSchema = createInsertSchema(usuariosTable).omit({
+  id: true,
+  criado_em: true,
+  senha_hash: true,
+});
 </file>
 
 <file path="lib/db/seed.ts">
@@ -9180,60 +9477,6 @@ export default function Estoque() {
 }
 </file>
 
-<file path="artifacts/arvoredo/src/App.tsx">
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { Layout } from "@/components/layout";
-import Pdv from "@/pages/pdv";
-import Estoque from "@/pages/estoque";
-import Fiado from "@/pages/fiado";
-import Caixa from "@/pages/caixa";
-import Historico from "@/pages/historico";
-import Produtos from "@/pages/produtos";
-import Dispositivos from "@/pages/dispositivos";
-import NotFound from "@/pages/not-found";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      staleTime: 1000 * 60 * 5, // 5 minutes
-    }
-  }
-});
-
-function Router() {
-  return (
-    <Layout>
-      <Switch>
-        <Route path="/" component={Pdv} />
-        <Route path="/estoque" component={Estoque} />
-        <Route path="/fiado" component={Fiado} />
-        <Route path="/caixa" component={Caixa} />
-        <Route path="/historico" component={Historico} />
-        <Route path="/produtos" component={Produtos} />
-        <Route path="/dispositivos" component={Dispositivos} />
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
-  );
-}
-
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <Router />
-      </WouterRouter>
-      <Toaster />
-    </QueryClientProvider>
-  );
-}
-
-export default App;
-</file>
-
 <file path="artifacts/arvoredo/src/index.css">
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
@@ -9771,6 +10014,26 @@ export const nfceLogsTable = pgTable("nfce_logs", {
 });
 </file>
 
+<file path="lib/db/src/index.ts">
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "./schema";
+
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
+}
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });
+
+export * from "./schema";
+</file>
+
 <file path="lib/db/drizzle.config.cjs">
 const fs = require("fs");
 const path = require("path");
@@ -9802,204 +10065,60 @@ module.exports = defineConfig({
 });
 </file>
 
-<file path="artifacts/api-server/src/routes/caixa.ts">
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { sessoesCaixaTable, sangriasTable, vendasTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
-import { AbrirCaixaBody, RegistrarSangriaBody } from "@workspace/api-zod";
-import { sql } from "drizzle-orm";
-import ExcelJS from "exceljs";
-import { itensVendaTable } from "@workspace/db/schema";
+<file path="artifacts/arvoredo/src/App.tsx">
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { Layout } from "@/components/layout";
+import Pdv from "@/pages/pdv";
+import Estoque from "@/pages/estoque";
+import Fiado from "@/pages/fiado";
+import Caixa from "@/pages/caixa";
+import Historico from "@/pages/historico";
+import Produtos from "@/pages/produtos";
+import Dispositivos from "@/pages/dispositivos";
+import Usuarios from "@/pages/usuarios";
+import NotFound from "@/pages/not-found";
 
-const router: IRouter = Router();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    }
+  }
+});
 
-function formatSessao(s: typeof sessoesCaixaTable.$inferSelect) {
-  return {
-    ...s,
-    aberto_em: s.aberto_em.toISOString(),
-    fechado_em: s.fechado_em?.toISOString() ?? null,
-  };
+function Router() {
+  return (
+    <Layout>
+      <Switch>
+        <Route path="/" component={Pdv} />
+        <Route path="/estoque" component={Estoque} />
+        <Route path="/fiado" component={Fiado} />
+        <Route path="/caixa" component={Caixa} />
+        <Route path="/historico" component={Historico} />
+        <Route path="/produtos" component={Produtos} />
+        <Route path="/dispositivos" component={Dispositivos} />
+        <Route path="/usuarios" component={Usuarios} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
+  );
 }
 
-router.get("/:sessaoId/relatorio.xlsx", async (req, res) => {
-  const sessaoId = Number(req.params.sessaoId);
-  const [sessao] = await db.select().from(sessoesCaixaTable).where(eq(sessoesCaixaTable.id, sessaoId));
-  if (!sessao) {
-    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
-    return;
-  }
-
-  const vendas = await db.select().from(vendasTable).where(eq(vendasTable.sessao_id, sessaoId));
-  const sangriasSessao = await db.select().from(sangriasTable).where(eq(sangriasTable.sessao_id, sessaoId));
-
-  const wb = new ExcelJS.Workbook();
-
-  const resumo = wb.addWorksheet("Resumo");
-  resumo.addRows([
-    ["Sessão", sessaoId],
-    ["Abertura", sessao.aberto_em.toLocaleString("pt-BR")],
-    ["Fechamento", sessao.fechado_em?.toLocaleString("pt-BR") ?? "Aberta"],
-    ["Fundo inicial", sessao.fundo_inicial],
-    ["Dinheiro", sessao.total_dinheiro],
-    ["PIX", sessao.total_pix],
-    ["Cartão", sessao.total_cartao],
-    ["Fiado", sessao.total_fiado],
-    ["Sangrias", sessao.total_sangria],
-  ]);
-
-  const abaVendas = wb.addWorksheet("Vendas");
-  abaVendas.columns = [
-    { header: "ID", key: "id", width: 8 },
-    { header: "Hora", key: "hora", width: 20 },
-    { header: "Categoria", key: "categoria", width: 12 },
-    { header: "Pagamento", key: "pagamento", width: 12 },
-    { header: "Total", key: "total", width: 12 },
-    { header: "Desconto", key: "desconto", width: 10 },
-  ];
-  abaVendas.addRows(vendas.map(v => ({
-    id: v.id, hora: v.criado_em.toLocaleString("pt-BR"),
-    categoria: v.categoria, pagamento: v.pagamento, total: v.total, desconto: v.desconto,
-  })));
-
-  const abaSangrias = wb.addWorksheet("Sangrias");
-  abaSangrias.columns = [
-    { header: "Hora", key: "hora", width: 20 },
-    { header: "Valor", key: "valor", width: 12 },
-    { header: "Motivo", key: "motivo", width: 30 },
-  ];
-  abaSangrias.addRows(sangriasSessao.map(s => ({
-    hora: s.criado_em.toLocaleString("pt-BR"), valor: s.valor, motivo: s.motivo ?? "",
-  })));
-
-  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename=caixa-${sessaoId}.xlsx`);
-  await wb.xlsx.write(res);
-  res.end();
-  return;
-});
-
-router.get("/status", async (_req, res) => {
-  const [sessao] = await db
-    .select()
-    .from(sessoesCaixaTable)
-    .where(eq(sessoesCaixaTable.status, "aberto"))
-    .limit(1);
-
-  res.json({
-    aberto: !!sessao,
-    sessao: sessao ? formatSessao(sessao) : null,
-  });
-});
-
-router.post("/abrir", async (req, res) => {
-  const [existente] = await db
-    .select()
-    .from(sessoesCaixaTable)
-    .where(eq(sessoesCaixaTable.status, "aberto"))
-    .limit(1);
-
-  if (existente) {
-    res.status(400).json({ ok: false, message: "Já existe um caixa aberto" });
-    return;
-  }
-
-  const data = AbrirCaixaBody.parse(req.body);
-  const [sessao] = await db
-    .insert(sessoesCaixaTable)
-    .values({ fundo_inicial: data.fundo_inicial ?? 0 })
-    .returning();
-
-  res.status(201).json(formatSessao(sessao));
-});
-
-router.post("/fechar", async (_req, res) => {
-  const [sessao] = await db
-    .select()
-    .from(sessoesCaixaTable)
-    .where(eq(sessoesCaixaTable.status, "aberto"))
-    .limit(1);
-
-  if (!sessao) {
-    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
-    return;
-  }
-
-  const [fechada] = await db
-    .update(sessoesCaixaTable)
-    .set({ status: "fechado", fechado_em: new Date() })
-    .where(eq(sessoesCaixaTable.id, sessao.id))
-    .returning();
-
-  res.json(formatSessao(fechada));
-});
-
-router.post("/sangria", async (req, res) => {
-  const [sessao] = await db
-    .select()
-    .from(sessoesCaixaTable)
-    .where(eq(sessoesCaixaTable.status, "aberto"))
-    .limit(1);
-
-  if (!sessao) {
-    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
-    return;
-  }
-
-  const data = RegistrarSangriaBody.parse(req.body);
-
-  const [sangria] = await db
-    .insert(sangriasTable)
-    .values({
-      sessao_id: sessao.id,
-      valor: data.valor,
-      motivo: data.motivo ?? null,
-    })
-    .returning();
-
-  await db
-    .update(sessoesCaixaTable)
-    .set({ total_sangria: sql`total_sangria + ${data.valor}` })
-    .where(eq(sessoesCaixaTable.id, sessao.id));
-
-  res.status(201).json({
-    ...sangria,
-    criado_em: sangria.criado_em.toISOString(),
-  });
-  return;
-});
-
-router.get("/sangrias", async (req, res) => {
-  const { sessao_id } = req.query as { sessao_id?: string };
-  const condition = sessao_id
-    ? eq(sangriasTable.sessao_id, parseInt(sessao_id))
-    : undefined;
-
-  const sangrias = await db
-    .select()
-    .from(sangriasTable)
-    .where(condition)
-    .orderBy(desc(sangriasTable.criado_em));
-
-  res.json(
-    sangrias.map((s) => ({
-      ...s,
-      criado_em: s.criado_em.toISOString(),
-    }))
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <Router />
+      </WouterRouter>
+      <Toaster />
+    </QueryClientProvider>
   );
-});
+}
 
-router.get("/historico", async (_req, res) => {
-  const sessoes = await db
-    .select()
-    .from(sessoesCaixaTable)
-    .orderBy(desc(sessoesCaixaTable.aberto_em))
-    .limit(30);
-
-  res.json(sessoes.map(formatSessao));
-});
-
-export default router;
+export default App;
 </file>
 
 <file path="lib/api-zod/src/generated/types/abrirCaixaInput.ts">
@@ -10500,15 +10619,6 @@ export type InsertCliente = z.infer<typeof insertClienteSchema>;
 export type Cliente = typeof clientesTable.$inferSelect;
 </file>
 
-<file path="lib/db/src/schema/index.ts">
-export * from "./produtos";
-export * from "./caixa";
-export * from "./clientes";
-export * from "./vendas";
-export * from "./fiscal";
-export * from "./usuarios";
-</file>
-
 <file path="lib/db/package.json">
 {
   "name": "@workspace/db",
@@ -10538,100 +10648,204 @@ export * from "./usuarios";
 }
 </file>
 
-<file path="artifacts/arvoredo/src/components/layout.tsx">
-import React, { ReactNode } from "react";
-import { Link, useLocation } from "wouter";
-import {
-  ShoppingCart,
-  Package,
-  Users,
-  Wallet,
-  Activity,
-  Box,
-  TreePine,
-  Cpu,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useProdutosAlertas } from "@/hooks/use-produtos";
+<file path="artifacts/api-server/src/routes/caixa.ts">
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { sessoesCaixaTable, sangriasTable, vendasTable } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
+import { AbrirCaixaBody, RegistrarSangriaBody } from "@workspace/api-zod";
+import { sql } from "drizzle-orm";
+import ExcelJS from "exceljs";
+import { itensVendaTable } from "@workspace/db/schema";
 
-interface LayoutProps {
-  children: ReactNode;
+const router: IRouter = Router();
+
+function formatSessao(s: typeof sessoesCaixaTable.$inferSelect) {
+  return {
+    ...s,
+    aberto_em: s.aberto_em.toISOString(),
+    fechado_em: s.fechado_em?.toISOString() ?? null,
+  };
 }
 
-export function Layout({ children }: LayoutProps) {
-  const [location] = useLocation();
-  const { data: alertas } = useProdutosAlertas();
-  const alertCount = alertas?.total_alertas ?? 0;
+router.get("/:sessaoId/relatorio.xlsx", async (req, res) => {
+  const sessaoId = Number(req.params.sessaoId);
+  const [sessao] = await db.select().from(sessoesCaixaTable).where(eq(sessoesCaixaTable.id, sessaoId));
+  if (!sessao) {
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+    return;
+  }
 
-  const navItems = [
-    { name: "PDV / Caixa", href: "/", icon: ShoppingCart },
-    { name: "Estoque", href: "/estoque", icon: Box, badge: alertCount },
-    { name: "Comandas em Aberto", href: "/fiado", icon: Users },
-    { name: "Sessão Caixa", href: "/caixa", icon: Wallet },
-    { name: "Histórico", href: "/historico", icon: Activity },
-    { name: "Produtos", href: "/produtos", icon: Package },
-    { name: "Dispositivos", href: "/dispositivos", icon: Cpu },
+  const vendas = await db.select().from(vendasTable).where(eq(vendasTable.sessao_id, sessaoId));
+  const sangriasSessao = await db.select().from(sangriasTable).where(eq(sangriasTable.sessao_id, sessaoId));
+
+  const wb = new ExcelJS.Workbook();
+
+  const resumo = wb.addWorksheet("Resumo");
+  resumo.addRows([
+    ["Sessão", sessaoId],
+    ["Abertura", sessao.aberto_em.toLocaleString("pt-BR")],
+    ["Fechamento", sessao.fechado_em?.toLocaleString("pt-BR") ?? "Aberta"],
+    ["Fundo inicial", sessao.fundo_inicial],
+    ["Dinheiro", sessao.total_dinheiro],
+    ["PIX", sessao.total_pix],
+    ["Cartão", sessao.total_cartao],
+    ["Fiado", sessao.total_fiado],
+    ["Sangrias", sessao.total_sangria],
+  ]);
+
+  const abaVendas = wb.addWorksheet("Vendas");
+  abaVendas.columns = [
+    { header: "ID", key: "id", width: 8 },
+    { header: "Hora", key: "hora", width: 20 },
+    { header: "Categoria", key: "categoria", width: 12 },
+    { header: "Pagamento", key: "pagamento", width: 12 },
+    { header: "Total", key: "total", width: 12 },
+    { header: "Desconto", key: "desconto", width: 10 },
   ];
+  abaVendas.addRows(vendas.map(v => ({
+    id: v.id, hora: v.criado_em.toLocaleString("pt-BR"),
+    categoria: v.categoria, pagamento: v.pagamento, total: v.total, desconto: v.desconto,
+  })));
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-card border-r border-border flex-shrink-0 z-10 sticky top-0 md:h-screen md:overflow-y-auto">
-        <div className="p-6 flex items-center gap-3">
-          <div className="bg-primary/10 text-primary p-2 rounded-xl">
-            <TreePine className="w-6 h-6" />
-          </div>
-          <span className="font-bold text-xl tracking-tight text-foreground">
-            Arvoredo
-          </span>
-        </div>
+  const abaSangrias = wb.addWorksheet("Sangrias");
+  abaSangrias.columns = [
+    { header: "Hora", key: "hora", width: 20 },
+    { header: "Valor", key: "valor", width: 12 },
+    { header: "Motivo", key: "motivo", width: 30 },
+  ];
+  abaSangrias.addRows(sangriasSessao.map(s => ({
+    hora: s.criado_em.toLocaleString("pt-BR"), valor: s.valor, motivo: s.motivo ?? "",
+  })));
 
-        <nav className="px-4 pb-6 space-y-1 overflow-x-auto md:overflow-visible flex md:flex-col items-center md:items-stretch hide-scrollbar">
-          {navItems.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group flex-shrink-0 md:flex-shrink",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "w-5 h-5 transition-transform duration-200",
-                    isActive ? "" : "group-hover:scale-110"
-                  )}
-                />
-                <span className="font-medium whitespace-nowrap">{item.name}</span>
-                {!!item.badge && (
-                  <span
-                    className={cn(
-                      "ml-auto text-xs font-bold px-2 py-0.5 rounded-full",
-                      isActive
-                        ? "bg-white text-destructive"
-                        : "bg-destructive text-destructive-foreground"
-                    )}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename=caixa-${sessaoId}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+  return;
+});
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col relative h-[calc(100vh-80px)] md:h-screen overflow-hidden">
-        {children}
-      </main>
-    </div>
+router.get("/status", async (_req, res) => {
+  const [sessao] = await db
+    .select()
+    .from(sessoesCaixaTable)
+    .where(eq(sessoesCaixaTable.status, "aberto"))
+    .limit(1);
+
+  res.json({
+    aberto: !!sessao,
+    sessao: sessao ? formatSessao(sessao) : null,
+  });
+});
+
+router.post("/abrir", async (req, res) => {
+  const [existente] = await db
+    .select()
+    .from(sessoesCaixaTable)
+    .where(eq(sessoesCaixaTable.status, "aberto"))
+    .limit(1);
+
+  if (existente) {
+    res.status(400).json({ ok: false, message: "Já existe um caixa aberto" });
+    return;
+  }
+
+  const data = AbrirCaixaBody.parse(req.body);
+  const [sessao] = await db
+    .insert(sessoesCaixaTable)
+    .values({ fundo_inicial: data.fundo_inicial ?? 0 })
+    .returning();
+
+  res.status(201).json(formatSessao(sessao));
+});
+
+router.post("/fechar", async (_req, res) => {
+  const [sessao] = await db
+    .select()
+    .from(sessoesCaixaTable)
+    .where(eq(sessoesCaixaTable.status, "aberto"))
+    .limit(1);
+
+  if (!sessao) {
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+    return;
+  }
+
+  const [fechada] = await db
+    .update(sessoesCaixaTable)
+    .set({ status: "fechado", fechado_em: new Date() })
+    .where(eq(sessoesCaixaTable.id, sessao.id))
+    .returning();
+
+  res.json(formatSessao(fechada));
+});
+
+router.post("/sangria", async (req, res) => {
+  const [sessao] = await db
+    .select()
+    .from(sessoesCaixaTable)
+    .where(eq(sessoesCaixaTable.status, "aberto"))
+    .limit(1);
+
+  if (!sessao) {
+    res.status(404).json({ ok: false, message: "Sessão não encontrada" });
+    return;
+  }
+
+  const data = RegistrarSangriaBody.parse(req.body);
+
+  const [sangria] = await db
+    .insert(sangriasTable)
+    .values({
+      sessao_id: sessao.id,
+      valor: data.valor,
+      motivo: data.motivo ?? null,
+    })
+    .returning();
+
+  await db
+    .update(sessoesCaixaTable)
+    .set({ total_sangria: sql`total_sangria + ${data.valor}` })
+    .where(eq(sessoesCaixaTable.id, sessao.id));
+
+  res.status(201).json({
+    ...sangria,
+    criado_em: sangria.criado_em.toISOString(),
+  });
+  return;
+});
+
+router.get("/sangrias", async (req, res) => {
+  const { sessao_id } = req.query as { sessao_id?: string };
+  const condition = sessao_id
+    ? eq(sangriasTable.sessao_id, parseInt(sessao_id))
+    : undefined;
+
+  const sangrias = await db
+    .select()
+    .from(sangriasTable)
+    .where(condition)
+    .orderBy(desc(sangriasTable.criado_em));
+
+  res.json(
+    sangrias.map((s) => ({
+      ...s,
+      criado_em: s.criado_em.toISOString(),
+    }))
   );
-}
+});
+
+router.get("/historico", async (_req, res) => {
+  const sessoes = await db
+    .select()
+    .from(sessoesCaixaTable)
+    .orderBy(desc(sessoesCaixaTable.aberto_em))
+    .limit(30);
+
+  res.json(sessoes.map(formatSessao));
+});
+
+export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
@@ -14061,6 +14275,15 @@ export interface Venda {
 }
 </file>
 
+<file path="lib/db/src/schema/index.ts">
+export * from "./produtos";
+export * from "./caixa";
+export * from "./clientes";
+export * from "./vendas";
+export * from "./fiscal";
+export * from "./usuarios";
+</file>
+
 <file path="pnpm-workspace.yaml">
 packages:
   - artifacts/*
@@ -14101,36 +14324,6 @@ overrides:
 strictPeerDependencies: false
 </file>
 
-<file path="artifacts/api-server/src/routes/index.ts">
-import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import produtosRouter from "./produtos";
-import vendasRouter from "./vendas";
-import estoqueRouter from "./estoque";
-import fiadoRouter from "./fiado";
-import caixaRouter from "./caixa";
-import maquininhaRouter from "./maquininha";
-import impressoraRouter from "./impressora";
-import nfceRouter from "./nfce";
-import usuariosRouter from "./usuarios";
-
-
-const router: IRouter = Router();
-
-router.use(healthRouter);
-router.use("/produtos", produtosRouter);
-router.use("/vendas", vendasRouter);
-router.use("/estoque", estoqueRouter);
-router.use("/fiado", fiadoRouter);
-router.use("/caixa", caixaRouter);
-router.use("/maquininha", maquininhaRouter);
-router.use("/impressora", impressoraRouter);
-router.use("/nfce", nfceRouter);
-router.use("/usuarios", usuariosRouter);
-
-export default router;
-</file>
-
 <file path="artifacts/api-server/src/index.ts">
 process.env.TZ = "America/Sao_Paulo";
 
@@ -14169,6 +14362,104 @@ runStartupMigrations()
     logger.error({ err }, "Falha nas migrações de startup; encerrando");
     process.exit(1);
   });
+</file>
+
+<file path="artifacts/arvoredo/src/components/layout.tsx">
+import React, { ReactNode } from "react";
+import { Link, useLocation } from "wouter";
+import {
+  ShoppingCart,
+  Package,
+  Users,
+  Wallet,
+  Activity,
+  Box,
+  TreePine,
+  Cpu,
+  UserCog,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useProdutosAlertas } from "@/hooks/use-produtos";
+
+interface LayoutProps {
+  children: ReactNode;
+}
+
+export function Layout({ children }: LayoutProps) {
+  const [location] = useLocation();
+  const { data: alertas } = useProdutosAlertas();
+  const alertCount = alertas?.total_alertas ?? 0;
+
+  const navItems = [
+    { name: "PDV / Caixa", href: "/", icon: ShoppingCart },
+    { name: "Estoque", href: "/estoque", icon: Box, badge: alertCount },
+    { name: "Comandas em Aberto", href: "/fiado", icon: Users },
+    { name: "Sessão Caixa", href: "/caixa", icon: Wallet },
+    { name: "Histórico", href: "/historico", icon: Activity },
+    { name: "Produtos", href: "/produtos", icon: Package },
+    { name: "Dispositivos", href: "/dispositivos", icon: Cpu },
+    { name: "Usuários", href: "/usuarios", icon: UserCog },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col md:flex-row">
+      {/* Sidebar */}
+      <aside className="w-full md:w-64 bg-card border-r border-border flex-shrink-0 z-10 sticky top-0 md:h-screen md:overflow-y-auto">
+        <div className="p-6 flex items-center gap-3">
+          <div className="bg-primary/10 text-primary p-2 rounded-xl">
+            <TreePine className="w-6 h-6" />
+          </div>
+          <span className="font-bold text-xl tracking-tight text-foreground">
+            Arvoredo
+          </span>
+        </div>
+
+        <nav className="px-4 pb-6 space-y-1 overflow-x-auto md:overflow-visible flex md:flex-col items-center md:items-stretch hide-scrollbar">
+          {navItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group flex-shrink-0 md:flex-shrink",
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    "w-5 h-5 transition-transform duration-200",
+                    isActive ? "" : "group-hover:scale-110"
+                  )}
+                />
+                <span className="font-medium whitespace-nowrap">{item.name}</span>
+                {!!item.badge && (
+                  <span
+                    className={cn(
+                      "ml-auto text-xs font-bold px-2 py-0.5 rounded-full",
+                      isActive
+                        ? "bg-white text-destructive"
+                        : "bg-destructive text-destructive-foreground"
+                    )}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col relative h-[calc(100vh-80px)] md:h-screen overflow-hidden">
+        {children}
+      </main>
+    </div>
+  );
+}
 </file>
 
 <file path="artifacts/arvoredo/src/pages/caixa.tsx">
@@ -15878,82 +16169,6 @@ do {
 } while ($choice -ne "0")
 </file>
 
-<file path="lib/db/src/schema/vendas.ts">
-import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-import { sessoesCaixaTable } from "./caixa";
-import { clientesTable } from "./clientes";
-import { produtosTable } from "./produtos";
-import { usuariosTable } from "./usuarios";
-
-
-export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
-export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
-
-export const vendasTable = pgTable("vendas", {
-  id: serial("id").primaryKey(),
-  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
-  categoria: text("categoria").notNull(),
-  total: real("total").notNull(),
-  desconto: real("desconto").notNull().default(0),
-  pagamento: pagamentoEnum("pagamento").notNull(),
-  cliente_id: integer("cliente_id").references(() => clientesTable.id),
-  observacao: text("observacao"),
-  cnpj_credenciadora: text("cnpj_credenciadora"),
-  codigo_autorizacao: text("codigo_autorizacao"),
-  bandeira_cartao: text("bandeira_cartao"),
-  tipo_pagamento: text("tipo_pagamento"),
-  nsu_tef: text("nsu_tef"),
-  tef_intencao_id: integer("tef_intencao_id"),
-  operador_id: integer("operador_id").references(() => usuariosTable.id), // NOVO — nullable
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const itensVendaTable = pgTable("itens_venda", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  nome_snap: text("nome_snap").notNull(),
-  quantidade: real("quantidade").notNull(),
-  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
-  unidades: real("unidades"),
-  preco_unit: real("preco_unit").notNull(),
-  subtotal: real("subtotal").notNull(),
-});
-
-export const fiadosTable = pgTable("fiados", {
-  id: serial("id").primaryKey(),
-  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
-  venda_id: integer("venda_id").references(() => vendasTable.id),
-  valor: real("valor").notNull(),
-  pago: boolean("pago").notNull().default(false),
-  pago_em: timestamp("pago_em", { withTimezone: true }),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
-  id: serial("id").primaryKey(),
-  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
-  tipo: tipoMovimentoEnum("tipo").notNull(),
-  quantidade: real("quantidade").notNull(),
-  motivo: text("motivo"),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
-export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
-export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
-export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
-
-export type Venda = typeof vendasTable.$inferSelect;
-export type ItemVenda = typeof itensVendaTable.$inferSelect;
-export type Fiado = typeof fiadosTable.$inferSelect;
-export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
-export type InsertVenda = z.infer<typeof insertVendaSchema>;
-export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
-</file>
-
 <file path=".gitignore">
 # See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
@@ -16018,182 +16233,32 @@ repomix-output.xml
 !README.md
 </file>
 
-<file path="artifacts/api-server/src/routes/impressora.ts">
-import { Router } from "express";
-import { db } from "@workspace/db";
-import { ImprimirCupomBody, ImprimirSangriaBody } from "@workspace/api-zod";
-import {
-  vendasTable,
-  itensVendaTable,
-  clientesTable,
-  sangriasTable,
-  nfceLogsTable,
-} from "@workspace/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
-import { printTextToWindowsPrinter, resolvePrinterName } from "../lib/printer";
-import { buildCupomText, buildSangriaText } from "../lib/print-layout";
-import { logger } from "../lib/logger";
+<file path="artifacts/api-server/src/routes/index.ts">
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import produtosRouter from "./produtos";
+import vendasRouter from "./vendas";
+import estoqueRouter from "./estoque";
+import fiadoRouter from "./fiado";
+import caixaRouter from "./caixa";
+import maquininhaRouter from "./maquininha";
+import impressoraRouter from "./impressora";
+import nfceRouter from "./nfce";
+import usuariosRouter from "./usuarios";
 
-const router = Router();
 
-/**
- * Tenta imprimir via USB/ESCpos (para suportar QR code).
- * Se falhar, usa o fallback para impressão de texto via PowerShell.
- */
-async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
-  try {
-    const escpos = (await import("escpos")).default;
-    const escposUsbMod = await import("escpos-usb");
-    const UsbDevice = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
-    escpos.USB = UsbDevice;
-    const device = new escpos.USB();
-    const printer = new escpos.Printer(device);
+const router: IRouter = Router();
 
-    await new Promise<void>((resolve, reject) => {
-      device.open((err: Error | null) => {
-        if (err) {
-          return reject(new Error(`Falha ao abrir impressora USB: ${err.message}`));
-        }
-        
-        try {
-          printer.font("a").align("ct").style("normal").size(1, 1);
-          // O texto já vem formatado com quebras de linha corretas (\r\n)
-          printer.text(text);
-          
-          if (qrCodeUrl) {
-            printer.align("ct").qrcode(qrCodeUrl, 2, 6, "M");
-          }
-          
-          printer.cut().close((closeErr: Error | null) => {
-            if (closeErr) {
-              return reject(new Error(`Falha ao fechar impressora: ${closeErr.message}`));
-            }
-            resolve();
-          });
-        } catch (printError) {
-          reject(printError);
-        }
-      });
-    });
-
-    logger.info("Cupom impresso com sucesso via USB (com QR Code).");
-    return { ok: true, erro: null, metodo: "usb" };
-  } catch (usbError: any) {
-    logger.warn(`Falha ao imprimir via USB/ESCpos: ${usbError.message}. Tentando fallback via PowerShell.`);
-    await printTextToWindowsPrinter(text);
-    logger.info("Cupom impresso via fallback (PowerShell, sem QR Code).");
-    // Retorna sucesso, mas informa que o QR Code não foi impresso.
-    return { ok: true, erro: "QR Code não impresso (fallback de impressão).", metodo: "fallback" };
-  }
-}
-
-router.post("/teste", async (_req, res) => {
-  try {
-    const printerName = await resolvePrinterName();
-    const text = `ARVOREDO\r\nTeste de Impressao\r\nImpressora: ${printerName}\r\nHorario: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\r\n\r\nSe o cupom sair, a impressora esta conectada.`;
-    const result = await printCupomWithQrCode(text);
-    return res.json({ ...result, impressora: printerName });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro desconhecido ao testar impressora";
-    logger.error(`Erro na rota /teste: ${message}`);
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-router.post("/cupom", async (req, res) => {
-  try {
-    const payload = ImprimirCupomBody.parse(req.body);
-    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, payload.venda_id));
-
-    if (!venda) {
-      return res.status(404).json({ ok: false, erro: "Venda não encontrada" });
-    }
-
-    const itens = await db
-      .select()
-      .from(itensVendaTable)
-      .where(eq(itensVendaTable.venda_id, payload.venda_id));
-
-    let clienteNome: string | undefined;
-    if (venda.cliente_id) {
-      const [cliente] = await db
-        .select()
-        .from(clientesTable)
-        .where(eq(clientesTable.id, venda.cliente_id));
-      clienteNome = cliente?.nome;
-    }
-
-    let qrUrl: string | undefined;
-    let chaveAcesso: string | undefined;
-    try {
-      const [nfceLog] = await db
-        .select()
-        .from(nfceLogsTable)
-        .where(eq(nfceLogsTable.venda_id, payload.venda_id))
-        .orderBy(desc(nfceLogsTable.id))
-        .limit(1);
-
-      if (nfceLog?.status === "autorizada" && nfceLog.chave_acesso) {
-        chaveAcesso = nfceLog.chave_acesso;
-        // URL padrão SEFAZ RS para consulta NFC-e
-        qrUrl = `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${nfceLog.chave_acesso}|3|2`;
-      }
-    } catch {
-      // sem NFC-e autorizada — imprime sem QR
-    }
-
-    const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso, qrUrl);
-    const result = await printCupomWithQrCode(text, qrUrl);
-    
-    return res.json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro de impressão do cupom";
-    logger.error(`Erro na rota /cupom: ${message}`);
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-router.post("/sangria", async (req, res) => {
-  try {
-    const payload = ImprimirSangriaBody.parse(req.body);
-    const start = new Date(payload.data_inicio);
-    const end = new Date(payload.data_fim);
-    end.setHours(23, 59, 59, 999);
-
-    const conditions = [gte(vendasTable.criado_em, start), lte(vendasTable.criado_em, end)];
-    if (payload.sessao_id != null) {
-      conditions.push(eq(vendasTable.sessao_id, payload.sessao_id));
-    }
-
-    const vendas = await db.select().from(vendasTable).where(and(...conditions));
-    const sangrias = await db
-      .select()
-      .from(sangriasTable)
-      .where(and(gte(sangriasTable.criado_em, start), lte(sangriasTable.criado_em, end)));
-
-    const text = buildSangriaText(payload, vendas, sangrias);
-    await printTextToWindowsPrinter(text);
-    return res.json({ ok: true, erro: null });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro de impressão da sangria";
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
-
-router.post("/comprovante-tef", async (req, res) => {
-  try {
-    const { via } = req.body as { via: string };
-    if (!via || typeof via !== "string" || via.trim().length === 0) {
-      return res.status(400).json({ ok: false, erro: "Campo 'via' ausente ou vazio." });
-    }
-    const result = await printCupomWithQrCode(via.trim());
-    return res.json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
-    logger.error(`Erro na rota /comprovante-tef: ${message}`);
-    return res.status(500).json({ ok: false, erro: message });
-  }
-});
+router.use(healthRouter);
+router.use("/produtos", produtosRouter);
+router.use("/vendas", vendasRouter);
+router.use("/estoque", estoqueRouter);
+router.use("/fiado", fiadoRouter);
+router.use("/caixa", caixaRouter);
+router.use("/maquininha", maquininhaRouter);
+router.use("/impressora", impressoraRouter);
+router.use("/nfce", nfceRouter);
+router.use("/usuarios", usuariosRouter);
 
 export default router;
 </file>
@@ -17498,6 +17563,82 @@ components:
         - ok
 </file>
 
+<file path="lib/db/src/schema/vendas.ts">
+import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { sessoesCaixaTable } from "./caixa";
+import { clientesTable } from "./clientes";
+import { produtosTable } from "./produtos";
+import { usuariosTable } from "./usuarios";
+
+
+export const pagamentoEnum = pgEnum("pagamento", ["dinheiro", "pix", "cartao", "fiado"]);
+export const tipoMovimentoEnum = pgEnum("tipo_movimento", ["entrada", "saida", "ajuste"]);
+
+export const vendasTable = pgTable("vendas", {
+  id: serial("id").primaryKey(),
+  sessao_id: integer("sessao_id").references(() => sessoesCaixaTable.id),
+  categoria: text("categoria").notNull(),
+  total: real("total").notNull(),
+  desconto: real("desconto").notNull().default(0),
+  pagamento: pagamentoEnum("pagamento").notNull(),
+  cliente_id: integer("cliente_id").references(() => clientesTable.id),
+  observacao: text("observacao"),
+  cnpj_credenciadora: text("cnpj_credenciadora"),
+  codigo_autorizacao: text("codigo_autorizacao"),
+  bandeira_cartao: text("bandeira_cartao"),
+  tipo_pagamento: text("tipo_pagamento"),
+  nsu_tef: text("nsu_tef"),
+  tef_intencao_id: integer("tef_intencao_id"),
+  operador_id: integer("operador_id").references(() => usuariosTable.id), // NOVO — nullable
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const itensVendaTable = pgTable("itens_venda", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  nome_snap: text("nome_snap").notNull(),
+  quantidade: real("quantidade").notNull(),
+  /** Na feira: número de unidades (peças). Na venda, quantidade continua em kg para preço. */
+  unidades: real("unidades"),
+  preco_unit: real("preco_unit").notNull(),
+  subtotal: real("subtotal").notNull(),
+});
+
+export const fiadosTable = pgTable("fiados", {
+  id: serial("id").primaryKey(),
+  cliente_id: integer("cliente_id").notNull().references(() => clientesTable.id),
+  venda_id: integer("venda_id").references(() => vendasTable.id),
+  valor: real("valor").notNull(),
+  pago: boolean("pago").notNull().default(false),
+  pago_em: timestamp("pago_em", { withTimezone: true }),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const movimentosEstoqueTable = pgTable("movimentos_estoque", {
+  id: serial("id").primaryKey(),
+  produto_id: integer("produto_id").notNull().references(() => produtosTable.id),
+  tipo: tipoMovimentoEnum("tipo").notNull(),
+  quantidade: real("quantidade").notNull(),
+  motivo: text("motivo"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertVendaSchema = createInsertSchema(vendasTable).omit({ id: true, criado_em: true });
+export const insertItemVendaSchema = createInsertSchema(itensVendaTable).omit({ id: true });
+export const insertFiadoSchema = createInsertSchema(fiadosTable).omit({ id: true, criado_em: true });
+export const insertMovimentoEstoqueSchema = createInsertSchema(movimentosEstoqueTable).omit({ id: true, criado_em: true });
+
+export type Venda = typeof vendasTable.$inferSelect;
+export type ItemVenda = typeof itensVendaTable.$inferSelect;
+export type Fiado = typeof fiadosTable.$inferSelect;
+export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
+export type InsertVenda = z.infer<typeof insertVendaSchema>;
+export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
+</file>
+
 <file path="package.json">
 {
   "name": "workspace",
@@ -17521,6 +17662,522 @@ components:
   },
   "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
 }
+</file>
+
+<file path="artifacts/api-server/src/routes/impressora.ts">
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { ImprimirCupomBody, ImprimirSangriaBody } from "@workspace/api-zod";
+import {
+  vendasTable,
+  itensVendaTable,
+  clientesTable,
+  sangriasTable,
+  nfceLogsTable,
+  usuariosTable,
+} from "@workspace/db/schema";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { printTextToWindowsPrinter, resolvePrinterName } from "../lib/printer";
+import { buildCupomText, buildSangriaText } from "../lib/print-layout";
+import { logger } from "../lib/logger";
+
+const router = Router();
+
+/**
+ * Tenta imprimir via USB/ESCpos (para suportar QR code).
+ * Se falhar, usa o fallback para impressão de texto via PowerShell.
+ */
+async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
+  try {
+    const escpos = (await import("escpos")).default;
+    const escposUsbMod = await import("escpos-usb");
+    const UsbDevice = escposUsbMod.USB || escposUsbMod.default || escposUsbMod;
+    escpos.USB = UsbDevice;
+    const device = new escpos.USB();
+    const printer = new escpos.Printer(device);
+
+    await new Promise<void>((resolve, reject) => {
+      device.open((err: Error | null) => {
+        if (err) {
+          return reject(new Error(`Falha ao abrir impressora USB: ${err.message}`));
+        }
+        
+        try {
+          printer.font("a").align("ct").style("normal").size(1, 1);
+          // O texto já vem formatado com quebras de linha corretas (\r\n)
+          printer.text(text);
+          
+          if (qrCodeUrl) {
+            printer.align("ct").qrcode(qrCodeUrl, 2, 6, "M");
+          }
+          
+          printer.cut().close((closeErr: Error | null) => {
+            if (closeErr) {
+              return reject(new Error(`Falha ao fechar impressora: ${closeErr.message}`));
+            }
+            resolve();
+          });
+        } catch (printError) {
+          reject(printError);
+        }
+      });
+    });
+
+    logger.info("Cupom impresso com sucesso via USB (com QR Code).");
+    return { ok: true, erro: null, metodo: "usb" };
+  } catch (usbError: any) {
+    logger.warn(`Falha ao imprimir via USB/ESCpos: ${usbError.message}. Tentando fallback via PowerShell.`);
+    await printTextToWindowsPrinter(text);
+    logger.info("Cupom impresso via fallback (PowerShell, sem QR Code).");
+    // Retorna sucesso, mas informa que o QR Code não foi impresso.
+    return { ok: true, erro: "QR Code não impresso (fallback de impressão).", metodo: "fallback" };
+  }
+}
+
+router.post("/teste", async (_req, res) => {
+  try {
+    const printerName = await resolvePrinterName();
+    const text = `ARVOREDO\r\nTeste de Impressao\r\nImpressora: ${printerName}\r\nHorario: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\r\n\r\nSe o cupom sair, a impressora esta conectada.`;
+    const result = await printCupomWithQrCode(text);
+    return res.json({ ...result, impressora: printerName });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido ao testar impressora";
+    logger.error(`Erro na rota /teste: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/cupom", async (req, res) => {
+  try {
+    const payload = ImprimirCupomBody.parse(req.body);
+    const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, payload.venda_id));
+
+    if (!venda) {
+      return res.status(404).json({ ok: false, erro: "Venda não encontrada" });
+    }
+
+    const itens = await db
+      .select()
+      .from(itensVendaTable)
+      .where(eq(itensVendaTable.venda_id, payload.venda_id));
+
+    let clienteNome: string | undefined;
+    if (venda.cliente_id) {
+      const [cliente] = await db
+        .select()
+        .from(clientesTable)
+        .where(eq(clientesTable.id, venda.cliente_id));
+      clienteNome = cliente?.nome;
+    }
+
+    let qrUrl: string | undefined;
+    let chaveAcesso: string | undefined;
+    try {
+      const [nfceLog] = await db
+        .select()
+        .from(nfceLogsTable)
+        .where(eq(nfceLogsTable.venda_id, payload.venda_id))
+        .orderBy(desc(nfceLogsTable.id))
+        .limit(1);
+
+      if (nfceLog?.status === "autorizada" && nfceLog.chave_acesso) {
+        chaveAcesso = nfceLog.chave_acesso;
+        // URL padrão SEFAZ RS para consulta NFC-e
+        qrUrl = `https://www.sefaz.rs.gov.br/NFCE/NFCE-COM.aspx?p=${nfceLog.chave_acesso}|3|2`;
+      }
+    } catch {
+      // sem NFC-e autorizada — imprime sem QR
+    }
+
+    const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso, qrUrl);
+    const result = await printCupomWithQrCode(text, qrUrl);
+    
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro de impressão do cupom";
+    logger.error(`Erro na rota /cupom: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/sangria", async (req, res) => {
+  try {
+    const payload = ImprimirSangriaBody.parse(req.body);
+    const start = new Date(payload.data_inicio);
+    const end = new Date(payload.data_fim);
+    end.setHours(23, 59, 59, 999);
+
+    const conditions = [gte(vendasTable.criado_em, start), lte(vendasTable.criado_em, end)];
+    if (payload.sessao_id != null) {
+      conditions.push(eq(vendasTable.sessao_id, payload.sessao_id));
+    }
+
+    const vendasRaw = await db
+      .select({ venda: vendasTable, operador_nome: usuariosTable.nome, operador_sobrenome: usuariosTable.sobrenome })
+      .from(vendasTable)
+      .leftJoin(usuariosTable, eq(vendasTable.operador_id, usuariosTable.id))
+      .where(and(...conditions));
+
+    const vendas = vendasRaw.map(({ venda, operador_nome, operador_sobrenome }) => ({
+      ...venda,
+      operador_nome: operador_nome ? `${operador_nome}${operador_sobrenome ? " " + operador_sobrenome : ""}` : null,
+    }));
+
+    const sangrias = await db
+      .select()
+      .from(sangriasTable)
+      .where(and(gte(sangriasTable.criado_em, start), lte(sangriasTable.criado_em, end)));
+
+    const text = buildSangriaText(payload, vendas, sangrias);
+    await printTextToWindowsPrinter(text);
+    return res.json({ ok: true, erro: null });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro de impressão da sangria";
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+router.post("/comprovante-tef", async (req, res) => {
+  try {
+    const { via } = req.body as { via: string };
+    if (!via || typeof via !== "string" || via.trim().length === 0) {
+      return res.status(400).json({ ok: false, erro: "Campo 'via' ausente ou vazio." });
+    }
+    const result = await printCupomWithQrCode(via.trim());
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro ao imprimir comprovante TEF";
+    logger.error(`Erro na rota /comprovante-tef: ${message}`);
+    return res.status(500).json({ ok: false, erro: message });
+  }
+});
+
+export default router;
+</file>
+
+<file path="lib/db/src/schema/produtos.ts">
+import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+
+export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
+
+export const produtosTable = pgTable(
+  "produtos",
+  {
+    id: serial("id").primaryKey(),
+    codigo: text("codigo"),
+    nome: text("nome").notNull(),
+    marca: text("marca"),
+    categoria: categoriaEnum("categoria").notNull().default("mercado"),
+    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
+    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
+    cest: text("cest"), // Código Especificador da Substituição Tributária
+    cst: text("cst"),
+    preco: real("preco").notNull(),
+    custo: real("custo").notNull().default(0),
+    estoque: real("estoque").notNull().default(0),
+    estoque_min: real("estoque_min").notNull().default(5),
+    unidade: text("unidade").notNull().default("un"),
+    validade: text("validade"),
+    ativo: boolean("ativo").notNull().default(true),
+    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
+  })
+);
+
+export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
+export type InsertProduto = z.infer<typeof insertProdutoSchema>;
+export type Produto = typeof produtosTable.$inferSelect;
+</file>
+
+<file path="artifacts/api-server/src/routes/maquininha.ts">
+import { Router, type IRouter } from "express";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
+
+type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: ModoConexao;
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+const router: IRouter = Router();
+
+const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  ativo: true,
+  modo_conexao: "manual",
+  api_url: "",
+  api_token: "",
+  timeout_ms: 60000,
+  empresa_nome: "NOME DA EMPRESA",
+  empresa_cnpj: "00.000.000/0000-00",
+  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
+};
+
+async function loadConfig(): Promise<MaquininhaConfig> {
+  try {
+    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function saveConfig(config: MaquininhaConfig): Promise<void> {
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [15, 20, 25];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number =
+        data?.intencaoVenda?.intencaoVendaStatus?.id ??
+        data?.statusId ??
+        data?.status?.id;
+      const statusNome = data?.intencaoVenda?.intencaoVendaStatus?.nome;
+      console.log(`[TEF] poll ${intencaoVendaId}: status=${status} (${statusNome})`);
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch (e) {
+      console.log(`[TEF] poll ${intencaoVendaId}: erro de rede, seguindo...`, e);
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
+}
+
+router.get("/config", async (_req, res) => {
+  const config = await loadConfig();
+  res.json(config);
+});
+
+router.post("/config", async (req, res) => {
+  const current = await loadConfig();
+  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
+  const merged: MaquininhaConfig = {
+    ...current,
+    ...body,
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
+  };
+  await saveConfig(merged);
+  res.json({ ok: true, config: merged });
+});
+
+router.post("/enviar", async (req, res) => {
+  const config = await loadConfig();
+
+  const payload = req.body as {
+    venda_local_id?: string;
+    metodo: "debito" | "credito" | "pix";
+    valor_total: number; // em reais, ex: 10.50
+    parcelas?: number; // opcional, apenas para crédito
+  };
+
+  if (!config.ativo) {
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
+  }
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0; 
+  // tempo para maquina reconhecer a transação e o cliente interagir com a maquininha (em ms) 
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
+  
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
+  }
+
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
+  }
+
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  const quantidadeParcelas = payload.parcelas && payload.parcelas > 1 ? payload.parcelas : 1;
+  const tipoParcelamentoId = quantidadeParcelas > 1 ? 3 : 1; // 3 = Parcelado Estabelecimento (Loja)
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+          terminalId,
+          quantidadeParcelas,
+          tipoParcelamentoId,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+    console.log("\n=======================================================");
+    console.log(`🧾 ID PARA A PLANILHA DA PAYGO: ${intencaoVendaId}`);
+    console.log("=======================================================\n");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+  const statusId = resultado.data?.intencaoVenda?.intencaoVendaStatus?.id;
+  const motivo = resultado.timeout
+    ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+    : statusId === 20
+      ? "Operação Cancelada"
+      : statusId === 25
+        ? "Transação negada pelo host."
+        : `Transação negada ou cancelada. Status: ${statusId ?? "desconhecido"}`;
+  return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  const codigoAutorizacao =
+    pagamento?.codigoAutorizacao ??
+    pagamento?.codigo_autorizacao ??
+    pagamento?.autorizacao ??
+    pagamento?.authorizationCode ??
+    pagamento?.codigo ??
+    null;
+  const bandeiraCartao =
+    pagamento?.bandeiraCartao ??
+    pagamento?.bandeira_cartao ??
+    pagamento?.bandeira ??
+    pagamento?.nomeBandeira ??
+    null;
+  const tipoPagamento =
+    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "17";
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: codigoAutorizacao,
+      bandeira_cartao: bandeiraCartao,
+      tipo_pagamento: tipoPagamento,
+      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+});
+
+router.post("/testar", async (_req, res) => {
+  const config = await loadConfig();
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
+    ok: true,
+    ativo: config.ativo,
+    modo_conexao: config.modo_conexao,
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
+  });
+});
+
+export default router;
 </file>
 
 <file path="artifacts/api-server/src/routes/nfce.ts">
@@ -17941,6 +18598,7 @@ export default function Historico() {
                   <th className="px-6 py-4 font-medium">Categoria</th>
                   <th className="px-6 py-4 font-medium">Pagamento</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
+                  <th className="px-6 py-4 font-medium text-center">Usuário</th>
                   <th className="px-6 py-4 font-medium text-right">Total</th>
                   <th className="px-6 py-4 font-medium text-center">Status NFC-e</th>
                   <th className="px-6 py-4 font-medium text-center">Opções</th>
@@ -17963,6 +18621,19 @@ export default function Historico() {
                     </td>
                     <td className="px-6 py-4 capitalize font-medium">{v.pagamento}</td>
                     <td className="px-6 py-4 text-muted-foreground">{v.cliente_nome || '-'}</td>
+                    <td className="px-6 py-4 text-center"> {/* NOVO */}
+                      {(v as any).operador_iniciais ? (
+                        <span
+                          title={(v as any).operador_nome}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-full text-white text-xs font-bold"
+                          style={{ backgroundColor: (v as any).operador_cor || "#94a3b8" }}
+                        >
+                          {(v as any).operador_iniciais}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-right font-mono font-bold text-foreground">{formatMoney(v.total)}</td>
                     <td className="px-6 py-4 text-center text-sm font-medium">
                       {loadingStatus ? (
@@ -18001,7 +18672,7 @@ export default function Historico() {
                   </tr>
                 ))}
                 {vendasFiltradas.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">Nenhuma venda encontrada para os filtros aplicados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -18090,329 +18761,47 @@ export default function Historico() {
 }
 </file>
 
-<file path="lib/db/src/schema/produtos.ts">
-import { pgTable, serial, text, real, boolean, timestamp, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
-
-export const categoriaEnum = pgEnum("categoria", ["mercado", "cozinha", "feira"]);
-
-export const produtosTable = pgTable(
-  "produtos",
-  {
-    id: serial("id").primaryKey(),
-    codigo: text("codigo"),
-    nome: text("nome").notNull(),
-    marca: text("marca"),
-    categoria: categoriaEnum("categoria").notNull().default("mercado"),
-    ncm: text("ncm"), // Nomenclatura Comum do Mercosul
-    cfop: text("cfop").default("5102"), // Código Fiscal de Operações e Prestações
-    cest: text("cest"), // Código Especificador da Substituição Tributária
-    cst: text("cst"),
-    preco: real("preco").notNull(),
-    custo: real("custo").notNull().default(0),
-    estoque: real("estoque").notNull().default(0),
-    estoque_min: real("estoque_min").notNull().default(5),
-    unidade: text("unidade").notNull().default("un"),
-    validade: text("validade"),
-    ativo: boolean("ativo").notNull().default(true),
-    criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+<file path="artifacts/api-server/package.json">
+{
+  "name": "@workspace/api-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "build": "node ./build.mjs",
+    "start": "node --enable-source-maps ./dist/index.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  (table) => ({
-    codigoUniqueIdx: uniqueIndex("produtos_codigo_unique").on(table.codigo),
-  })
-);
-
-export const insertProdutoSchema = createInsertSchema(produtosTable).omit({ id: true, criado_em: true });
-export type InsertProduto = z.infer<typeof insertProdutoSchema>;
-export type Produto = typeof produtosTable.$inferSelect;
-</file>
-
-<file path="artifacts/api-server/src/routes/maquininha.ts">
-import { Router, type IRouter } from "express";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-
-type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
-
-type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: ModoConexao;
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
-
-const router: IRouter = Router();
-
-const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  ativo: true,
-  modo_conexao: "manual",
-  api_url: "",
-  api_token: "",
-  timeout_ms: 60000,
-  empresa_nome: "NOME DA EMPRESA",
-  empresa_cnpj: "00.000.000/0000-00",
-  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  cnpj_credenciadora: "",
-};
-
-async function loadConfig(): Promise<MaquininhaConfig> {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_CONFIG;
+  "dependencies": {
+    "@workspace/api-zod": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "catalog:",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-usb": "3.0.0-alpha.4",
+    "exceljs": "^4.4.0",
+    "express": "^5",
+    "fast-xml-parser": "^5.3.0",
+    "pino": "^9",
+    "pino-http": "^10",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.27.3",
+    "esbuild-plugin-pino": "^2.3.3",
+    "pino-pretty": "^13",
+    "thread-stream": "3.1.0",
+    "tsx": "^4.21.0"
   }
 }
-
-async function saveConfig(config: MaquininhaConfig): Promise<void> {
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
-}
-
-const FORMA_PAGAMENTO: Record<string, number> = {
-  credito: 21,
-  debito: 22,
-  pix: 25,
-};
-
-const STATUS_APROVADO = 10;
-const STATUS_NEGADOS = [15, 20, 25];
-
-async function pollingIntencao(
-  baseUrl: string,
-  key: string,
-  intencaoVendaId: number,
-  timeoutMs: number,
-): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
-  const inicio = Date.now();
-  while (Date.now() - inicio < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    try {
-      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
-        headers: { "User-Agent": "ArvoredoPDV/1.0" },
-      });
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as any;
-      const status: number =
-        data?.intencaoVenda?.intencaoVendaStatus?.id ??
-        data?.statusId ??
-        data?.status?.id;
-      const statusNome = data?.intencaoVenda?.intencaoVendaStatus?.nome;
-      console.log(`[TEF] poll ${intencaoVendaId}: status=${status} (${statusNome})`);
-      if (status === STATUS_APROVADO) return { aprovado: true, data };
-      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
-    } catch (e) {
-      console.log(`[TEF] poll ${intencaoVendaId}: erro de rede, seguindo...`, e);
-    }
-  }
-  return { aprovado: false, data: null, timeout: true };
-}
-
-router.get("/config", async (_req, res) => {
-  const config = await loadConfig();
-  res.json(config);
-});
-
-router.post("/config", async (req, res) => {
-  const current = await loadConfig();
-  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
-  const merged: MaquininhaConfig = {
-    ...current,
-    ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
-  };
-  await saveConfig(merged);
-  res.json({ ok: true, config: merged });
-});
-
-router.post("/enviar", async (req, res) => {
-  const config = await loadConfig();
-
-  const payload = req.body as {
-    venda_local_id?: string;
-    metodo: "debito" | "credito" | "pix";
-    valor_total: number; // em reais, ex: 10.50
-    parcelas?: number; // opcional, apenas para crédito
-  };
-
-  if (!config.ativo) {
-    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
-  }
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0; 
-  // tempo para maquina reconhecer a transação e o cliente interagir com a maquininha (em ms) 
-  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
-  
-
-  if (!key) {
-    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
-  }
-
-  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
-  if (!formaPagamentoId) {
-    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
-  }
-
-  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
-
-  const quantidadeParcelas = payload.parcelas && payload.parcelas > 1 ? payload.parcelas : 1;
-  const tipoParcelamentoId = quantidadeParcelas > 1 ? 3 : 1; // 3 = Parcelado Estabelecimento (Loja)
-
-  let intencaoVendaId: number;
-  try {
-    const criarResp = await fetch(
-      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          aguardarTefIniciarTransacao: true,
-          formaPagamentoId,
-          valorTotalVendido: valorStr,
-          terminalId,
-          quantidadeParcelas,
-          tipoParcelamentoId,
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!criarResp.ok) {
-      const txt = await criarResp.text();
-      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
-    }
-    const criarData = (await criarResp.json()) as any;
-    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
-    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
-    console.log("\n=======================================================");
-    console.log(`🧾 ID PARA A PLANILHA DA PAYGO: ${intencaoVendaId}`);
-    console.log("=======================================================\n");
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-
-  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
-
-  if (!resultado.aprovado) {
-  const statusId = resultado.data?.intencaoVenda?.intencaoVendaStatus?.id;
-  const motivo = resultado.timeout
-    ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
-    : statusId === 20
-      ? "Operação Cancelada"
-      : statusId === 25
-        ? "Transação negada pelo host."
-        : `Transação negada ou cancelada. Status: ${statusId ?? "desconhecido"}`;
-  return res.status(402).json({ ok: false, mensagem: motivo });
-  }
-
-  const pagamento =
-    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentoExterno ??
-    {};
-
-  const codigoAutorizacao =
-    pagamento?.codigoAutorizacao ??
-    pagamento?.codigo_autorizacao ??
-    pagamento?.autorizacao ??
-    pagamento?.authorizationCode ??
-    pagamento?.codigo ??
-    null;
-  const bandeiraCartao =
-    pagamento?.bandeiraCartao ??
-    pagamento?.bandeira_cartao ??
-    pagamento?.bandeira ??
-    pagamento?.nomeBandeira ??
-    null;
-  const tipoPagamento =
-    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "17";
-
-  return res.json({
-    ok: true,
-    aprovado: true,
-    dados_cartao: {
-      cnpj_credenciadora: config.cnpj_credenciadora || null,
-      codigo_autorizacao: codigoAutorizacao,
-      bandeira_cartao: bandeiraCartao,
-      tipo_pagamento: tipoPagamento,
-      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
-      tef_intencao_id: intencaoVendaId,
-    },
-    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
-    comprovante_cliente: pagamento.comprovanteCliente ?? null,
-  });
-});
-
-router.post("/cancelar", async (req, res) => {
-  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          intencaoVendaId: intencao_venda_id,
-          aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159",
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    const data = (await resp.json()) as any;
-    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-});
-
-router.post("/testar", async (_req, res) => {
-  const config = await loadConfig();
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-
-  let paygoOnline = false;
-  try {
-    const resp = await fetch(
-      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    paygoOnline = resp.ok;
-  } catch {
-    paygoOnline = false;
-  }
-
-  return res.json({
-    ok: true,
-    ativo: config.ativo,
-    modo_conexao: config.modo_conexao,
-    paygo_online: paygoOnline,
-    mensagem: paygoOnline
-      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
-      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
-  });
-});
-
-export default router;
 </file>
 
 <file path="artifacts/arvoredo/src/pages/produtos.tsx">
@@ -19300,49 +19689,6 @@ export default function Produtos() {
       </Modal>
     </div>
   );
-}
-</file>
-
-<file path="artifacts/api-server/package.json">
-{
-  "name": "@workspace/api-server",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch --env-file=../../.env src/index.ts",
-    "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@workspace/api-zod": "workspace:*",
-    "@workspace/db": "workspace:*",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2",
-    "dotenv": "^16.3.1",
-    "drizzle-orm": "catalog:",
-    "escpos": "3.0.0-alpha.6",
-    "escpos-usb": "3.0.0-alpha.4",
-    "exceljs": "^4.4.0",
-    "express": "^5",
-    "fast-xml-parser": "^5.3.0",
-    "pino": "^9",
-    "pino-http": "^10",
-    "qrcode": "^1.5.4"
-  },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "catalog:",
-    "@types/qrcode": "^1.5.6",
-    "esbuild": "^0.27.3",
-    "esbuild-plugin-pino": "^2.3.3",
-    "pino-pretty": "^13",
-    "thread-stream": "3.1.0",
-    "tsx": "^4.21.0"
-  }
 }
 </file>
 
@@ -20268,6 +20614,7 @@ import {
   fiadosTable,
   clientesTable,
   nfceLogsTable,
+  usuariosTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, desc, inArray, ilike, or } from "drizzle-orm";
 import { RegistrarVendaBody } from "@workspace/api-zod";
@@ -20277,7 +20624,7 @@ import { imprimirDanfeSimplificado } from "../services/danfe.service";
 const router: IRouter = Router();
 
 router.get("/", async (req, res) => {
-  const { data, data_inicio, data_fim, categoria, limit, page, q } = req.query as {
+  const { data, data_inicio, data_fim, categoria, limit, page, q, operador_id } = req.query as {
     data?: string;
     data_inicio?: string;
     data_fim?: string;
@@ -20285,6 +20632,8 @@ router.get("/", async (req, res) => {
     limit?: string;
     page?: string;
     q?: string;
+    operador_id?: string; 
+
   };
 
   const lim = Math.min(1000, Math.max(1, parseInt(limit ?? "500") || 500));
@@ -20300,6 +20649,8 @@ router.get("/", async (req, res) => {
     conditions.push(gte(vendasTable.criado_em, start));
     conditions.push(lte(vendasTable.criado_em, end));
   }
+  if (operador_id) conditions.push(eq(vendasTable.operador_id, Number(operador_id))); // NOVO
+
   if (data_inicio) {
     const start = new Date(data_inicio);
     start.setHours(0, 0, 0, 0);
@@ -20323,18 +20674,24 @@ router.get("/", async (req, res) => {
   }
 
   const vendas = await db
-    .select({ venda: vendasTable, cliente_nome: clientesTable.nome })
+    .select({ venda: vendasTable, cliente_nome: clientesTable.nome, operador_nome: usuariosTable.nome,
+      operador_sobrenome: usuariosTable.sobrenome, // NOVO
+      operador_cor: usuariosTable.cor,  })
     .from(vendasTable)
     .leftJoin(clientesTable, eq(vendasTable.cliente_id, clientesTable.id))
+    .leftJoin(usuariosTable, eq(vendasTable.operador_id, usuariosTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(vendasTable.criado_em))
     .limit(lim)
     .offset(offset);
 
   res.json(
-    vendas.map(({ venda, cliente_nome }) => ({
+    vendas.map(({ venda, cliente_nome, operador_nome, operador_sobrenome, operador_cor }) => ({
       ...venda,
       cliente_nome,
+      operador_nome: operador_nome ? `${operador_nome}${operador_sobrenome ? " " + operador_sobrenome : ""}` : null, // NOVO
+      operador_iniciais: operador_nome ? (operador_nome[0] + (operador_sobrenome?.[0] ?? "")).toUpperCase() : null,  // NOVO
+      operador_cor: operador_cor ?? null,          // NOVO
       criado_em: venda.criado_em.toISOString(),
     })),
   );
@@ -20536,16 +20893,16 @@ router.put("/:id", async (req, res) => {
     pagamento: "dinheiro" | "pix" | "cartao" | "fiado";
     cliente_id: number | null;
     observacao: string | null;
+    operador_id: number | null; // NOVO
+
   }>;
-  const [updated] = await db
-    .update(vendasTable)
-    .set({
-      pagamento: payload.pagamento,
-      cliente_id: payload.cliente_id,
-      observacao: payload.observacao,
-    })
-    .where(eq(vendasTable.id, id))
-    .returning();
+  const updates: Record<string, unknown> = {};
+  if (payload.pagamento !== undefined) updates.pagamento = payload.pagamento;
+  if (payload.cliente_id !== undefined) updates.cliente_id = payload.cliente_id;
+  if (payload.observacao !== undefined) updates.observacao = payload.observacao;
+  if (payload.operador_id !== undefined) updates.operador_id = payload.operador_id; // NOVO
+
+  const [updated] = await db.update(vendasTable).set(updates).where(eq(vendasTable.id, id)).returning();
   if (!updated) {
     res.status(404).json({ ok: false, message: "Venda nao encontrada" });
     return;
@@ -20570,7 +20927,7 @@ export type CupomVenda = Pick<Venda, 'id' | 'criado_em' | 'total' | 'desconto' |
   tipo_pagamento?: string | null;
 };
 export type SangriaPayload = { data_inicio: string; data_fim: string; sessao_id?: number | null; };
-export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'>;
+export type SangriaVenda = Pick<Venda, 'total' | 'pagamento'> & { operador_nome?: string | null }; // alterado
 export type SangriaItem = { valor: number; };
 
 
@@ -20828,6 +21185,18 @@ export function buildSangriaText(
   rows.push(`Cartao: ${formatMoney(totalCartao)}`.slice(0, W));
   rows.push(`Fiado: ${formatMoney(totalFiado)}`.slice(0, W));
   rows.push(drawLine(W));
+  const porOperador = new Map<string, number>();
+  for (const v of vendas) {
+    const chave = v.operador_nome || "Sem operador";
+    porOperador.set(chave, (porOperador.get(chave) ?? 0) + v.total);
+  }
+  if (porOperador.size > 0) {
+    rows.push("VENDAS POR OPERADOR".slice(0, W));
+    for (const [nome, total] of porOperador) {
+      rows.push(`${nome}: ${formatMoney(total)}`.slice(0, W));
+    }
+    rows.push(drawLine(W));
+  }
   rows.push(`Sangrias: ${sangrias.length}`.slice(0, W));
   rows.push(`Total sangria: ${formatMoney(totalSangrias)}`.slice(0, W));
   rows.push(drawLine(W));
