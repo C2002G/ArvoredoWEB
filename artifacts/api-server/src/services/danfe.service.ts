@@ -363,7 +363,9 @@ export async function imprimirDanfeSimplificado(
       });
       const qrTempPath = path.join(os.tmpdir(), `arvoredo_qr_${Date.now()}.png`);
       await fs.writeFile(qrTempPath, qrBuffer);
-      
+      const numLinhas = text.split(/\r\n/).length;
+      const alturaConteudo = 5 + numLinhas * 10 + 5 + 130 + 20; // margem + linhas + espaço + QR + margem final
+      const alturaPapel = Math.max(3000, alturaConteudo);
       // O texto já contém a seção fiscal do buildCupomText, não duplicar
       
       // Criar script PowerShell que imprime texto E QR Code em um único job
@@ -376,7 +378,7 @@ $img = [System.Drawing.Image]::FromFile('${qrTempPath.replace(/\\/g, '\\\\')}')
 
 # Configurar papel personalizado para impressora térmica (58mm)
 # 48 colunas = aprox. 384px @ 80dpi (densidade típica de impressoras térmicas)
-$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 384, 3000)
+$paperSize = New-Object System.Drawing.Printing.PaperSize("Custom", 384, ${alturaPapel})
 $paperSize.RawKind = 256 # Custom paper size
 
 $pd = New-Object System.Drawing.Printing.PrintDocument
@@ -399,11 +401,9 @@ $pd.add_PrintPage({
   # Desenhar cada linha do texto
   $lines = $textContent -split '\r\n'
   foreach ($line in $lines) {
-    if ($y -lt 2800) { # Limite de altura para papel contínuo
-      $e.Graphics.DrawString($line, $font, $brush, $x, $y)
-      $y += $lineHeight
-    }
-  }
+    $e.Graphics.DrawString($line, $font, $brush, $x, $y)
+    $y += $lineHeight
+}
   
   # Desenhar QR Code centralizado com tamanho adequado para 48 colunas
   $qrSize = 120 # Tamanho ajustado para 48 colunas

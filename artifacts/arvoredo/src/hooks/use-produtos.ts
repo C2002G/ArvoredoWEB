@@ -9,6 +9,8 @@ import {
   useDeletarProduto,
   getListarProdutosQueryKey,
   getAlertasEstoqueQueryKey,
+  useVerificarNfeImportada,
+  useRegistrarNfeImportada,
 } from "@workspace/api-client-react/src/generated/api";
 import type { BuscarProdutoParams, ListarProdutosParams } from "@workspace/api-client-react/src/generated/api.schemas";
 
@@ -63,4 +65,12 @@ export function useDeletarProdutoWrapper() {
       },
     },
   });
+}
+
+export function useVerificarNfeImportadaWrapper() {
+  return useVerificarNfeImportada();
+}
+
+export function useRegistrarNfeImportadaWrapper() {
+  return useRegistrarNfeImportada();
 }

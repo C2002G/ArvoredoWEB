@@ -95,6 +95,30 @@ export interface EditarProdutoInput {
   ativo?: boolean;
 }
 
+export interface NfeItemInput {
+  codigoBarras?: string | null;
+  descricao: string;
+  quantidade: number;
+}
+
+export interface VerificarNfeImportadaInput {
+  chaveNfe?: string | null;
+  itens: NfeItemInput[];
+}
+
+export interface VerificarNfeImportadaResponse {
+  jaImportada: boolean;
+  dataImportacao: string | null;
+  itensHash: string;
+}
+
+export interface RegistrarNfeImportadaInput {
+  chaveNfe?: string | null;
+  emitente?: string | null;
+  itensHash: string;
+  qtdItens: number;
+}
+
 export interface ItemVendaInput {
   produto_id: number;
   quantidade: number;

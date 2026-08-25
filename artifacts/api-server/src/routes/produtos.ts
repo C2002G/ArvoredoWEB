@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { produtosTable } from "@workspace/db/schema";
+import { produtosTable, notasImportadasTable } from "@workspace/db/schema";
 import { eq, ilike, lte, or, and } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import {
   CriarProdutoBody,
   EditarProdutoBody,
@@ -14,6 +15,23 @@ function normalizeCodigo(codigo: string | null | undefined) {
   return trimmed ? trimmed : null;
 }
 
+function normalizarItensParaHash(
+  itens: { codigoBarras?: string | null; descricao: string; quantidade: number }[]
+) {
+  const linhas = itens
+    .map((i) => {
+      const codigo = (i.codigoBarras || "").trim().toLowerCase();
+      const nome = i.descricao.trim().toLowerCase();
+      return `${codigo}|${nome}|${i.quantidade}`;
+    })
+    .sort();
+  return createHash("sha256").update(linhas.join(";")).digest("hex");
+}
+
+function isUniqueViolation23505(err: unknown) {
+  if (!err || typeof err !== "object") return false;
+  return (err as { code?: string }).code === "23505";
+}
 function isUniqueViolation(err: unknown) {
   if (!err || typeof err !== "object") return false;
   const code = (err as { code?: string }).code;
@@ -139,5 +157,58 @@ function formatProduto(p: typeof produtosTable.$inferSelect) {
     criado_em: p.criado_em.toISOString(),
   };
 }
+router.post("/nfe-importada/verificar", async (req, res) => {
+  const { chaveNfe, itens } = req.body as {
+    chaveNfe?: string | null;
+    itens: { codigoBarras?: string | null; descricao: string; quantidade: number }[];
+  };
+
+  const itensHash = normalizarItensParaHash(itens || []);
+
+  const existente = await db
+    .select()
+    .from(notasImportadasTable)
+    .where(
+      chaveNfe
+        ? or(eq(notasImportadasTable.chave_nfe, chaveNfe), eq(notasImportadasTable.itens_hash, itensHash))!
+        : eq(notasImportadasTable.itens_hash, itensHash)
+    )
+    .limit(1);
+
+  const registro = existente[0];
+  res.json({
+    jaImportada: !!registro,
+    dataImportacao: registro ? registro.criado_em.toISOString() : null,
+    itensHash,
+  });
+});
+
+router.post("/nfe-importada", async (req, res) => {
+  const { chaveNfe, emitente, itensHash, qtdItens } = req.body as {
+    chaveNfe?: string | null;
+    emitente?: string | null;
+    itensHash: string;
+    qtdItens: number;
+  };
+
+  try {
+    const [registro] = await db
+      .insert(notasImportadasTable)
+      .values({
+        chave_nfe: chaveNfe || null,
+        itens_hash: itensHash,
+        emitente: emitente || null,
+        qtd_itens: qtdItens,
+      })
+      .returning();
+    res.status(201).json({ ok: true, message: `Nota registrada (id ${registro.id})` });
+  } catch (err) {
+    if (isUniqueViolation23505(err)) {
+      res.status(409).json({ ok: false, message: "Esta NF-e já foi importada." });
+      return;
+    }
+    throw err;
+  }
+});
 
 export default router;

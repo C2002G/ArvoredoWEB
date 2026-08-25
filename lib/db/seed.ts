@@ -23,8 +23,8 @@ async function seedFiscalConfig() {
     cep: "00000000",
     cod_municipio: "0000000",
     telefone: null,
-    csc_id: "1",
-    csc_token: "540EB3EB-1918-488D-8C7D-5FB4ABAF814C",
+    csc_id: "PREENCHER_CSC_ID",
+    csc_token: "PREENCHER_CSC_TOKEN",
     caminho_certificado:
       process.env.CAMINHO_CERTIFICADO_A1 || "C:/caminho/para/seu_certificado.pfx",
     senha_certificado: process.env.SENHA_CERTIFICADO_A1 || "sua_senha_segura",

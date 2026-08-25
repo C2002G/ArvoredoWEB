@@ -1,3 +1,5 @@
+import { db } from "@workspace/db";
+import { configFiscalTable } from "@workspace/db/schema";
 import type { Venda, ItemVenda } from "@workspace/db/schema";
 
 /**
@@ -25,6 +27,18 @@ export const PRINTER_LAYOUT = {
     telefone: "(51) 9787-4406",
   },
 };
+
+async function getEmpresaInfo() {
+  const [config] = await db.select().from(configFiscalTable).limit(1);
+  if (!config) return PRINTER_LAYOUT.empresa; // fallback de segurança, não deveria acontecer em produção
+  return {
+    nome: config.nome_fantasia || config.razao_social,
+    cnpj: config.cnpj,
+    ie: config.ie,
+    endereco: `${config.endereco}, ${config.numero} - ${config.bairro} - ${config.cidade} - ${config.uf}`,
+    telefone: config.telefone || "",
+  };
+}
 
 const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace(".", ",")}`;
 const formatMoneyTight = (value: number) => value.toFixed(2).replace(".", ",");
@@ -143,13 +157,14 @@ export async function buildCupomText(
   qrCodeUrl?: string,
   nfeDados?: { nProt?: string; dhRecbto?: string; vTotTrib?: number },
 ) {
+  const empresa = await getEmpresaInfo();
   const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
 
-  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
-  rows.push(`CNPJ: ${PRINTER_LAYOUT.empresa.cnpj}  IE: ${PRINTER_LAYOUT.empresa.ie}`.slice(0, W));
-  for (const ln of wrapText(PRINTER_LAYOUT.empresa.endereco, W)) rows.push(ln);
-  rows.push(`Fone: ${PRINTER_LAYOUT.empresa.telefone}`.slice(0, W));
+  rows.push(centerText(empresa.nome, W));
+  rows.push(`CNPJ: ${empresa.cnpj}  IE: ${empresa.ie}`.slice(0, W));
+  for (const ln of wrapText(empresa.endereco, W)) rows.push(ln);
+  rows.push(`Fone: ${empresa.telefone}`.slice(0, W));
   rows.push(centerText("Documento Auxiliar da Nota Fiscal de", W));
   rows.push(centerText("Consumidor Eletronica", W));
   rows.push(drawLine(W));
@@ -241,15 +256,16 @@ export async function buildCupomText(
   return normalizeText(rows.join("\n"));
 }
 
-export function buildSangriaText(
+export async function buildSangriaText(
   payload: SangriaPayload,
   vendas: SangriaVenda[],
   sangrias: SangriaItem[],
 ) {
+  const empresa = await getEmpresaInfo();
   const W = PRINTER_LAYOUT.colunas;
   const rows: string[] = [];
-  rows.push(centerText(PRINTER_LAYOUT.empresa.nome, W));
-  rows.push(centerText("RELATORIO DE SANGRIA", W));
+  rows.push(centerText(empresa.nome, W));
+  rows.push(centerText("RELATORIO DE SANGRIA", W));;
   rows.push(drawLine(W));
   rows.push(`PERIODO: ${payload.data_inicio} ate ${payload.data_fim}`.slice(0, W));
   if (payload.sessao_id) rows.push(`SESSAO: ${payload.sessao_id}`.slice(0, W));

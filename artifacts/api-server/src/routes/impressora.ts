@@ -161,9 +161,9 @@ router.post("/sangria", async (req, res) => {
       .from(sangriasTable)
       .where(and(gte(sangriasTable.criado_em, start), lte(sangriasTable.criado_em, end)));
 
-    const text = buildSangriaText(payload, vendas, sangrias);
-    await printTextToWindowsPrinter(text);
-    return res.json({ ok: true, erro: null });
+    const text = await buildSangriaText(payload, vendas, sangrias);
+    const result = await printCupomWithQrCode(text);
+    return res.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Erro de impressão da sangria";
     return res.status(500).json({ ok: false, erro: message });

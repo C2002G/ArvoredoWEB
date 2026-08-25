@@ -159,7 +159,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+    
+  /produtos/nfe-importada/verificar:
+      post:
+        operationId: verificarNfeImportada
+        tags: [produtos]
+        summary: Verifica se uma NF-e já foi importada
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificarNfeImportadaInput"
+        responses:
+          "200":
+            description: Resultado da verificação
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/VerificarNfeImportadaResponse"
 
+  /produtos/nfe-importada:
+    post:
+      operationId: registrarNfeImportada
+      tags: [produtos]
+      summary: Registra uma NF-e como importada
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarNfeImportadaInput"
+      responses:
+        "201":
+          description: NF-e registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "409":
+          description: NF-e já importada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+    
   /vendas:
     get:
       operationId: listarVendas
@@ -738,6 +782,66 @@ components:
           nullable: true
         ativo:
           type: boolean
+          
+    NfeItemInput:
+      type: object
+      properties:
+        codigoBarras:
+          type: string
+          nullable: true
+        descricao:
+          type: string
+        quantidade:
+          type: number
+      required:
+        - descricao
+        - quantidade
+
+    VerificarNfeImportadaInput:
+      type: object
+      properties:
+        chaveNfe:
+          type: string
+          nullable: true
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/NfeItemInput"
+      required:
+        - itens
+
+    VerificarNfeImportadaResponse:
+      type: object
+      properties:
+        jaImportada:
+          type: boolean
+        dataImportacao:
+          type: string
+          nullable: true
+        itensHash:
+          type: string
+      required:
+        - jaImportada
+        - dataImportacao
+        - itensHash
+
+    RegistrarNfeImportadaInput:
+      type: object
+      properties:
+        chaveNfe:
+          type: string
+          nullable: true
+        emitente:
+          type: string
+          nullable: true
+        itensHash:
+          type: string
+        qtdItens:
+          type: integer
+      required:
+        - itensHash
+        - qtdItens
+
 
     ItemVendaInput:
       type: object

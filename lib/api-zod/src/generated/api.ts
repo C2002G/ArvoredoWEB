@@ -198,6 +198,36 @@ export const DeletarProdutoResponse = zod.object({
 });
 
 /**
+ * @summary Verifica se uma NF-e já foi importada
+ */
+export const VerificarNfeImportadaBody = zod.object({
+  chaveNfe: zod.string().nullish(),
+  itens: zod.array(
+    zod.object({
+      codigoBarras: zod.string().nullish(),
+      descricao: zod.string(),
+      quantidade: zod.number(),
+    }),
+  ),
+});
+
+export const VerificarNfeImportadaResponse = zod.object({
+  jaImportada: zod.boolean(),
+  dataImportacao: zod.string().nullable(),
+  itensHash: zod.string(),
+});
+
+/**
+ * @summary Registra uma NF-e como importada
+ */
+export const RegistrarNfeImportadaBody = zod.object({
+  chaveNfe: zod.string().nullish(),
+  emitente: zod.string().nullish(),
+  itensHash: zod.string(),
+  qtdItens: zod.number(),
+});
+
+/**
  * @summary Listar vendas
  */
 export const listarVendasQueryPageDefault = 1;

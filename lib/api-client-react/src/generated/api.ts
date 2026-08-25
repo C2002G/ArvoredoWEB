@@ -39,6 +39,7 @@ import type {
   MovimentoEstoqueInput,
   PagarFiadoInput,
   Produto,
+  RegistrarNfeImportadaInput,
   RegistrarVendaInput,
   ResumoFiado,
   ResumoVendas,
@@ -48,6 +49,8 @@ import type {
   StatusCaixa,
   SuccessResponse,
   Venda,
+  VerificarNfeImportadaInput,
+  VerificarNfeImportadaResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -652,6 +655,183 @@ export const useDeletarProduto = <
   TContext
 > => {
   return useMutation(getDeletarProdutoMutationOptions(options));
+};
+
+/**
+ * @summary Verifica se uma NF-e já foi importada
+ */
+export const getVerificarNfeImportadaUrl = () => {
+  return `/api/produtos/nfe-importada/verificar`;
+};
+
+export const verificarNfeImportada = async (
+  verificarNfeImportadaInput: VerificarNfeImportadaInput,
+  options?: RequestInit,
+): Promise<VerificarNfeImportadaResponse> => {
+  return customFetch<VerificarNfeImportadaResponse>(
+    getVerificarNfeImportadaUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(verificarNfeImportadaInput),
+    },
+  );
+};
+
+export const getVerificarNfeImportadaMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verificarNfeImportada>>,
+    TError,
+    { data: BodyType<VerificarNfeImportadaInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verificarNfeImportada>>,
+  TError,
+  { data: BodyType<VerificarNfeImportadaInput> },
+  TContext
+> => {
+  const mutationKey = ["verificarNfeImportada"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verificarNfeImportada>>,
+    { data: BodyType<VerificarNfeImportadaInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return verificarNfeImportada(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerificarNfeImportadaMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verificarNfeImportada>>
+>;
+export type VerificarNfeImportadaMutationBody =
+  BodyType<VerificarNfeImportadaInput>;
+export type VerificarNfeImportadaMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Verifica se uma NF-e já foi importada
+ */
+export const useVerificarNfeImportada = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verificarNfeImportada>>,
+    TError,
+    { data: BodyType<VerificarNfeImportadaInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verificarNfeImportada>>,
+  TError,
+  { data: BodyType<VerificarNfeImportadaInput> },
+  TContext
+> => {
+  return useMutation(getVerificarNfeImportadaMutationOptions(options));
+};
+
+/**
+ * @summary Registra uma NF-e como importada
+ */
+export const getRegistrarNfeImportadaUrl = () => {
+  return `/api/produtos/nfe-importada`;
+};
+
+export const registrarNfeImportada = async (
+  registrarNfeImportadaInput: RegistrarNfeImportadaInput,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getRegistrarNfeImportadaUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(registrarNfeImportadaInput),
+  });
+};
+
+export const getRegistrarNfeImportadaMutationOptions = <
+  TError = ErrorType<SuccessResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registrarNfeImportada>>,
+    TError,
+    { data: BodyType<RegistrarNfeImportadaInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof registrarNfeImportada>>,
+  TError,
+  { data: BodyType<RegistrarNfeImportadaInput> },
+  TContext
+> => {
+  const mutationKey = ["registrarNfeImportada"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof registrarNfeImportada>>,
+    { data: BodyType<RegistrarNfeImportadaInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return registrarNfeImportada(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegistrarNfeImportadaMutationResult = NonNullable<
+  Awaited<ReturnType<typeof registrarNfeImportada>>
+>;
+export type RegistrarNfeImportadaMutationBody =
+  BodyType<RegistrarNfeImportadaInput>;
+export type RegistrarNfeImportadaMutationError = ErrorType<SuccessResponse>;
+
+/**
+ * @summary Registra uma NF-e como importada
+ */
+export const useRegistrarNfeImportada = <
+  TError = ErrorType<SuccessResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registrarNfeImportada>>,
+    TError,
+    { data: BodyType<RegistrarNfeImportadaInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof registrarNfeImportada>>,
+  TError,
+  { data: BodyType<RegistrarNfeImportadaInput> },
+  TContext
+> => {
+  return useMutation(getRegistrarNfeImportadaMutationOptions(options));
 };
 
 /**

@@ -118,9 +118,11 @@ export default function Historico() {
     [],
   );
 
-  const runNfceAction = async (vendaId: number, action: "reimprimir" | "cancelar") => {
-    const endpoint = action === "reimprimir" ? `/api/nfce/${vendaId}/reimprimir` : `/api/nfce/${vendaId}/cancelar`;
-    try {
+const runNfceAction = async (vendaId: number, action: "reimprimir" | "cancelar" | "reemitir") => {
+  const endpoint =
+    action === "reimprimir" ? `/api/nfce/${vendaId}/reimprimir`
+    : action === "reemitir" ? `/api/nfce/${vendaId}/reemitir`
+    : `/api/nfce/${vendaId}/cancelar`;    try {
       const resp = await fetch(endpoint, { method: "POST" });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(body?.message || "Falha na operacao");
@@ -334,6 +336,9 @@ export default function Historico() {
                           <div className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-background shadow-lg p-1">
                             <button onClick={() => { setSelectedVendaId(v.id); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Ver Itens</button>
                             <button onClick={() => { setEditVenda({ id: v.id, observacao: v.observacao || "", pagamento: v.pagamento }); setMenuVendaId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Editar venda</button>
+                            {(statusMap[v.id] === "erro" || statusMap[v.id] === "rejeitada") && (
+                              <button onClick={() => runNfceAction(v.id, "reemitir")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md text-orange-600 font-medium">Reemitir NFC-e</button>
+                            )}
                             <button onClick={() => runNfceAction(v.id, "reimprimir")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Reimprimir DANFE</button>
                             <button onClick={() => runNfceAction(v.id, "cancelar")} className="w-full text-left px-3 py-2 text-sm hover:bg-secondary rounded-md">Cancelar NFC-e</button>
                           </div>

@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable } from "@workspace/db/schema";
-import { desc, eq } from "drizzle-orm";
-import { reimprimirDanfeSimplificado } from "../services/danfe.service";
+import { nfceLogsTable, vendasTable, itensVendaTable, clientesTable, produtosTable } from "@workspace/db/schema";
+import { desc, eq, inArray } from "drizzle-orm";
+import { reimprimirDanfeSimplificado, imprimirDanfeSimplificado } from "../services/danfe.service";
+import { emitirNfce } from "../services/sefaz.service";
 
 const router: IRouter = Router();
 
@@ -69,6 +70,103 @@ router.post("/:vendaId/reimprimir", async (req, res) => {
   const text = await buildCupomText(venda, itens, cliente?.nome, undefined, undefined);
   await printTextToWindowsPrinter(text);
   res.json({ ok: true, message: "Cupom simples reimpresso (sem NFC-e autorizada)" });
+});
+
+// Lista vendas cuja última tentativa de NFC-e ficou como erro ou rejeitada
+router.get("/pendencias", async (req, res) => {
+  const logs = await db
+    .select()
+    .from(nfceLogsTable)
+    .orderBy(desc(nfceLogsTable.criado_em));
+
+  // Mantém só a tentativa mais recente de cada venda
+  const ultimoPorVenda = new Map<number, typeof logs[number]>();
+  for (const log of logs) {
+    if (!ultimoPorVenda.has(log.venda_id)) {
+      ultimoPorVenda.set(log.venda_id, log);
+    }
+  }
+
+  const pendentes = [...ultimoPorVenda.values()].filter(
+    (log) => log.status === "erro" || log.status === "rejeitada",
+  );
+
+  if (pendentes.length === 0) {
+    res.json({ ok: true, pendencias: [] });
+    return;
+  }
+
+  const vendaIds = pendentes.map((l) => l.venda_id);
+  const vendas = await db.select().from(vendasTable).where(inArray(vendasTable.id, vendaIds));
+  const vendaPorId = new Map(vendas.map((v) => [v.id, v]));
+
+  const pendencias = pendentes.map((log) => ({
+    venda_id: log.venda_id,
+    total: vendaPorId.get(log.venda_id)?.total ?? null,
+    criado_em: vendaPorId.get(log.venda_id)?.criado_em?.toISOString() ?? null,
+    status: log.status,
+    erro: log.mensagem_status_sefaz,
+    tentativa_em: log.criado_em.toISOString(),
+  }));
+
+  res.json({ ok: true, pendencias });
+});
+
+// Reemite manualmente a NFC-e de uma venda que ficou pendente
+router.post("/:vendaId/reemitir", async (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+  if (!Number.isFinite(vendaId)) {
+    res.status(400).json({ ok: false, message: "vendaId invalido" });
+    return;
+  }
+
+  const [venda] = await db.select().from(vendasTable).where(eq(vendasTable.id, vendaId));
+  if (!venda) {
+    res.status(404).json({ ok: false, message: "Venda nao encontrada" });
+    return;
+  }
+
+  const [ultimoLog] = await db
+    .select()
+    .from(nfceLogsTable)
+    .where(eq(nfceLogsTable.venda_id, vendaId))
+    .orderBy(desc(nfceLogsTable.criado_em))
+    .limit(1);
+
+  // Trava de segurança: nunca reemitir se já existe nota autorizada ou emissão em andamento
+  if (ultimoLog && (ultimoLog.status === "autorizada" || ultimoLog.status === "processando")) {
+    res.status(409).json({
+      ok: false,
+      message: `Venda ja possui NFC-e com status "${ultimoLog.status}". Reemissao bloqueada para evitar nota duplicada.`,
+    });
+    return;
+  }
+
+  const itens = await db.select().from(itensVendaTable).where(eq(itensVendaTable.venda_id, vendaId));
+  const produtoIds = itens.map((i) => i.produto_id);
+  const produtos = await db.select().from(produtosTable).where(inArray(produtosTable.id, produtoIds));
+  const [cliente] = venda.cliente_id
+    ? await db.select().from(clientesTable).where(eq(clientesTable.id, venda.cliente_id))
+    : [undefined];
+
+  const emissao = await emitirNfce(venda, itens, produtos, cliente);
+
+  if (emissao.success && emissao.xmlAutorizado) {
+    try {
+      await imprimirDanfeSimplificado(
+        emissao.qrCodeUrl || "",
+        emissao.chaveAcesso || "",
+        emissao.xmlAutorizado,
+        { venda, itens, clienteNome: cliente?.nome },
+      );
+    } catch (printError) {
+      console.error("[NFC-e reemissao] Falha ao imprimir DANFE:", printError);
+    }
+    res.json({ ok: true, status: "autorizada", chaveAcesso: emissao.chaveAcesso });
+    return;
+  }
+
+  res.status(422).json({ ok: false, status: "erro", message: (emissao as any).mensagem });
 });
 
 // Rota de Cancelamento Integrada (Maquininha + Banco de Dados)

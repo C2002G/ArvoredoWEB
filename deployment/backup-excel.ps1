@@ -655,3 +655,4 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Abra o arquivo no Excel para visualizar os dados." -ForegroundColor White
 Write-Host ""
+

@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { useProdutos, useCriarProdutoWrapper, useEditarProdutoWrapper, useDeletarProdutoWrapper } from "@/hooks/use-produtos";
-import { formatMoney } from "@/lib/utils";
+import {
+  useProdutos,
+  useCriarProdutoWrapper,
+  useEditarProdutoWrapper,
+  useDeletarProdutoWrapper,
+  useVerificarNfeImportadaWrapper,
+  useRegistrarNfeImportadaWrapper,
+} from "@/hooks/use-produtos";import { formatMoney } from "@/lib/utils";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
 import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X, ListRestart, FileUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -207,6 +213,8 @@ export default function Produtos() {
   const criar = useCriarProdutoWrapper();
   const editar = useEditarProdutoWrapper();
   const deletar = useDeletarProdutoWrapper();
+  const verificarNfeImportada = useVerificarNfeImportadaWrapper();
+  const registrarNfeImportada = useRegistrarNfeImportadaWrapper();
   const { toast } = useToast();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -217,6 +225,8 @@ export default function Produtos() {
   const [xmlPreview, setXmlPreview] = useState<NfeImportPreview | null>(null);
   const [xmlItens, setXmlItens] = useState<NfeItem[]>([]);
   const [importingXml, setImportingXml] = useState(false);
+  const [xmlDuplicada, setXmlDuplicada] = useState<{ dataImportacao: string | null } | null>(null);
+  const [xmlItensHash, setXmlItensHash] = useState<string | null>(null);
 
   const updateXmlItem = (idx: number, patch: Partial<NfeItem>) => {
     setXmlItens((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
@@ -290,6 +300,8 @@ export default function Produtos() {
     setXmlRaw("");
     setXmlPreview(null);
     setXmlItens([]);
+    setXmlDuplicada(null);
+    setXmlItensHash(null);
     setImportModalOpen(true);
   };
 
@@ -366,11 +378,40 @@ export default function Produtos() {
     });
   };
 
-  const parseXmlPreview = () => {
+    const parseXmlPreview = () => {
     try {
       const parsed = parseNfeXml(xmlRaw);
       setXmlPreview(parsed);
       setXmlItens(parsed.itens);
+      setXmlDuplicada(null);
+      setXmlItensHash(null);
+
+      verificarNfeImportada.mutate(
+        {
+          data: {
+            chaveNfe: parsed.chaveNfe,
+            itens: parsed.itens.map((i) => ({
+              codigoBarras: i.codigoBarras,
+              descricao: i.descricao,
+              quantidade: i.quantidade,
+            })),
+          },
+        },
+        {
+          onSuccess: (resp) => {
+            setXmlItensHash(resp.itensHash);
+            if (resp.jaImportada) {
+              setXmlDuplicada({ dataImportacao: resp.dataImportacao });
+              toast({
+                title: "Importação bloqueada",
+                description: "Não possível importar por ser um registro já feito.",
+                variant: "destructive",
+              });
+            }
+          },
+        }
+      );
+
       toast({
         title: "XML lido com sucesso",
         description: `${parsed.itens.length} item(ns) encontrado(s).`,
@@ -381,6 +422,8 @@ export default function Produtos() {
       toast({ title: "Erro no XML", description: message, variant: "destructive" });
       setXmlPreview(null);
       setXmlItens([]);
+      setXmlDuplicada(null);
+      setXmlItensHash(null);
     }
   };
 
@@ -439,11 +482,19 @@ export default function Produtos() {
       );
     });
 
-  const handleImportarXml = async () => {
+    const handleImportarXml = async () => {
     if (!xmlPreview || xmlItens.length === 0) {
       toast({
         title: "Leia o XML primeiro",
         description: "Clique em \"Ler XML\" antes de importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (xmlDuplicada) {
+      toast({
+        title: "Importação bloqueada",
+        description: "Não possível importar por ser um registro já feito.",
         variant: "destructive",
       });
       return;
@@ -506,6 +557,21 @@ export default function Produtos() {
 
           if (criado.codigo) produtosPorCodigo.set(criado.codigo.trim(), criado);
           produtosPorNome.set(normalizeNome(criado.nome), criado);
+        }
+      }
+
+            if (xmlItensHash) {
+        try {
+          await registrarNfeImportada.mutateAsync({
+            data: {
+              chaveNfe: xmlPreview.chaveNfe,
+              emitente: xmlPreview.emitente,
+              itensHash: xmlItensHash,
+              qtdItens: xmlItens.length,
+            },
+          });
+        } catch {
+          console.warn("Falha ao registrar NF-e como importada — produtos já foram criados/atualizados normalmente.");
         }
       }
 
@@ -821,6 +887,9 @@ export default function Produtos() {
                 const text = await file.text();
                 setXmlRaw(text);
                 setXmlPreview(null);
+                setXmlItens([]);
+                setXmlDuplicada(null);
+                setXmlItensHash(null);
               }}
             />
           </div>
@@ -831,6 +900,9 @@ export default function Produtos() {
               onChange={(e) => {
                 setXmlRaw(e.target.value);
                 setXmlPreview(null);
+                setXmlItens([]);
+                setXmlDuplicada(null);
+                setXmlItensHash(null);
               }}
               className="w-full min-h-40 rounded-xl border border-input bg-background px-3 py-2 text-sm font-mono"
               placeholder="<nfeProc>...</nfeProc>"
@@ -850,6 +922,11 @@ export default function Produtos() {
                 <p><strong>Chave:</strong> {xmlPreview.chaveNfe || "-"}</p>
                 <p><strong>Itens:</strong> {xmlPreview.itens.length}</p>
               </div>
+              {xmlDuplicada && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm font-medium">
+                  Não possível importar por ser um registro já feito.
+                </div>
+              )}
               <div className="max-h-56 overflow-auto rounded-xl border border-border">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50">
@@ -928,7 +1005,7 @@ export default function Produtos() {
             <Button type="button" variant="ghost" onClick={() => setImportModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleImportarXml} disabled={!xmlPreview || importingXml}>
+            <Button type="button" onClick={handleImportarXml} disabled={!xmlPreview || xmlItens.length === 0 || importingXml || !!xmlDuplicada}>
               {importingXml ? "Importando..." : "Importar itens"}
             </Button>
           </div>

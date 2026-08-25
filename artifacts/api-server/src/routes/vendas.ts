@@ -141,85 +141,89 @@ router.post("/", async (req, res) => {
   const subtotal = data.itens.reduce((acc, item) => acc + item.quantidade * item.preco_unit, 0);
   const total = Math.max(0, subtotal - (data.desconto ?? 0));
 
-  const [venda] = await db.insert(vendasTable)
-    .values({
-      sessao_id: sessao?.id ?? null,
-      categoria: data.categoria,
-      total,
-      desconto: data.desconto ?? 0,
-      pagamento: data.pagamento,
-      cliente_id: data.cliente_id ?? null,
-      observacao: data.observacao ?? null,
-      cnpj_credenciadora: (data as any).cnpj_credenciadora ?? null,
-      codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
-      bandeira_cartao: (data as any).bandeira_cartao ?? null,
-      tipo_pagamento: (data as any).tipo_pagamento ?? null,
-      nsu_tef: (data as any).nsu_tef ?? null,
-      tef_intencao_id: (data as any).tef_intencao_id ?? null,
-      operador_id: operadorId, // NOVO 
+  const { venda, insertedItensVenda } = await db.transaction(async (tx) => {
+    const [venda] = await tx.insert(vendasTable)
+      .values({
+        sessao_id: sessao?.id ?? null,
+        categoria: data.categoria,
+        total,
+        desconto: data.desconto ?? 0,
+        pagamento: data.pagamento,
+        cliente_id: data.cliente_id ?? null,
+        observacao: data.observacao ?? null,
+        cnpj_credenciadora: (data as any).cnpj_credenciadora ?? null,
+        codigo_autorizacao: (data as any).codigo_autorizacao ?? null,
+        bandeira_cartao: (data as any).bandeira_cartao ?? null,
+        tipo_pagamento: (data as any).tipo_pagamento ?? null,
+        nsu_tef: (data as any).nsu_tef ?? null,
+        tef_intencao_id: (data as any).tef_intencao_id ?? null,
+        operador_id: operadorId,
+      } as any)
+      .returning();
 
-    } as any)
-    .returning();
+    const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
+    for (const item of data.itens) {
+      const produto = await tx.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
+      if (!produto) continue;
 
-  const insertedItensVenda: (typeof itensVendaTable.$inferSelect)[] = [];
-  for (const item of data.itens) {
-    const produto = await db.query.produtosTable.findFirst({ where: eq(produtosTable.id, item.produto_id) });
-    if (!produto) continue;
+      const isDiversos = produto.codigo === "DIVERSOS";
+      const descricaoCustom = item.descricao?.trim();
+      const nome_snap = descricaoCustom
+        ? `${produto.nome} - ${descricaoCustom}`
+        : produto.marca
+          ? `${produto.nome} - ${produto.marca}`
+          : produto.nome;
 
-    const isDiversos = produto.codigo === "DIVERSOS";
-    const descricaoCustom = item.descricao?.trim();
-    const nome_snap = descricaoCustom
-      ? `${produto.nome} - ${descricaoCustom}`
-      : produto.marca
-        ? `${produto.nome} - ${produto.marca}`
-        : produto.nome;
+      const [insertedItem] = await tx.insert(itensVendaTable).values({
+        venda_id: venda.id,
+        produto_id: item.produto_id,
+        nome_snap,
+        quantidade: item.quantidade,
+        unidades: null,
+        preco_unit: item.preco_unit,
+        subtotal: item.quantidade * item.preco_unit,
+      }).returning();
+      insertedItensVenda.push(insertedItem);
 
-    const [insertedItem] = await db.insert(itensVendaTable).values({
-      venda_id: venda.id,
-      produto_id: item.produto_id,
-      nome_snap,
-      quantidade: item.quantidade,
-      unidades: null,
-      preco_unit: item.preco_unit,
-      subtotal: item.quantidade * item.preco_unit,
-    }).returning();
-    insertedItensVenda.push(insertedItem);
-
-    // "Diversos" não representa estoque real — não baixa.
-    if (!isDiversos) {
-      const qtdBaixaEstoque = item.quantidade;
-      const novoEstoque = produto.estoque - qtdBaixaEstoque;
-      await db.update(produtosTable).set({ estoque: novoEstoque }).where(eq(produtosTable.id, item.produto_id));
-    }}
-
-  if (data.pagamento === "fiado" && data.cliente_id) {
-    await db.insert(fiadosTable).values({
-      cliente_id: data.cliente_id,
-      venda_id: venda.id,
-      valor: total,
-      pago: false,
-    });
-  }
-
-  if (sessao) {
-    const updates: Record<string, number> = {};
-    if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}` as unknown as number;
-    if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}` as unknown as number;
-    if (data.pagamento === "cartao") updates.total_cartao = sql`total_cartao + ${total}` as unknown as number;
-    if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}` as unknown as number;
-
-    if (Object.keys(updates).length > 0) {
-      await db.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
+      // "Diversos" não representa estoque real — não baixa.
+      if (!isDiversos) {
+        // Decremento atômico no banco — elimina race condition entre operadores concorrentes.
+        await tx.update(produtosTable)
+          .set({ estoque: sql`${produtosTable.estoque} - ${item.quantidade}` })
+          .where(eq(produtosTable.id, item.produto_id));
+      }
     }
-  }
-  
+
+    if (data.pagamento === "fiado" && data.cliente_id) {
+      await tx.insert(fiadosTable).values({
+        cliente_id: data.cliente_id,
+        venda_id: venda.id,
+        valor: total,
+        pago: false,
+      });
+    }
+
+    if (sessao) {
+      const updates: Record<string, unknown> = {};
+      if (data.pagamento === "dinheiro") updates.total_dinheiro = sql`total_dinheiro + ${total}`;
+      if (data.pagamento === "pix") updates.total_pix = sql`total_pix + ${total}`;
+      if (data.pagamento === "cartao") updates.total_cartao = sql`total_cartao + ${total}`;
+      if (data.pagamento === "fiado") updates.total_fiado = sql`total_fiado + ${total}`;
+
+      if (Object.keys(updates).length > 0) {
+        await tx.update(sessoesCaixaTable).set(updates).where(eq(sessoesCaixaTable.id, sessao.id));
+      }
+    }
+
+    return { venda, insertedItensVenda };
+  });
+
   // Responder imediatamente ao frontend
   res.status(201).json({
     ...venda,
     criado_em: venda.criado_em.toISOString(),
     danfe_impresso: false,
     nfce_status: "pendente",
-    // Flag para indicar que DANFE será impresso em background (evita duplicação)
     _danfe_will_print: true,
   });
 

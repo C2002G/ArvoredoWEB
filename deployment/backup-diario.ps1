@@ -48,3 +48,12 @@ Get-ChildItem -Path $BackupDir -Filter "Arvoredo_Backup_*.xlsx" -ErrorAction Sil
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 Write-Host "Backup diario concluido com sucesso." -ForegroundColor Green
+
+# Backup técnico + nuvem (pg_dump + rclone) — mantém sincronizado com o backup local
+$BackupCloudScript = Join-Path $ProjectRoot "deployment\backup-cloud.ps1"
+if (Test-Path $BackupCloudScript) {
+    Write-Host "Executando backup na nuvem..." -ForegroundColor Cyan
+    & $BackupCloudScript -PgPassword $PgPassword
+} else {
+    Write-Host "AVISO: backup-cloud.ps1 nao encontrado, backup na nuvem nao executado." -ForegroundColor Yellow
+}
