@@ -76,6 +76,11 @@
   * {
     @apply border-border outline-ring;
   }
+
+  html, body, #root {
+    min-width: 0;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20;
   }

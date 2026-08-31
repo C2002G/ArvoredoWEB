@@ -16,6 +16,7 @@ type MaquininhaConfig = {
   cnpj_credenciadora: string;
 };
 
+
 const router: IRouter = Router();
 
 const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
@@ -61,11 +62,12 @@ async function pollingIntencao(
   intencaoVendaId: number,
   timeoutMs: number,
 ): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
   const inicio = Date.now();
   while (Date.now() - inicio < timeoutMs) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
-      const resp = await fetch(`${baseUrl}/webapi/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+      const resp = await fetch(`${baseUrl}${webapiPrefix}/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
         headers: { "User-Agent": "ArvoredoPDV/1.0" },
       });
       if (!resp.ok) continue;
@@ -119,8 +121,8 @@ router.post("/enviar", async (req, res) => {
   const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
   const key = process.env.CONTROLPAY_KEY?.trim() || "";
   const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0; 
-  // tempo para maquina reconhecer a transação e o cliente interagir com a maquininha (em ms) 
   const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
   
 
   if (!key) {
@@ -140,7 +142,7 @@ router.post("/enviar", async (req, res) => {
   let intencaoVendaId: number;
   try {
     const criarResp = await fetch(
-      `${baseUrl}/webapi/Venda/Vender/?key=${key}`,
+      `${baseUrl}${webapiPrefix}/Venda/Vender/?key=${key}`,
       {
         method: "POST",
         headers: {
@@ -229,10 +231,11 @@ router.post("/cancelar", async (req, res) => {
 
   const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
   const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
 
   try {
     const resp = await fetch(
-      `${baseUrl}/webapi/Venda/CancelarVenda/?key=${key}`,
+      `${baseUrl}${webapiPrefix}/Venda/CancelarVenda/?key=${key}`,
       {
         method: "POST",
         headers: {
@@ -258,11 +261,12 @@ router.post("/testar", async (_req, res) => {
   const config = await loadConfig();
   const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
   const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
 
   let paygoOnline = false;
   try {
     const resp = await fetch(
-      `${baseUrl}/webapi/Instalacao/GetById/?key=${key}`,
+      `${baseUrl}${webapiPrefix}/Instalacao/GetById/?key=${key}`,
       { signal: AbortSignal.timeout(5000) },
     );
     paygoOnline = resp.ok;
