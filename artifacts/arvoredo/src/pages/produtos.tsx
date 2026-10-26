@@ -6,7 +6,8 @@ import {
   useDeletarProdutoWrapper,
   useVerificarNfeImportadaWrapper,
   useRegistrarNfeImportadaWrapper,
-} from "@/hooks/use-produtos";import { formatMoney } from "@/lib/utils";
+} from "@/hooks/use-produtos";
+import { formatMoney } from "@/lib/utils";
 import { Button, Input, Select, Modal } from "@/components/ui-elements";
 import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X, ListRestart, FileUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -590,7 +591,7 @@ export default function Produtos() {
   };
 
   return (
-    <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
+    <div className="w-full min-w-0 p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Produtos</h1>
@@ -636,67 +637,64 @@ export default function Produtos() {
           )}
         </div>
 
-        <div className="overflow-x-auto flex-1">
+        <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="p-12 text-center text-muted-foreground">Carregando catálogo...</div>
           ) : (
-            <table className="w-full text-left">
-              <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
+            <table className="w-full table-fixed text-left">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase sticky top-0 z-10">
                 <tr>
                   <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "codigo" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "codigo" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("codigo")}
                   >
                     Cód.{sortCol === "codigo" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "nome" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[18%] ${sortCol === "nome" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("nome")}
                   >
                     Nome{sortCol === "nome" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "marca" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[16%] ${sortCol === "marca" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("marca")}
                   >
                     Marca{sortCol === "marca" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "categoria" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "categoria" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("categoria")}
                   >
                     Cat.{sortCol === "categoria" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 ${sortCol === "preco" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "preco" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("preco")}
                   >
                     Preço{sortCol === "preco" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 ${sortCol === "estoque" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 w-[9%] ${sortCol === "estoque" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("estoque")}
                   >
                     Estoque{sortCol === "estoque" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "validade" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[12%] ${sortCol === "validade" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("validade")}
                   >
                     Validade{sortCol === "validade" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "criado_em" ? "text-primary" : ""}`}
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "criado_em" ? "text-primary" : ""}`}
                     onClick={() => toggleSort("criado_em")}
                   >
                     Cadastro{sortCol === "criado_em" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                   </th>
                   <th
-                    className="px-4 py-4 font-medium text-center cursor-pointer select-none hover:bg-muted/80"
-                    onClick={() => {
-                      setSortCol(null);
-                      setSortDir("asc");
-                    }}
+                    className="px-3 py-4 font-medium text-center cursor-pointer select-none hover:bg-muted/80 w-[5%]"
+                    onClick={() => { setSortCol(null); setSortDir("asc"); }}
                     title="Limpar ordenação"
                   >
                     Ações
@@ -708,46 +706,88 @@ export default function Produtos() {
                   const vs = validadeStatus(p.validade);
                   return (
                     <tr key={p.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-4 text-muted-foreground font-mono text-sm">{p.codigo || '-'}</td>
-                      <td className="px-4 py-4 font-bold">{p.nome}</td>
-                      <td className="px-4 py-4 text-muted-foreground">{p.marca || '-'}</td>
-                      <td className="px-4 py-4">
-                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.categoria === "cozinha"
-                          ? "bg-orange-100 text-orange-700"
-                          : p.categoria === "feira"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-primary/10 text-primary"
-                          }`}>
+                      {/* Código - truncado */}
+                      <td className="px-3 py-4 text-muted-foreground font-mono text-sm truncate" title={p.codigo || '-'}>
+                        {p.codigo || '-'}
+                      </td>
+                      
+                      {/* Nome - truncado com tooltip */}
+                      <td className="px-3 py-4 font-bold truncate" title={p.nome}>
+                        {p.nome}
+                      </td>
+                      
+                      {/* Marca - truncado com tooltip */}
+                      <td className="px-3 py-4 text-muted-foreground truncate" title={p.marca || '-'}>
+                        {p.marca || '-'}
+                      </td>
+                      
+                      {/* Categoria - badge compacto */}
+                      <td className="px-3 py-4">
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-full truncate max-w-full ${
+                          p.categoria === "cozinha"
+                            ? "bg-orange-100 text-orange-700"
+                            : p.categoria === "feira"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-primary/10 text-primary"
+                        }`}>
                           {p.categoria}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-right font-mono font-bold text-primary">{formatMoney(p.preco)}</td>
-                      <td className={`px-4 py-4 text-right font-mono font-medium ${p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''}`}>
-                        {p.estoque} <span className="text-xs text-muted-foreground">{p.unidade}</span>
+                      
+                      {/* Preço */}
+                      <td className="px-3 py-4 text-right font-mono font-bold text-primary whitespace-nowrap">
+                        {formatMoney(p.preco)}
                       </td>
-                      <td className="px-4 py-4">
+                      
+                      {/* Estoque */}
+                      <td className={`px-3 py-4 text-right font-mono font-medium whitespace-nowrap ${
+                        p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''
+                      }`}>
+                        {p.estoque} <span className="text-[10px] text-muted-foreground">{p.unidade}</span>
+                      </td>
+                      
+                      {/* Validade - formato compacto */}
+                      <td className="px-3 py-4">
                         {p.validade ? (
-                          <span className={`flex items-center gap-1 text-sm font-medium ${vs === 'vencido' ? 'text-destructive' : vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
-                            }`}>
-                            <Calendar className="w-4 h-4" />
-                            {formatValidade(p.validade)}
-                            {vs === 'vencido' && <span className="text-xs font-bold bg-destructive/10 px-1 rounded">VENCIDO</span>}
-                            {vs === 'vencendo' && <span className="text-xs font-bold bg-yellow-100 px-1 rounded">VENCENDO</span>}
-                          </span>
+                          <div className={`flex items-center gap-1 text-xs font-medium ${
+                            vs === 'vencido' ? 'text-destructive' : 
+                            vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
+                          }`}>
+                            <Calendar className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{formatValidade(p.validade)}</span>
+                            {vs === 'vencido' && (
+                              <span className="text-[9px] font-bold bg-destructive/10 px-1 rounded flex-shrink-0">VENC</span>
+                            )}
+                            {vs === 'vencendo' && (
+                              <span className="text-[9px] font-bold bg-yellow-100 px-1 rounded flex-shrink-0">VNC</span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
+                          <span className="text-muted-foreground text-xs">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-xs text-muted-foreground">
-                        {p.criado_em ? new Date(p.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                      
+                      {/* Cadastro - formato compacto */}
+                      <td className="px-3 py-4 text-[11px] text-muted-foreground leading-tight">
+                        {p.criado_em ? new Date(p.criado_em).toLocaleDateString('pt-BR') : '-'}
                       </td>
-                      <td className="px-4 py-4">
-                        <div className="flex justify-center gap-2">
-                          <button onClick={() => handleOpenEdit(p)} className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                            <Edit2 className="w-4 h-4" />
+                      
+                      {/* Ações - ícones compactos */}
+                      <td className="px-3 py-4">
+                        <div className="flex justify-center gap-1">
+                          <button 
+                            onClick={() => handleOpenEdit(p)} 
+                            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => setDeleteModal(p.id)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                            <Trash2 className="w-4 h-4" />
+                          <button 
+                            onClick={() => setDeleteModal(p.id)} 
+                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -772,11 +812,7 @@ export default function Produtos() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Nome Base (ID) *</label>
-              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Ex: Arroz" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Marca / Variação</label>
-              <Input value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: PratoFino 5kg" />
+              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: PratoFino 5kg" />
             </div>
           </div>
 
