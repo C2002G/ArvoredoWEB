@@ -70,7 +70,7 @@ function toNum(v: string): number {
 
 function normalizeBarcode(code: string): string | null {
   const trimmed = code.trim();
-  if (!trimmed || /^SEM\\s*GTIN$/i.test(trimmed)) return null;
+  if (!trimmed || /^SEM\s*GTIN$/i.test(trimmed)) return null;;
   return trimmed;
 }
 
@@ -811,8 +811,12 @@ export default function Produtos() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Nome Base (ID) *</label>
-              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: PratoFino 5kg" />
+              <label className="block text-sm font-medium mb-1">Nome *</label>
+              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Ex: Arroz Tio João 5kg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Marca</label>
+              <Input value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: Tio João" />
             </div>
           </div>
 
