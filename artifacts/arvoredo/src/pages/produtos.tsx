@@ -70,7 +70,7 @@ function toNum(v: string): number {
 
 function normalizeBarcode(code: string): string | null {
   const trimmed = code.trim();
-  if (!trimmed || /^SEM\s*GTIN$/i.test(trimmed)) return null;;
+  if (!trimmed || /^SEM\s*GTIN$/i.test(trimmed)) return null;
   return trimmed;
 }
 
@@ -78,6 +78,16 @@ function normalizeNome(nome: string): string {
   return nome.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function ncmLimpo(ncm?: string | null): string {
+  return (ncm ?? "").replace(/\D/g, "");
+}
+
+function ncmInvalido(ncm?: string | null): boolean {
+
+  const n = ncmLimpo(ncm);
+  return n.length !== 8 || n === "00000000";
+}
+const XML_PAGE_SIZE = 50;
 function parseNfeXml(xmlText: string): NfeImportPreview {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, "application/xml");
@@ -228,9 +238,21 @@ export default function Produtos() {
   const [importingXml, setImportingXml] = useState(false);
   const [xmlDuplicada, setXmlDuplicada] = useState<{ dataImportacao: string | null } | null>(null);
   const [xmlItensHash, setXmlItensHash] = useState<string | null>(null);
+  const [xmlPagina, setXmlPagina] = useState(0);
 
   const updateXmlItem = (idx: number, patch: Partial<NfeItem>) => {
     setXmlItens((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
+  };
+
+  const totalPaginas = Math.max(1, Math.ceil(xmlItens.length / XML_PAGE_SIZE));
+  const paginaAtual = Math.min(xmlPagina, totalPaginas - 1);
+  const inicioPagina = paginaAtual * XML_PAGE_SIZE;
+  const itensPagina = xmlItens.slice(inicioPagina, inicioPagina + XML_PAGE_SIZE);
+  const qtdNcmInvalido = xmlItens.filter((i) => ncmInvalido(i.ncm)).length;
+
+  const irParaPrimeiroInvalido = () => {
+    const idx = xmlItens.findIndex((i) => ncmInvalido(i.ncm));
+    if (idx >= 0) setXmlPagina(Math.floor(idx / XML_PAGE_SIZE));
   };
 
   const defaultForm = {
@@ -304,6 +326,8 @@ export default function Produtos() {
     setXmlDuplicada(null);
     setXmlItensHash(null);
     setImportModalOpen(true);
+    setXmlItens([]);
+    setXmlPagina(0);
   };
 
   const handleOpenEdit = (p: Produto) => {
@@ -379,11 +403,13 @@ export default function Produtos() {
     });
   };
 
-    const parseXmlPreview = () => {
+  const parseXmlPreview = () => {
     try {
       const parsed = parseNfeXml(xmlRaw);
       setXmlPreview(parsed);
       setXmlItens(parsed.itens);
+      setXmlItens(parsed.itens);
+      setXmlPagina(0);
       setXmlDuplicada(null);
       setXmlItensHash(null);
 
@@ -483,7 +509,7 @@ export default function Produtos() {
       );
     });
 
-    const handleImportarXml = async () => {
+  const handleImportarXml = async () => {
     if (!xmlPreview || xmlItens.length === 0) {
       toast({
         title: "Leia o XML primeiro",
@@ -500,6 +526,19 @@ export default function Produtos() {
       });
       return;
     }
+
+    const semNcm = xmlItens.filter((i) => ncmInvalido(i.ncm));
+    if (semNcm.length > 0) {
+      const exemplos = semNcm.slice(0, 3).map((i) => i.descricao).join(", ");
+      toast({
+        title: "Itens sem NCM válido",
+        description: `Corrija o NCM de ${semNcm.length} item(ns) na prévia (linhas em vermelho). Ex.: ${exemplos}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+
 
     setImportingXml(true);
     try {
@@ -526,7 +565,7 @@ export default function Produtos() {
 
           await runEditarProduto(existing.id, {
             codigo: novoCodigo,
-            ncm: (existing as any).ncm || item.ncm,
+            ncm: (existing as any).ncm || ncmLimpo(item.ncm),
             cst: (existing as any).cst || item.cst,
             custo: item.valorUnitario,
             preco: existing.preco > 0 ? existing.preco : item.valorUnitario,
@@ -545,7 +584,7 @@ export default function Produtos() {
             marca: null,
             codigo: item.codigoBarras,
             categoria: "mercado",
-            ncm: item.ncm,
+            ncm: ncmLimpo(item.ncm),
             cst: item.cst,
             preco: item.valorUnitario,
             custo: item.valorUnitario,
@@ -561,7 +600,7 @@ export default function Produtos() {
         }
       }
 
-            if (xmlItensHash) {
+      if (xmlItensHash) {
         try {
           await registrarNfeImportada.mutateAsync({
             data: {
@@ -710,49 +749,46 @@ export default function Produtos() {
                       <td className="px-3 py-4 text-muted-foreground font-mono text-sm truncate" title={p.codigo || '-'}>
                         {p.codigo || '-'}
                       </td>
-                      
+
                       {/* Nome - truncado com tooltip */}
                       <td className="px-3 py-4 font-bold truncate" title={p.nome}>
                         {p.nome}
                       </td>
-                      
+
                       {/* Marca - truncado com tooltip */}
                       <td className="px-3 py-4 text-muted-foreground truncate" title={p.marca || '-'}>
                         {p.marca || '-'}
                       </td>
-                      
+
                       {/* Categoria - badge compacto */}
                       <td className="px-3 py-4">
-                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-full truncate max-w-full ${
-                          p.categoria === "cozinha"
-                            ? "bg-orange-100 text-orange-700"
-                            : p.categoria === "feira"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-primary/10 text-primary"
-                        }`}>
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-full truncate max-w-full ${p.categoria === "cozinha"
+                          ? "bg-orange-100 text-orange-700"
+                          : p.categoria === "feira"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-primary/10 text-primary"
+                          }`}>
                           {p.categoria}
                         </span>
                       </td>
-                      
+
                       {/* Preço */}
                       <td className="px-3 py-4 text-right font-mono font-bold text-primary whitespace-nowrap">
                         {formatMoney(p.preco)}
                       </td>
-                      
+
                       {/* Estoque */}
-                      <td className={`px-3 py-4 text-right font-mono font-medium whitespace-nowrap ${
-                        p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''
-                      }`}>
+                      <td className={`px-3 py-4 text-right font-mono font-medium whitespace-nowrap ${p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''
+                        }`}>
                         {p.estoque} <span className="text-[10px] text-muted-foreground">{p.unidade}</span>
                       </td>
-                      
+
                       {/* Validade - formato compacto */}
                       <td className="px-3 py-4">
                         {p.validade ? (
-                          <div className={`flex items-center gap-1 text-xs font-medium ${
-                            vs === 'vencido' ? 'text-destructive' : 
+                          <div className={`flex items-center gap-1 text-xs font-medium ${vs === 'vencido' ? 'text-destructive' :
                             vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
-                          }`}>
+                            }`}>
                             <Calendar className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate">{formatValidade(p.validade)}</span>
                             {vs === 'vencido' && (
@@ -766,24 +802,24 @@ export default function Produtos() {
                           <span className="text-muted-foreground text-xs">-</span>
                         )}
                       </td>
-                      
+
                       {/* Cadastro - formato compacto */}
                       <td className="px-3 py-4 text-[11px] text-muted-foreground leading-tight">
                         {p.criado_em ? new Date(p.criado_em).toLocaleDateString('pt-BR') : '-'}
                       </td>
-                      
+
                       {/* Ações - ícones compactos */}
                       <td className="px-3 py-4">
                         <div className="flex justify-center gap-1">
-                          <button 
-                            onClick={() => handleOpenEdit(p)} 
+                          <button
+                            onClick={() => handleOpenEdit(p)}
                             className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                             title="Editar"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button 
-                            onClick={() => setDeleteModal(p.id)} 
+                          <button
+                            onClick={() => setDeleteModal(p.id)}
                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                             title="Excluir"
                           >
@@ -967,6 +1003,14 @@ export default function Produtos() {
                   Não possível importar por ser um registro já feito.
                 </div>
               )}
+              {qtdNcmInvalido > 0 && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm font-medium flex items-center justify-between gap-3">
+                  <span>{qtdNcmInvalido} item(ns) com NCM inválido. Corrija antes de importar.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={irParaPrimeiroInvalido}>
+                    Ir para o primeiro
+                  </Button>
+                </div>
+              )}
               <div className="max-h-56 overflow-auto rounded-xl border border-border">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50">
@@ -980,63 +1024,85 @@ export default function Produtos() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {xmlItens.slice(0, 100).map((item, idx) => (
-                      <tr key={`${item.codigoInterno}-${idx}`}>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-full min-w-[180px] bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
-                            value={item.descricao}
-                            onChange={(e) => updateXmlItem(idx, { descricao: e.target.value })}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-28 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
-                            value={item.codigoBarras ?? ""}
-                            onChange={(e) => updateXmlItem(idx, { codigoBarras: e.target.value || null })}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-20 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
-                            value={item.ncm ?? ""}
-                            onChange={(e) => updateXmlItem(idx, { ncm: e.target.value || null })}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-16 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
-                            value={item.cst ?? ""}
-                            onChange={(e) => updateXmlItem(idx, { cst: e.target.value || null })}
-                          />
-                        </td>
-                        <td className="px-2 py-1 text-right">
-                          <input
-                            type="number"
-                            step="0.0001"
-                            className="w-20 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
-                            value={item.quantidade}
-                            onChange={(e) => updateXmlItem(idx, { quantidade: Number(e.target.value) || 0 })}
-                          />
-                        </td>
-                        <td className="px-2 py-1 text-right">
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="w-24 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
-                            value={item.valorUnitario}
-                            onChange={(e) => updateXmlItem(idx, { valorUnitario: Number(e.target.value) || 0 })}
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {itensPagina.map((item, i) => {
+                      const idx = inicioPagina + i;
+                      const invalido = ncmInvalido(item.ncm);
+                      return (
+                        <tr
+                          key={`${item.codigoInterno}-${idx}`}
+                          className={invalido ? "bg-destructive/10" : ""}
+                        >
+                          <td className="px-2 py-1">
+                            <input
+                              className="w-full min-w-[180px] bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                              value={item.descricao}
+                              onChange={(e) => updateXmlItem(idx, { descricao: e.target.value })}
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className="w-28 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                              value={item.codigoBarras ?? ""}
+                              onChange={(e) => updateXmlItem(idx, { codigoBarras: e.target.value || null })}
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className={`w-20 bg-transparent border-b outline-none text-sm px-1 py-1 ${invalido
+                                ? "border-destructive text-destructive"
+                                : "border-transparent hover:border-input focus:border-primary"
+                                }`}
+                              value={item.ncm ?? ""}
+                              maxLength={10}
+                              onChange={(e) => updateXmlItem(idx, { ncm: e.target.value || null })}
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className="w-16 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                              value={item.cst ?? ""}
+                              onChange={(e) => updateXmlItem(idx, { cst: e.target.value || null })}
+                            />
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            <input
+                              type="number"
+                              step="0.0001"
+                              className="w-20 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                              value={item.quantidade}
+                              onChange={(e) => updateXmlItem(idx, { quantidade: Number(e.target.value) || 0 })}
+                            />
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-24 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                              value={item.valorUnitario}
+                              onChange={(e) => updateXmlItem(idx, { valorUnitario: Number(e.target.value) || 0 })}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-              {xmlPreview.itens.length > 100 && (
-                <p className="text-xs text-muted-foreground">
-                  Mostrando 100 itens na prévia de um total de {xmlPreview.itens.length}.
-                </p>
+              {totalPaginas > 1 && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Itens {inicioPagina + 1}–{Math.min(inicioPagina + XML_PAGE_SIZE, xmlItens.length)} de {xmlItens.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" disabled={paginaAtual === 0} onClick={() => setXmlPagina(paginaAtual - 1)}>
+                      Anterior
+                    </Button>
+                    <span>Página {paginaAtual + 1} de {totalPaginas}</span>
+                    <Button type="button" variant="outline" size="sm" disabled={paginaAtual >= totalPaginas - 1} onClick={() => setXmlPagina(paginaAtual + 1)}>
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           )}
