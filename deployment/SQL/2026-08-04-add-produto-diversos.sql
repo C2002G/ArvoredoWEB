@@ -7,7 +7,7 @@ INSERT INTO produtos (
   preco, custo, estoque, estoque_min, unidade, ativo
 ) VALUES (
   'DIVERSOS', 'Diversos', NULL, 'mercado',
-  'PREENCHER_NCM', '5102', 'PREENCHER_CST',
+  '19059090', '5102', '00',
   0, 0, 999999, 0, 'un', true
 )
 ON CONFLICT (codigo) DO NOTHING;
