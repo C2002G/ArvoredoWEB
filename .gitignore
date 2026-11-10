@@ -61,3 +61,5 @@ repomix-output.xml
 !README.md
 
 artifacts/api-server/data/maquininha-config.json
+
+*.dump
