@@ -67,11 +67,12 @@ async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
   }
 }
 
-router.post("/teste", async (_req, res) => {
+router.post("/teste", async (req, res) => {
   try {
     const printerName = await resolvePrinterName();
     const text = `ARVOREDO\r\nTeste de Impressao\r\nImpressora: ${printerName}\r\nHorario: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\r\n\r\nSe o cupom sair, a impressora esta conectada.`;
-    const result = await printCupomWithQrCode(text);
+    const qrUrl = req.query.qr ? "https://www.sefaz.rs.gov.br/nfce/consulta" : undefined;
+    const result = await printCupomWithQrCode(text, qrUrl);
     return res.json({ ...result, impressora: printerName });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Erro desconhecido ao testar impressora";

@@ -284,6 +284,7 @@ modelo-nota/
   Captura de tela 2026-04-24 154017.png
   fabio.pdf
 .env.example
+.gitattributes
 .gitignore
 .npmrc
 doge.png
@@ -7509,22 +7510,6 @@ ALTER TABLE vendas
   ADD COLUMN IF NOT EXISTS tef_intencao_id integer;
 </file>
 
-<file path="deployment/SQL/2026-08-04-add-produto-diversos.sql">
--- Produto fixo "Diversos": usado para vendas emergenciais de itens não cadastrados.
--- codigo = 'DIVERSOS' serve como identificador único no código (frontend/backend).
--- Preencha ncm/cst com o mesmo padrão fiscal usado nos demais produtos de mercado
--- antes de usar em produção, senão a NF-e vai cair no fallback "00000000" (NCM inválido).
-INSERT INTO produtos (
-  codigo, nome, marca, categoria, ncm, cfop, cst,
-  preco, custo, estoque, estoque_min, unidade, ativo
-) VALUES (
-  'DIVERSOS', 'Diversos', NULL, 'mercado',
-  'PREENCHER_NCM', '5102', 'PREENCHER_CST',
-  0, 0, 999999, 0, 'un', true
-)
-ON CONFLICT (codigo) DO NOTHING;
-</file>
-
 <file path="deployment/SQL/criar-banco.sql">
 -- Arvoredo PDV - Script de Criacao do Banco de Dados
 -- Execute este script no pgAdmin para criar o banco de dados
@@ -8266,6 +8251,12 @@ export const insertUsuarioSchema = createInsertSchema(usuariosTable).omit({
 }
 </file>
 
+<file path=".gitattributes">
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+</file>
+
 <file path=".npmrc">
 auto-install-peers=false
 strict-peer-dependencies=false
@@ -8341,21 +8332,6 @@ server.listen(PORT, () => {
   console.log(`📠 Simulador da Maquininha Stone rodando em http://127.0.0.1:${PORT}`);
   console.log('Vá no PDV Arvoredo, adicione um produto e clique em Débito ou Crédito!');
 });
-</file>
-
-<file path="start_arvoredo.bat">
-@echo off
-SET "SCRIPT_DIR=%~dp0"
-CD /D "%SCRIPT_DIR%"
-
-ECHO Iniciando Arvoredo PDV...
-
-REM Iniciar o script PowerShell em uma nova janela (invisivel)
-powershell -ExecutionPolicy Bypass -File ".\deployment\iniciar.ps1" -WindowStyle Hidden
-
-ECHO Arvoredo PDV iniciado em segundo plano.
-ECHO Voce pode fechar esta janela.
-exit
 </file>
 
 <file path="test-usb-connection.js">
@@ -8454,205 +8430,6 @@ testUSBConnection();
       "path": "./lib/api-zod"
     }
   ]
-}
-</file>
-
-<file path="artifacts/api-server/src/lib/printer.ts">
-import { promises as fs } from "node:fs";
-import { execFile } from "node:child_process";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-export type WindowsPrinterInfo = {
-  name: string;
-  isDefault: boolean;
-};
-
-const AUTO_PRINTER_HINTS = ["elgin", "i7", "i8", "usb", "pos", "termica", "termica"];
-
-async function execPowershell(command: string) {
-  const { stdout, stderr } = await execFileAsync("powershell.exe", ["-NoProfile", "-Command", command], {
-    windowsHide: true,
-    timeout: 20000,
-  });
-
-  if (stderr && stderr.trim()) {
-    throw new Error(stderr.trim());
-  }
-
-  return stdout.trim();
-}
-
-/**
- * Não use Out-Printer -Width: em várias impressoras térmicas isso restringe a área
- * e o cupom fica com texto “pela metade” da largura. O controle fica no texto (48 cols).
- * Opcional: PRINTER_LINE_WIDTH (número) para forçar -Width quando necessário.
- */
-async function execPowershellPrint(tempFilePath: string, printerName: string) {
-  const safeFilePath = tempFilePath.replace(/'/g, "''");
-  const safePrinter = printerName.replace(/'/g, "''");
-  const w = process.env.PRINTER_LINE_WIDTH?.trim();
-  const widthArg =
-    w && /^\d+$/.test(w) && Number(w) > 0 ? ` -Width ${Number(w)}` : "";
-
-  if (widthArg) {
-    try {
-      await execPowershell(
-        `Get-Content -Raw -Encoding utf8 '${safeFilePath}' | Out-Printer -Name '${safePrinter}'${widthArg}`,
-      );
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.toLowerCase().includes("namedparameternotfound")) {
-        throw error;
-      }
-    }
-  }
-
-  await execPowershell(
-    `Get-Content -Raw -Encoding utf8 '${safeFilePath}' | Out-Printer -Name '${safePrinter}'`,
-  );
-}
-
-export async function listWindowsPrinters(): Promise<WindowsPrinterInfo[]> {
-  const raw = await execPowershell(
-    "Get-Printer | Select-Object -Property Name,Default | ConvertTo-Json -Compress"
-  );
-
-  if (!raw) {
-    return [];
-  }
-
-  const parsed = JSON.parse(raw);
-  const rows = Array.isArray(parsed) ? parsed : [parsed];
-  return rows.map((row: any) => ({
-    name: String(row.Name || row.name || "").trim(),
-    isDefault: Boolean(row.Default || row.default),
-  }));
-}
-
-function normalizePrinterName(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function splitConfiguredCandidates(configuredName?: string) {
-  if (!configuredName) {
-    return [];
-  }
-
-  return configuredName
-    .split(/[|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function scorePrinterName(name: string) {
-  const normalized = normalizePrinterName(name);
-  let score = 0;
-
-  for (const hint of AUTO_PRINTER_HINTS) {
-    if (normalized.includes(hint)) {
-      score += hint === "elgin" || hint === "i7" ? 6 : 2;
-    }
-  }
-
-  return score;
-}
-
-function resolveFromConfiguredCandidates(printers: WindowsPrinterInfo[], configuredCandidates: string[]) {
-  for (const configured of configuredCandidates) {
-    const exactMatch = printers.find((printer) => printer.name.toLowerCase() === configured.toLowerCase());
-    if (exactMatch) {
-      return exactMatch.name;
-    }
-
-    const normalizedConfigured = normalizePrinterName(configured);
-    const fuzzyMatch = printers.find((printer) => {
-      const normalizedPrinter = normalizePrinterName(printer.name);
-      return (
-        normalizedPrinter.includes(normalizedConfigured) ||
-        normalizedConfigured.includes(normalizedPrinter)
-      );
-    });
-
-    if (fuzzyMatch) {
-      return fuzzyMatch.name;
-    }
-  }
-
-  return null;
-}
-
-export async function resolvePrinterName(): Promise<string> {
-  if (process.platform !== "win32") {
-    throw new Error("A impressão por USB só é suportada no Windows nesta versão.");
-  }
-
-  const configured = process.env.PRINTER_NAME?.trim();
-  const configuredCandidates = splitConfiguredCandidates(configured);
-  const printers = await listWindowsPrinters();
-
-  if (printers.length === 0) {
-    throw new Error("Nenhuma impressora instalada foi encontrada no Windows.");
-  }
-
-  const configuredMatch = resolveFromConfiguredCandidates(printers, configuredCandidates);
-  if (configuredMatch) {
-    return configuredMatch;
-  }
-
-  const bestByName = printers
-    .map((printer) => ({ printer, score: scorePrinterName(printer.name) }))
-    .sort((a, b) => b.score - a.score)[0];
-
-  if (bestByName && bestByName.score > 0) {
-    return bestByName.printer.name;
-  }
-
-  const defaultPrinter = printers.find((printer) => printer.isDefault);
-  if (defaultPrinter) {
-    return defaultPrinter.name;
-  }
-
-  if (printers.length === 1) {
-    return printers[0].name;
-  }
-
-  const installed = printers.map((printer) => printer.name).join(", ");
-  if (configured) {
-    throw new Error(
-      `Impressora configurada não encontrada: ${configured}. Impressoras instaladas: ${installed}.`
-    );
-  }
-
-  throw new Error(
-    `Nenhuma impressora adequada encontrada automaticamente. Defina PRINTER_NAME no .env. Impressoras instaladas: ${installed}.`
-  );
-}
-
-export async function printTextToWindowsPrinter(text: string, printerName?: string) {
-  if (process.platform !== "win32") {
-    throw new Error("A impressão por USB só é suportada no Windows nesta versão.");
-  }
-
-  const name = printerName?.trim() || (await resolvePrinterName());
-  const tempFile = path.join(os.tmpdir(), `arvoredo_print_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`);
-
-  await fs.writeFile(tempFile, text, "utf8");
-
-  try {
-    await execPowershellPrint(tempFile, name);
-  } finally {
-    await fs.rm(tempFile, { force: true }).catch(() => undefined);
-  }
 }
 </file>
 
@@ -9531,106 +9308,6 @@ export default function Estoque() {
 }
 </file>
 
-<file path="artifacts/arvoredo/src/index.css">
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-@import "tailwindcss";
-
-@theme inline {
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-warning: hsl(var(--warning));
-  --color-warning-foreground: hsl(var(--warning-foreground));
-  --color-kitchen: hsl(var(--kitchen));
-  --color-kitchen-foreground: hsl(var(--kitchen-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-}
-
-:root {
-  /* Clean Light Professional Theme */
-  --background: 210 33% 98%; /* Slate-50 */
-  --foreground: 222 47% 11%;
-  
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  
-  /* Primary Green (cor de árvore / Arvoredo) */
-  --primary: 142 71% 35%;
-  --primary-foreground: 0 0% 100%;
-  
-  /* Secondary / Surface */
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  
-  /* Destructive Red (#DC2626) */
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 210 40% 98%;
-
-  /* Warning / Yellow (#EAB308) */
-  --warning: 45 93% 47%;
-  --warning-foreground: 210 40% 98%;
-
-  /* Kitchen Orange (#EA580C) */
-  --kitchen: 25 95% 53%;
-  --kitchen-foreground: 210 40% 98%;
-  
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 142 71% 35%;
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring;
-  }
-  body {
-    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20;
-  }
-  
-  /* Custom scrollbar for a polished look */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/30 rounded-full;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/50;
-  }
-}
-</file>
-
 <file path="artifacts/arvoredo/package.json">
 {
   "name": "@workspace/arvoredo",
@@ -9709,6 +9386,22 @@ export default function Estoque() {
     "zustand": "^5.0.12"
   }
 }
+</file>
+
+<file path="deployment/SQL/2026-08-04-add-produto-diversos.sql">
+-- Produto fixo "Diversos": usado para vendas emergenciais de itens não cadastrados.
+-- codigo = 'DIVERSOS' serve como identificador único no código (frontend/backend).
+-- Preencha ncm/cst com o mesmo padrão fiscal usado nos demais produtos de mercado
+-- antes de usar em produção, senão a NF-e vai cair no fallback "00000000" (NCM inválido).
+INSERT INTO produtos (
+  codigo, nome, marca, categoria, ncm, cfop, cst,
+  preco, custo, estoque, estoque_min, unidade, ativo
+) VALUES (
+  'DIVERSOS', 'Diversos', NULL, 'mercado',
+  '19059090', '5102', '00',
+  0, 0, 999999, 0, 'un', true
+)
+ON CONFLICT (codigo) DO NOTHING;
 </file>
 
 <file path="deployment/instalar-dependencias.ps1">
@@ -9971,54 +9664,6 @@ export type Sangria = typeof sangriasTable.$inferSelect;
 export type InsertSangria = z.infer<typeof insertSangriaSchema>;
 </file>
 
-<file path="lib/db/src/schema/fiscal.ts">
-import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
-import { vendasTable } from "./vendas";
-
-export const ambienteSefazEnum = pgEnum("ambiente_sefaz", ["producao", "homologacao"]);
-export const statusNfceEnum = pgEnum("status_nfce", ["processando", "autorizada", "rejeitada", "erro"]);
-
-// Tabela para guardar a configuração fiscal da empresa
-export const configFiscalTable = pgTable("config_fiscal", {
-  id: serial("id").primaryKey(),
-  razao_social: text("razao_social").notNull(),
-  nome_fantasia: text("nome_fantasia").notNull(),
-  cnpj: text("cnpj").notNull(),
-  ie: text("ie").notNull(),
-  crt: text("crt").notNull(), // Código de Regime Tributário (ex: "1" para Simples Nacional)
-  endereco: text("endereco").notNull(),
-  numero: text("numero").notNull(),
-  bairro: text("bairro").notNull(),
-  cidade: text("cidade").notNull(),
-  uf: text("uf").notNull(),
-  cep: text("cep").notNull(),
-  cod_municipio: text("cod_municipio").notNull(),
-  telefone: text("telefone"),
-  csc_id: text("csc_id").notNull(),
-  csc_token: text("csc_token").notNull(),
-  caminho_certificado: text("caminho_certificado").notNull(),
-  senha_certificado: text("senha_certificado").notNull(),
-  ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-
-// Tabela para logar todas as tentativas de emissão de NFC-e
-export const nfceLogsTable = pgTable("nfce_logs", {
-  id: serial("id").primaryKey(),
-  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
-  status: statusNfceEnum("status").notNull().default("processando"),
-  ambiente: ambienteSefazEnum("ambiente").notNull(),
-  chave_acesso: text("chave_acesso"),
-  protocolo: text("protocolo"),
-  codigo_status_sefaz: integer("codigo_status_sefaz"),
-  mensagem_status_sefaz: text("mensagem_status_sefaz"),
-  xml_enviado: text("xml_enviado"),
-  xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
-  json_retorno_sefaz: jsonb("json_retorno_sefaz"),
-  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
-});
-</file>
-
 <file path="lib/db/src/index.ts">
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -10115,6 +9760,220 @@ seedFiscalConfig()
   .finally(async () => {
     await pool.end();
   });
+</file>
+
+<file path="start_arvoredo.bat">
+@echo off
+SET "SCRIPT_DIR=%~dp0"
+CD /D "%SCRIPT_DIR%"
+
+ECHO Iniciando Arvoredo PDV...
+
+REM Iniciar o script PowerShell em uma nova janela (invisivel)
+powershell -ExecutionPolicy Bypass -File ".\deployment\iniciar.ps1" -WindowStyle Hidden
+
+ECHO Arvoredo PDV iniciado em segundo plano.
+ECHO Voce pode fechar esta janela.
+exit
+</file>
+
+<file path="artifacts/api-server/src/lib/printer.ts">
+import { promises as fs } from "node:fs";
+import { execFile } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+export type WindowsPrinterInfo = {
+  name: string;
+  isDefault: boolean;
+};
+
+const AUTO_PRINTER_HINTS = ["elgin", "i7", "i8", "usb", "pos", "termica", "termica"];
+
+async function execPowershell(command: string) {
+  const { stdout, stderr } = await execFileAsync("powershell.exe", ["-NoProfile", "-Command", command], {
+    windowsHide: true,
+    timeout: 20000,
+  });
+
+  if (stderr && stderr.trim()) {
+    throw new Error(stderr.trim());
+  }
+
+  return stdout.trim();
+}
+
+/**
+ * Não use Out-Printer -Width: em várias impressoras térmicas isso restringe a área
+ * e o cupom fica com texto “pela metade” da largura. O controle fica no texto (48 cols).
+ * Opcional: PRINTER_LINE_WIDTH (número) para forçar -Width quando necessário.
+ */
+async function execPowershellPrint(tempFilePath: string, printerName: string) {
+  const safeFilePath = tempFilePath.replace(/'/g, "''");
+  const safePrinter = printerName.replace(/'/g, "''");
+  const w = process.env.PRINTER_LINE_WIDTH?.trim();
+  const widthArg =
+    w && /^\d+$/.test(w) && Number(w) > 0 ? ` -Width ${Number(w)}` : "";
+
+  if (widthArg) {
+    try {
+      await execPowershell(
+        `Get-Content -Raw -Encoding utf8 '${safeFilePath}' | Out-Printer -Name '${safePrinter}'${widthArg}`,
+      );
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.toLowerCase().includes("namedparameternotfound")) {
+        throw error;
+      }
+    }
+  }
+
+  await execPowershell(
+    `Get-Content -Raw -Encoding utf8 '${safeFilePath}' | Out-Printer -Name '${safePrinter}'`,
+  );
+}
+
+export async function listWindowsPrinters(): Promise<WindowsPrinterInfo[]> {
+  const raw = await execPowershell(
+    "Get-Printer | Select-Object -Property Name,Default | ConvertTo-Json -Compress"
+  );
+
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = JSON.parse(raw);
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  return rows.map((row: any) => ({
+    name: String(row.Name || row.name || "").trim(),
+    isDefault: Boolean(row.Default || row.default),
+  }));
+}
+
+function normalizePrinterName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function splitConfiguredCandidates(configuredName?: string) {
+  if (!configuredName) {
+    return [];
+  }
+
+  return configuredName
+    .split(/[|,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function scorePrinterName(name: string) {
+  const normalized = normalizePrinterName(name);
+  let score = 0;
+
+  for (const hint of AUTO_PRINTER_HINTS) {
+    if (normalized.includes(hint)) {
+      score += hint === "elgin" || hint === "i7" ? 6 : 2;
+    }
+  }
+
+  return score;
+}
+
+function resolveFromConfiguredCandidates(printers: WindowsPrinterInfo[], configuredCandidates: string[]) {
+  for (const configured of configuredCandidates) {
+    const exactMatch = printers.find((printer) => printer.name.toLowerCase() === configured.toLowerCase());
+    if (exactMatch) {
+      return exactMatch.name;
+    }
+
+    const normalizedConfigured = normalizePrinterName(configured);
+    const fuzzyMatch = printers.find((printer) => {
+      const normalizedPrinter = normalizePrinterName(printer.name);
+      return (
+        normalizedPrinter.includes(normalizedConfigured) ||
+        normalizedConfigured.includes(normalizedPrinter)
+      );
+    });
+
+    if (fuzzyMatch) {
+      return fuzzyMatch.name;
+    }
+  }
+
+  return null;
+}
+
+export async function resolvePrinterName(): Promise<string> {
+  if (process.platform !== "win32") {
+    throw new Error("A impressão por USB só é suportada no Windows nesta versão.");
+  }
+
+  const configured = process.env.PRINTER_NAME?.trim();
+  const configuredCandidates = splitConfiguredCandidates(configured);
+  const printers = await listWindowsPrinters();
+
+  if (printers.length === 0) {
+    throw new Error("Nenhuma impressora instalada foi encontrada no Windows.");
+  }
+
+  const configuredMatch = resolveFromConfiguredCandidates(printers, configuredCandidates);
+  if (configuredMatch) {
+    return configuredMatch;
+  }
+
+  const bestByName = printers
+    .map((printer) => ({ printer, score: scorePrinterName(printer.name) }))
+    .sort((a, b) => b.score - a.score)[0];
+
+  if (bestByName && bestByName.score > 0) {
+    return bestByName.printer.name;
+  }
+
+  const defaultPrinter = printers.find((printer) => printer.isDefault);
+  if (defaultPrinter) {
+    return defaultPrinter.name;
+  }
+
+  if (printers.length === 1) {
+    return printers[0].name;
+  }
+
+  const installed = printers.map((printer) => printer.name).join(", ");
+  if (configured) {
+    throw new Error(
+      `Impressora configurada não encontrada: ${configured}. Impressoras instaladas: ${installed}.`
+    );
+  }
+
+  throw new Error(
+    `Nenhuma impressora adequada encontrada automaticamente. Defina PRINTER_NAME no .env. Impressoras instaladas: ${installed}.`
+  );
+}
+
+export async function printTextToWindowsPrinter(text: string, printerName?: string) {
+  if (process.platform !== "win32") {
+    throw new Error("A impressão por USB só é suportada no Windows nesta versão.");
+  }
+
+  const name = printerName?.trim() || (await resolvePrinterName());
+  const tempFile = path.join(os.tmpdir(), `arvoredo_print_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`);
+
+  await fs.writeFile(tempFile, text, "utf8");
+
+  try {
+    await execPowershellPrint(tempFile, name);
+  } finally {
+    await fs.rm(tempFile, { force: true }).catch(() => undefined);
+  }
+}
 </file>
 
 <file path="artifacts/arvoredo/src/hooks/use-produtos.ts">
@@ -10250,6 +10109,111 @@ function App() {
 }
 
 export default App;
+</file>
+
+<file path="artifacts/arvoredo/src/index.css">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-kitchen: hsl(var(--kitchen));
+  --color-kitchen-foreground: hsl(var(--kitchen-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+:root {
+  /* Clean Light Professional Theme */
+  --background: 210 33% 98%; /* Slate-50 */
+  --foreground: 222 47% 11%;
+  
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  
+  /* Primary Green (cor de árvore / Arvoredo) */
+  --primary: 142 71% 35%;
+  --primary-foreground: 0 0% 100%;
+  
+  /* Secondary / Surface */
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  
+  /* Destructive Red (#DC2626) */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* Warning / Yellow (#EAB308) */
+  --warning: 45 93% 47%;
+  --warning-foreground: 210 40% 98%;
+
+  /* Kitchen Orange (#EA580C) */
+  --kitchen: 25 95% 53%;
+  --kitchen-foreground: 210 40% 98%;
+  
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 142 71% 35%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+
+  html, body, #root {
+    min-width: 0;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20;
+  }
+  
+  /* Custom scrollbar for a polished look */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
 </file>
 
 <file path="deployment/backup-diario.ps1">
@@ -10812,6 +10776,54 @@ export type InsertCliente = z.infer<typeof insertClienteSchema>;
 export type Cliente = typeof clientesTable.$inferSelect;
 </file>
 
+<file path="lib/db/src/schema/fiscal.ts">
+import { pgTable, serial, text, integer, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { vendasTable } from "./vendas";
+
+export const ambienteSefazEnum = pgEnum("ambiente_sefaz", ["producao", "homologacao"]);
+export const statusNfceEnum = pgEnum("status_nfce", ["processando", "autorizada", "rejeitada", "erro"]);
+
+// Tabela para guardar a configuração fiscal da empresa
+export const configFiscalTable = pgTable("config_fiscal", {
+  id: serial("id").primaryKey(),
+  razao_social: text("razao_social").notNull(),
+  nome_fantasia: text("nome_fantasia").notNull(),
+  cnpj: text("cnpj").notNull(),
+  ie: text("ie").notNull(),
+  crt: text("crt").notNull(), // Código de Regime Tributário (ex: "1" para Simples Nacional)
+  endereco: text("endereco").notNull(),
+  numero: text("numero").notNull(),
+  bairro: text("bairro").notNull(),
+  cidade: text("cidade").notNull(),
+  uf: text("uf").notNull(),
+  cep: text("cep").notNull(),
+  cod_municipio: text("cod_municipio").notNull(),
+  telefone: text("telefone"),
+  csc_id: text("csc_id").notNull(),
+  csc_token: text("csc_token").notNull(),
+  caminho_certificado: text("caminho_certificado").notNull(),
+  senha_certificado: text("senha_certificado").notNull(),
+  ambiente: ambienteSefazEnum("ambiente").notNull().default("homologacao"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Tabela para logar todas as tentativas de emissão de NFC-e
+export const nfceLogsTable = pgTable("nfce_logs", {
+  id: serial("id").primaryKey(),
+  venda_id: integer("venda_id").notNull().references(() => vendasTable.id),
+  status: statusNfceEnum("status").notNull().default("processando"),
+  ambiente: ambienteSefazEnum("ambiente").notNull(),
+  chave_acesso: text("chave_acesso"),
+  protocolo: text("protocolo"),
+  codigo_status_sefaz: integer("codigo_status_sefaz"),
+  mensagem_status_sefaz: text("mensagem_status_sefaz"),
+  xml_enviado: text("xml_enviado"),
+  xml_autorizado: text("xml_autorizado"), // XML final com o protocolo
+  json_retorno_sefaz: jsonb("json_retorno_sefaz"),
+  criado_em: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+</file>
+
 <file path="lib/db/package.json">
 {
   "name": "@workspace/db",
@@ -11039,117 +11051,6 @@ router.get("/historico", async (_req, res) => {
 });
 
 export default router;
-</file>
-
-<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
-import { useMutation, useQuery } from "@tanstack/react-query";
-
-const BASE = "/api/maquininha";
-
-export type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
-
-type EnvioMaquininhaInput = {
-  venda_local_id?: string;
-  metodo: "debito" | "credito" | "pix";
-  valor_total: number;
-  parcelas?: number;
-  desconto?: number;
-  itens: Array<{
-    produto_id: number;
-    nome: string;
-    quantidade: number;
-    preco_unit: number;
-    subtotal: number;
-  }>;
-};
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
-  const payload = await res.json();
-  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
-  return payload as T;
-}
-
-export function useMaquininhaConfig() {
-  return useQuery({
-    queryKey: ["maquininha", "config"],
-    queryFn: () => request<MaquininhaConfig>("/config"),
-  });
-}
-
-export function useSalvarMaquininhaConfig() {
-  return useMutation({
-    mutationFn: (data: Partial<MaquininhaConfig>) =>
-      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export type MaquininhaResponse = {
-  ok: boolean;
-  aprovado?: boolean;
-  enviado?: boolean;
-  mensagem?: string;
-  modo?: string;
-  dados_cartao?: {
-    cnpj_credenciadora?: string | null;
-    codigo_autorizacao?: string | null;
-    bandeira_cartao?: string | null;
-    tipo_pagamento?: string | null;
-    nsu_tef?: string | null;
-    tef_intencao_id?: number | null;
-  };
-  comprovante_estabelecimento?: string | null;
-  comprovante_cliente?: string | null;
-};
-
-export function useEnviarParaMaquininha() {
-  return useMutation({
-    mutationFn: (data: EnvioMaquininhaInput) =>
-      request<MaquininhaResponse>("/enviar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useCancelarPagamento() {
-  return useMutation({
-    mutationFn: (data: { intencao_venda_id: number }) =>
-      request<{ ok: boolean; mensagem: string }>("/cancelar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      }),
-  });
-}
-
-export function useTestarMaquininha() {
-  return useMutation({
-    mutationFn: () =>
-      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
-        "/testar",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
-  });
-}
 </file>
 
 <file path="artifacts/arvoredo/src/store/use-cart.ts">
@@ -12047,101 +11948,114 @@ runStartupMigrations()
   });
 </file>
 
-<file path="artifacts/arvoredo/src/components/layout.tsx">
-import React, { ReactNode } from "react";
-import { Link, useLocation } from "wouter";
-import {
-  ShoppingCart,
-  Package,
-  Users,
-  Wallet,
-  Activity,
-  Box,
-  TreePine,
-  Cpu,
-  UserCog,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useProdutosAlertas } from "@/hooks/use-produtos";
+<file path="artifacts/arvoredo/src/hooks/use-maquininha.ts">
+import { useMutation, useQuery } from "@tanstack/react-query";
 
-interface LayoutProps {
-  children: ReactNode;
+const BASE = "/api/maquininha";
+
+export type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: "manual" | "api" | "usb_bridge" | "controlpay";
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+type EnvioMaquininhaInput = {
+  venda_local_id?: string;
+  metodo: "debito" | "credito" | "pix";
+  valor_total: number;
+  parcelas?: number;
+  desconto?: number;
+  itens: Array<{
+    produto_id: number;
+    nome: string;
+    quantidade: number;
+    preco_unit: number;
+    subtotal: number;
+  }>;
+};
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, init);
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload?.mensagem || "Erro na requisição da maquininha");
+  return payload as T;
 }
 
-export function Layout({ children }: LayoutProps) {
-  const [location] = useLocation();
-  const { data: alertas } = useProdutosAlertas();
-  const alertCount = alertas?.total_alertas ?? 0;
+export function useMaquininhaConfig() {
+  return useQuery({
+    queryKey: ["maquininha", "config"],
+    queryFn: () => request<MaquininhaConfig>("/config"),
+  });
+}
 
-  const navItems = [
-    { name: "PDV / Caixa", href: "/", icon: ShoppingCart },
-    { name: "Estoque", href: "/estoque", icon: Box, badge: alertCount },
-    { name: "Comandas em Aberto", href: "/fiado", icon: Users },
-    { name: "Sessão Caixa", href: "/caixa", icon: Wallet },
-    { name: "Histórico", href: "/historico", icon: Activity },
-    { name: "Produtos", href: "/produtos", icon: Package },
-    { name: "Dispositivos", href: "/dispositivos", icon: Cpu },
-    { name: "Usuários", href: "/usuarios", icon: UserCog },
-  ];
+export function useSalvarMaquininhaConfig() {
+  return useMutation({
+    mutationFn: (data: Partial<MaquininhaConfig>) =>
+      request<{ ok: boolean; config: MaquininhaConfig }>("/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-card border-r border-border flex-shrink-0 z-10 sticky top-0 md:h-screen md:overflow-y-auto">
-        <div className="p-6 flex items-center gap-3">
-          <div className="bg-primary/10 text-primary p-2 rounded-xl">
-            <TreePine className="w-6 h-6" />
-          </div>
-          <span className="font-bold text-xl tracking-tight text-foreground">
-            Arvoredo
-          </span>
-        </div>
+export type MaquininhaResponse = {
+  ok: boolean;
+  aprovado?: boolean;
+  enviado?: boolean;
+  mensagem?: string;
+  modo?: string;
+  dados_cartao?: {
+    cnpj_credenciadora?: string | null;
+    codigo_autorizacao?: string | null;
+    bandeira_cartao?: string | null;
+    tipo_pagamento?: string | null;
+    nsu_tef?: string | null;
+    tef_intencao_id?: number | null;
+  };
+  comprovante_estabelecimento?: string | null;
+  comprovante_cliente?: string | null;
+};
 
-        <nav className="px-4 pb-6 space-y-1 overflow-x-auto md:overflow-visible flex md:flex-col items-center md:items-stretch hide-scrollbar">
-          {navItems.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group flex-shrink-0 md:flex-shrink",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "w-5 h-5 transition-transform duration-200",
-                    isActive ? "" : "group-hover:scale-110"
-                  )}
-                />
-                <span className="font-medium whitespace-nowrap">{item.name}</span>
-                {!!item.badge && (
-                  <span
-                    className={cn(
-                      "ml-auto text-xs font-bold px-2 py-0.5 rounded-full",
-                      isActive
-                        ? "bg-white text-destructive"
-                        : "bg-destructive text-destructive-foreground"
-                    )}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
+export function useEnviarParaMaquininha() {
+  return useMutation({
+    mutationFn: (data: EnvioMaquininhaInput) =>
+      request<MaquininhaResponse>("/enviar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col relative h-[calc(100vh-80px)] md:h-screen overflow-hidden">
-        {children}
-      </main>
-    </div>
-  );
+export function useCancelarPagamento() {
+  return useMutation({
+    mutationFn: (data: { intencao_venda_id: number }) =>
+      request<{ ok: boolean; mensagem: string }>("/cancelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export function useTestarMaquininha() {
+  return useMutation({
+    mutationFn: () =>
+      request<{ ok: boolean; mensagem: string; modo_conexao: string; paygo_online?: boolean }>(
+        "/testar",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+  });
 }
 </file>
 
@@ -16577,6 +16491,104 @@ router.use("/usuarios", usuariosRouter);
 export default router;
 </file>
 
+<file path="artifacts/arvoredo/src/components/layout.tsx">
+import React, { ReactNode } from "react";
+import { Link, useLocation } from "wouter";
+import {
+  ShoppingCart,
+  Package,
+  Users,
+  Wallet,
+  Activity,
+  Box,
+  TreePine,
+  Cpu,
+  UserCog,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useProdutosAlertas } from "@/hooks/use-produtos";
+
+interface LayoutProps {
+  children: ReactNode;
+}
+
+export function Layout({ children }: LayoutProps) {
+  const [location] = useLocation();
+  const { data: alertas } = useProdutosAlertas();
+  const alertCount = alertas?.total_alertas ?? 0;
+
+  const navItems = [
+    { name: "PDV / Caixa", href: "/", icon: ShoppingCart },
+    { name: "Estoque", href: "/estoque", icon: Box, badge: alertCount },
+    { name: "Comandas em Aberto", href: "/fiado", icon: Users },
+    { name: "Sessão Caixa", href: "/caixa", icon: Wallet },
+    { name: "Histórico", href: "/historico", icon: Activity },
+    { name: "Produtos", href: "/produtos", icon: Package },
+    { name: "Dispositivos", href: "/dispositivos", icon: Cpu },
+    { name: "Usuários", href: "/usuarios", icon: UserCog },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col md:flex-row min-w-0">
+      {/* Sidebar */}
+      <aside className="w-full md:w-64 bg-card border-r border-border flex-shrink-0 z-10 sticky top-0 md:h-screen md:overflow-y-auto min-w-0">
+        <div className="p-6 flex items-center gap-3 min-w-0">
+          <div className="bg-primary/10 text-primary p-2 rounded-xl">
+            <TreePine className="w-6 h-6" />
+          </div>
+          <span className="font-bold text-xl tracking-tight text-foreground">
+            Arvoredo
+          </span>
+        </div>
+
+        <nav className="px-4 pb-6 space-y-1 overflow-x-auto md:overflow-visible flex md:flex-col items-center md:items-stretch hide-scrollbar min-w-0">
+          {navItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group flex-shrink-0 md:flex-shrink",
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    "w-5 h-5 transition-transform duration-200",
+                    isActive ? "" : "group-hover:scale-110"
+                  )}
+                />
+                <span className="font-medium whitespace-nowrap">{item.name}</span>
+                {!!item.badge && (
+                  <span
+                    className={cn(
+                      "ml-auto text-xs font-bold px-2 py-0.5 rounded-full",
+                      isActive
+                        ? "bg-white text-destructive"
+                        : "bg-destructive text-destructive-foreground"
+                    )}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col relative h-[calc(100vh-80px)] md:h-screen overflow-hidden min-w-0">
+        {children}
+      </main>
+    </div>
+  );
+}
+</file>
+
 <file path="lib/db/src/schema/vendas.ts">
 import { pgTable, serial, text, real, boolean, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -16651,72 +16663,6 @@ export type Fiado = typeof fiadosTable.$inferSelect;
 export type MovimentoEstoque = typeof movimentosEstoqueTable.$inferSelect;
 export type InsertVenda = z.infer<typeof insertVendaSchema>;
 export type InsertItemVenda = z.infer<typeof insertItemVendaSchema>;
-</file>
-
-<file path=".gitignore">
-# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
-# compiled output
-dist
-tmp
-out-tsc
-*.tsbuildinfo
-.expo
-.expo-shared
-
-# dependencies
-node_modules
-.pnpm-store
-
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# misc
-/.sass-cache
-/connect.lock
-/coverage
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
-/typings
-
-# System Files
-.DS_Store
-Thumbs.db
-
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
-
-# Replit
-.cache/
-.local/
-.replit-artifact/
-
-# Runtime / Local env
-.env
-.env.*
-!.env.example
-Logs/
-repomix-output.xml
-
-*.md
-!README.md
-
-artifacts/api-server/data/maquininha-config.json
 </file>
 
 <file path="package.json">
@@ -18257,6 +18203,74 @@ export type InsertProduto = z.infer<typeof insertProdutoSchema>;
 export type Produto = typeof produtosTable.$inferSelect;
 </file>
 
+<file path=".gitignore">
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+.pnpm-store
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+.replit-artifact/
+
+# Runtime / Local env
+.env
+.env.*
+!.env.example
+Logs/
+repomix-output.xml
+
+*.md
+!README.md
+
+artifacts/api-server/data/maquininha-config.json
+
+*.dump
+</file>
+
 <file path="artifacts/api-server/src/routes/impressora.ts">
 import { Router } from "express";
 import { db } from "@workspace/db";
@@ -18443,297 +18457,6 @@ router.post("/comprovante-tef", async (req, res) => {
     logger.error(`Erro na rota /comprovante-tef: ${message}`);
     return res.status(500).json({ ok: false, erro: message });
   }
-});
-
-export default router;
-</file>
-
-<file path="artifacts/api-server/src/routes/maquininha.ts">
-import { Router, type IRouter } from "express";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-
-type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
-
-type MaquininhaConfig = {
-  ativo: boolean;
-  modo_conexao: ModoConexao;
-  api_url: string;
-  api_token: string;
-  timeout_ms: number;
-  empresa_nome: string;
-  empresa_cnpj: string;
-  empresa_regra_padrao: string;
-  cnpj_credenciadora: string;
-};
-
-
-const router: IRouter = Router();
-
-const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  ativo: true,
-  modo_conexao: "manual",
-  api_url: "",
-  api_token: "",
-  timeout_ms: 60000,
-  empresa_nome: "NOME DA EMPRESA",
-  empresa_cnpj: "00.000.000/0000-00",
-  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
-  cnpj_credenciadora: "",
-};
-
-async function loadConfig(): Promise<MaquininhaConfig> {
-  try {
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
-    return { ...DEFAULT_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
-}
-
-async function saveConfig(config: MaquininhaConfig): Promise<void> {
-  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
-  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
-}
-
-const FORMA_PAGAMENTO: Record<string, number> = {
-  credito: 21,
-  debito: 22,
-  pix: 25,
-};
-
-const STATUS_APROVADO = 10;
-const STATUS_NEGADOS = [15, 20, 25];
-
-async function pollingIntencao(
-  baseUrl: string,
-  key: string,
-  intencaoVendaId: number,
-  timeoutMs: number,
-): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
-  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
-  const inicio = Date.now();
-  while (Date.now() - inicio < timeoutMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    try {
-      const resp = await fetch(`${baseUrl}${webapiPrefix}/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
-        headers: { "User-Agent": "ArvoredoPDV/1.0" },
-      });
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as any;
-      const status: number =
-        data?.intencaoVenda?.intencaoVendaStatus?.id ??
-        data?.statusId ??
-        data?.status?.id;
-      const statusNome = data?.intencaoVenda?.intencaoVendaStatus?.nome;
-      console.log(`[TEF] poll ${intencaoVendaId}: status=${status} (${statusNome})`);
-      if (status === STATUS_APROVADO) return { aprovado: true, data };
-      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
-    } catch (e) {
-      console.log(`[TEF] poll ${intencaoVendaId}: erro de rede, seguindo...`, e);
-    }
-  }
-  return { aprovado: false, data: null, timeout: true };
-}
-
-router.get("/config", async (_req, res) => {
-  const config = await loadConfig();
-  res.json(config);
-});
-
-router.post("/config", async (req, res) => {
-  const current = await loadConfig();
-  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
-  const merged: MaquininhaConfig = {
-    ...current,
-    ...body,
-    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
-  };
-  await saveConfig(merged);
-  res.json({ ok: true, config: merged });
-});
-
-router.post("/enviar", async (req, res) => {
-  const config = await loadConfig();
-
-  const payload = req.body as {
-    venda_local_id?: string;
-    metodo: "debito" | "credito" | "pix";
-    valor_total: number; // em reais, ex: 10.50
-    parcelas?: number; // opcional, apenas para crédito
-  };
-
-  if (!config.ativo) {
-    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
-  }
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0; 
-  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
-  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
-  
-
-  if (!key) {
-    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
-  }
-
-  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
-  if (!formaPagamentoId) {
-    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
-  }
-
-  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
-
-  const quantidadeParcelas = payload.parcelas && payload.parcelas > 1 ? payload.parcelas : 1;
-  const tipoParcelamentoId = quantidadeParcelas > 1 ? 3 : 1; // 3 = Parcelado Estabelecimento (Loja)
-
-  let intencaoVendaId: number;
-  try {
-    const criarResp = await fetch(
-      `${baseUrl}${webapiPrefix}/Venda/Vender/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          aguardarTefIniciarTransacao: true,
-          formaPagamentoId,
-          valorTotalVendido: valorStr,
-          terminalId,
-          quantidadeParcelas,
-          tipoParcelamentoId,
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!criarResp.ok) {
-      const txt = await criarResp.text();
-      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
-    }
-    const criarData = (await criarResp.json()) as any;
-    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
-    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
-    console.log("\n=======================================================");
-    console.log(`🧾 ID PARA A PLANILHA DA PAYGO: ${intencaoVendaId}`);
-    console.log("=======================================================\n");
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-
-  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
-
-  if (!resultado.aprovado) {
-  const statusId = resultado.data?.intencaoVenda?.intencaoVendaStatus?.id;
-  const motivo = resultado.timeout
-    ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
-    : statusId === 20
-      ? "Operação Cancelada"
-      : statusId === 25
-        ? "Transação negada pelo host."
-        : `Transação negada ou cancelada. Status: ${statusId ?? "desconhecido"}`;
-  return res.status(402).json({ ok: false, mensagem: motivo });
-  }
-
-  const pagamento =
-    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentosExternos?.[0] ??
-    resultado.data?.pagamentoExterno ??
-    {};
-
-  const codigoAutorizacao =
-    pagamento?.codigoAutorizacao ??
-    pagamento?.codigo_autorizacao ??
-    pagamento?.autorizacao ??
-    pagamento?.authorizationCode ??
-    pagamento?.codigo ??
-    null;
-  const bandeiraCartao =
-    pagamento?.bandeiraCartao ??
-    pagamento?.bandeira_cartao ??
-    pagamento?.bandeira ??
-    pagamento?.nomeBandeira ??
-    null;
-  const tipoPagamento =
-    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "17";
-
-  return res.json({
-    ok: true,
-    aprovado: true,
-    dados_cartao: {
-      cnpj_credenciadora: config.cnpj_credenciadora || null,
-      codigo_autorizacao: codigoAutorizacao,
-      bandeira_cartao: bandeiraCartao,
-      tipo_pagamento: tipoPagamento,
-      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
-      tef_intencao_id: intencaoVendaId,
-    },
-    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
-    comprovante_cliente: pagamento.comprovanteCliente ?? null,
-  });
-});
-
-router.post("/cancelar", async (req, res) => {
-  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
-
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
-
-  try {
-    const resp = await fetch(
-      `${baseUrl}${webapiPrefix}/Venda/CancelarVenda/?key=${key}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "ArvoredoPDV/1.0",
-        },
-        body: JSON.stringify({
-          intencaoVendaId: intencao_venda_id,
-          aguardarTefIniciarTransacao: true,
-          senhaTecnica: "314159",
-        }),
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    const data = (await resp.json()) as any;
-    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
-  } catch (err: any) {
-    return res.status(502).json({ ok: false, mensagem: err.message });
-  }
-});
-
-router.post("/testar", async (_req, res) => {
-  const config = await loadConfig();
-  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
-  const key = process.env.CONTROLPAY_KEY?.trim() || "";
-  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
-
-  let paygoOnline = false;
-  try {
-    const resp = await fetch(
-      `${baseUrl}${webapiPrefix}/Instalacao/GetById/?key=${key}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    paygoOnline = resp.ok;
-  } catch {
-    paygoOnline = false;
-  }
-
-  return res.json({
-    ok: true,
-    ativo: config.ativo,
-    modo_conexao: config.modo_conexao,
-    paygo_online: paygoOnline,
-    mensagem: paygoOnline
-      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
-      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
-  });
 });
 
 export default router;
@@ -19421,6 +19144,297 @@ const runNfceAction = async (vendaId: number, action: "reimprimir" | "cancelar" 
     </div>
   );
 }
+</file>
+
+<file path="artifacts/api-server/src/routes/maquininha.ts">
+import { Router, type IRouter } from "express";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+type ModoConexao = "manual" | "api" | "usb_bridge" | "controlpay";
+
+type MaquininhaConfig = {
+  ativo: boolean;
+  modo_conexao: ModoConexao;
+  api_url: string;
+  api_token: string;
+  timeout_ms: number;
+  empresa_nome: string;
+  empresa_cnpj: string;
+  empresa_regra_padrao: string;
+  cnpj_credenciadora: string;
+};
+
+
+const router: IRouter = Router();
+
+const CONFIG_PATH = path.resolve(process.cwd(), "data", "maquininha-config.json");
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  ativo: true,
+  modo_conexao: "manual",
+  api_url: "",
+  api_token: "",
+  timeout_ms: 60000,
+  empresa_nome: "NOME DA EMPRESA",
+  empresa_cnpj: "00.000.000/0000-00",
+  empresa_regra_padrao: "Venda presencial. Confirmar manualmente no PDV apos aprovacao na maquininha.",
+  cnpj_credenciadora: "",
+};
+
+async function loadConfig(): Promise<MaquininhaConfig> {
+  try {
+    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<MaquininhaConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function saveConfig(config: MaquininhaConfig): Promise<void> {
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+const FORMA_PAGAMENTO: Record<string, number> = {
+  credito: 21,
+  debito: 22,
+  pix: 25,
+};
+
+const STATUS_APROVADO = 10;
+const STATUS_NEGADOS = [15, 20, 25];
+
+async function pollingIntencao(
+  baseUrl: string,
+  key: string,
+  intencaoVendaId: number,
+  timeoutMs: number,
+): Promise<{ aprovado: boolean; data: any; timeout?: boolean }> {
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const resp = await fetch(`${baseUrl}${webapiPrefix}/IntencaoVenda/GetById/?key=${key}&intencaoVendaId=${intencaoVendaId}`, {
+        headers: { "User-Agent": "ArvoredoPDV/1.0" },
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as any;
+      const status: number =
+        data?.intencaoVenda?.intencaoVendaStatus?.id ??
+        data?.statusId ??
+        data?.status?.id;
+      const statusNome = data?.intencaoVenda?.intencaoVendaStatus?.nome;
+      console.log(`[TEF] poll ${intencaoVendaId}: status=${status} (${statusNome})`);
+      if (status === STATUS_APROVADO) return { aprovado: true, data };
+      if (STATUS_NEGADOS.includes(status)) return { aprovado: false, data };
+    } catch (e) {
+      console.log(`[TEF] poll ${intencaoVendaId}: erro de rede, seguindo...`, e);
+    }
+  }
+  return { aprovado: false, data: null, timeout: true };
+}
+
+router.get("/config", async (_req, res) => {
+  const config = await loadConfig();
+  res.json(config);
+});
+
+router.post("/config", async (req, res) => {
+  const current = await loadConfig();
+  const body = (req.body ?? {}) as Partial<MaquininhaConfig>;
+  const merged: MaquininhaConfig = {
+    ...current,
+    ...body,
+    timeout_ms: Math.max(1500, Number(body.timeout_ms ?? current.timeout_ms ?? 60000)),
+  };
+  await saveConfig(merged);
+  res.json({ ok: true, config: merged });
+});
+
+router.post("/enviar", async (req, res) => {
+  const config = await loadConfig();
+
+  const payload = req.body as {
+    venda_local_id?: string;
+    metodo: "debito" | "credito" | "pix";
+    valor_total: number; // em reais, ex: 10.50
+    parcelas?: number; // opcional, apenas para crédito
+  };
+
+  if (!config.ativo) {
+    return res.json({ ok: false, mensagem: "Maquininha desativada nas configurações." });
+  }
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const terminalId = Number(process.env.CONTROLPAY_TERMINAL_ID) || 0; 
+  const timeoutMs = Number(process.env.CONTROLPAY_TIMEOUT_MS) || 600000;
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
+  
+
+  if (!key) {
+    return res.status(500).json({ ok: false, mensagem: "CONTROLPAY_KEY não configurada no .env" });
+  }
+
+  const formaPagamentoId = FORMA_PAGAMENTO[payload.metodo];
+  if (!formaPagamentoId) {
+    return res.status(400).json({ ok: false, mensagem: "Método de pagamento inválido." });
+  }
+
+  const valorStr = payload.valor_total.toFixed(2).replace(".", ",");
+
+  const quantidadeParcelas = payload.parcelas && payload.parcelas > 1 ? payload.parcelas : 1;
+  const tipoParcelamentoId = quantidadeParcelas > 1 ? 3 : 1; // 3 = Parcelado Estabelecimento (Loja)
+
+  let intencaoVendaId: number;
+  try {
+    const criarResp = await fetch(
+      `${baseUrl}${webapiPrefix}/Venda/Vender/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          aguardarTefIniciarTransacao: true,
+          formaPagamentoId,
+          valorTotalVendido: valorStr,
+          terminalId,
+          quantidadeParcelas,
+          tipoParcelamentoId,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!criarResp.ok) {
+      const txt = await criarResp.text();
+      return res.status(502).json({ ok: false, mensagem: `ControlPay recusou: ${txt}` });
+    }
+    const criarData = (await criarResp.json()) as any;
+    intencaoVendaId = criarData?.intencaoVenda?.id ?? criarData?.intencaoVendaId ?? criarData?.id;
+    if (!intencaoVendaId) throw new Error("intencaoVendaId não retornado pelo ControlPay");
+    console.log("\n=======================================================");
+    console.log(`🧾 ID PARA A PLANILHA DA PAYGO: ${intencaoVendaId}`);
+    console.log("=======================================================\n");
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+
+  const resultado = await pollingIntencao(baseUrl, key, intencaoVendaId, timeoutMs);
+
+  if (!resultado.aprovado) {
+  const statusId = resultado.data?.intencaoVenda?.intencaoVendaStatus?.id;
+  const motivo = resultado.timeout
+    ? "Timeout — cliente não interagiu com a maquininha no tempo limite."
+    : statusId === 20
+      ? "Operação Cancelada"
+      : statusId === 25
+        ? "Transação negada pelo host."
+        : `Transação negada ou cancelada. Status: ${statusId ?? "desconhecido"}`;
+  return res.status(402).json({ ok: false, mensagem: motivo });
+  }
+
+  const pagamento =
+    resultado.data?.intencaoVenda?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentosExternos?.[0] ??
+    resultado.data?.pagamentoExterno ??
+    {};
+
+  const codigoAutorizacao =
+    pagamento?.codigoAutorizacao ??
+    pagamento?.codigo_autorizacao ??
+    pagamento?.autorizacao ??
+    pagamento?.authorizationCode ??
+    pagamento?.codigo ??
+    null;
+  const bandeiraCartao =
+    pagamento?.bandeiraCartao ??
+    pagamento?.bandeira_cartao ??
+    pagamento?.bandeira ??
+    pagamento?.nomeBandeira ??
+    null;
+  const tipoPagamento =
+    payload.metodo === "credito" ? "03" : payload.metodo === "debito" ? "04" : "17";
+
+  return res.json({
+    ok: true,
+    aprovado: true,
+    dados_cartao: {
+      cnpj_credenciadora: config.cnpj_credenciadora || null,
+      codigo_autorizacao: codigoAutorizacao,
+      bandeira_cartao: bandeiraCartao,
+      tipo_pagamento: tipoPagamento,
+      nsu_tef: pagamento?.nsuTid ?? pagamento?.nsu ?? null,
+      tef_intencao_id: intencaoVendaId,
+    },
+    comprovante_estabelecimento: pagamento.comprovanteEstabelecimento ?? null,
+    comprovante_cliente: pagamento.comprovanteCliente ?? null,
+  });
+});
+
+router.post("/cancelar", async (req, res) => {
+  const { intencao_venda_id } = req.body as { intencao_venda_id: number };
+
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
+
+  try {
+    const resp = await fetch(
+      `${baseUrl}${webapiPrefix}/Venda/CancelarVenda/?key=${key}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "ArvoredoPDV/1.0",
+        },
+        body: JSON.stringify({
+          intencaoVendaId: intencao_venda_id,
+          aguardarTefIniciarTransacao: true,
+          senhaTecnica: "314159",
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    const data = (await resp.json()) as any;
+    return res.json({ ok: true, mensagem: "Cancelamento enviado ao ControlPay.", data });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, mensagem: err.message });
+  }
+});
+
+router.post("/testar", async (_req, res) => {
+  const config = await loadConfig();
+  const baseUrl = process.env.CONTROLPAY_BASE_URL?.trim() || "https://sandbox.controlpay.com.br";
+  const key = process.env.CONTROLPAY_KEY?.trim() || "";
+  const webapiPrefix = baseUrl.includes("sandbox.controlpay.com.br") ? "/webapi" : "";
+
+  let paygoOnline = false;
+  try {
+    const resp = await fetch(
+      `${baseUrl}${webapiPrefix}/Instalacao/GetById/?key=${key}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    paygoOnline = resp.ok;
+  } catch {
+    paygoOnline = false;
+  }
+
+  return res.json({
+    ok: true,
+    ativo: config.ativo,
+    modo_conexao: config.modo_conexao,
+    paygo_online: paygoOnline,
+    mensagem: paygoOnline
+      ? "PayGo Windows respondendo. Use o PDV para teste real com cartão."
+      : "PayGo Windows offline. Verifique se está instalado e rodando no computador.",
+  });
+});
+
+export default router;
 </file>
 
 <file path="artifacts/api-server/package.json">
@@ -20431,1040 +20445,6 @@ export const TestImpressoraResponse = zod.object({
 });
 </file>
 
-<file path="artifacts/arvoredo/src/pages/produtos.tsx">
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import {
-  useProdutos,
-  useCriarProdutoWrapper,
-  useEditarProdutoWrapper,
-  useDeletarProdutoWrapper,
-  useVerificarNfeImportadaWrapper,
-  useRegistrarNfeImportadaWrapper,
-} from "@/hooks/use-produtos";import { formatMoney } from "@/lib/utils";
-import { Button, Input, Select, Modal } from "@/components/ui-elements";
-import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X, ListRestart, FileUp } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import type { Produto, CriarProdutoInputCategoria } from "@workspace/api-client-react/src/generated/api.schemas";
-
-function formatValidade(validade: string | null | undefined) {
-  if (!validade) return null;
-  const [ano, mes, dia] = validade.split("-");
-  return `${dia}/${mes}/${ano}`;
-}
-
-type SortCol =
-  | "codigo"
-  | "nome"
-  | "marca"
-  | "categoria"
-  | "preco"
-  | "estoque"
-  | "validade"
-  | "criado_em";
-
-function validadeStatus(validade: string | null | undefined): null | "vencido" | "vencendo" {
-  if (!validade) return null;
-  const hoje = new Date();
-  const val = new Date(validade + "T12:00:00");
-  const diff = (val.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24);
-  if (diff < 0) return "vencido";
-  if (diff <= 7) return "vencendo";
-  return null;
-}
-
-type NfeItem = {
-  codigoInterno: string;
-  codigoBarras: string | null;
-  descricao: string;
-  ncm: string | null;
-  cst: string | null;
-  unidade: string;
-  quantidade: number;
-  valorUnitario: number;
-  valorTotal: number;
-};
-
-type NfeImportPreview = {
-  chaveNfe: string | null;
-  emitente: string | null;
-  itens: NfeItem[];
-};
-
-function firstText(el: Element | null, tag: string): string {
-  if (!el) return "";
-  const found = el.getElementsByTagName(tag)[0];
-  return found?.textContent?.trim() ?? "";
-}
-
-function toNum(v: string): number {
-  const n = Number((v || "").replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function normalizeBarcode(code: string): string | null {
-  const trimmed = code.trim();
-  if (!trimmed || /^SEM\\s*GTIN$/i.test(trimmed)) return null;
-  return trimmed;
-}
-
-function normalizeNome(nome: string): string {
-  return nome.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function parseNfeXml(xmlText: string): NfeImportPreview {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, "application/xml");
-  const parserError = doc.getElementsByTagName("parsererror")[0];
-  if (parserError) {
-    throw new Error("XML inválido. Confira o arquivo e tente novamente.");
-  }
-
-  const infNFe = doc.getElementsByTagName("infNFe")[0] ?? null;
-  const emit = doc.getElementsByTagName("emit")[0] ?? null;
-  const xNome = firstText(emit, "xNome");
-  const chaveRaw = infNFe?.getAttribute("Id") ?? "";
-  const chaveNfe = chaveRaw.startsWith("NFe") ? chaveRaw.slice(3) : chaveRaw || null;
-
-  const dets = Array.from(doc.getElementsByTagName("det"));
-  const itens: NfeItem[] = dets
-    .map((det) => {
-      const prod = det.getElementsByTagName("prod")[0] ?? null;
-      const imposto = det.getElementsByTagName("imposto")[0] ?? null;
-      const icmsNodes = imposto ? Array.from(imposto.getElementsByTagName("*")) : [];
-      const icms =
-        icmsNodes.find((node) => /^ICMS/.test(node.tagName)) ??
-        icmsNodes.find((node) => node.getElementsByTagName("CST")[0] || node.getElementsByTagName("CSOSN")[0]) ??
-        null;
-
-      const descricao = firstText(prod, "xProd");
-      const quantidade = toNum(firstText(prod, "qCom"));
-      const valorUnitario = toNum(firstText(prod, "vUnCom"));
-      const valorTotal = toNum(firstText(prod, "vProd")) || quantidade * valorUnitario;
-
-      return {
-        codigoInterno: firstText(prod, "cProd"),
-        codigoBarras: normalizeBarcode(firstText(prod, "cEAN") || firstText(prod, "cEANTrib")),
-        descricao,
-        ncm: firstText(prod, "NCM") || null,
-        cst: firstText(icms, "CST") || firstText(icms, "CSOSN") || null,
-        unidade: firstText(prod, "uCom") || "un",
-        quantidade,
-        valorUnitario,
-        valorTotal,
-      };
-    })
-    .filter((i) => i.descricao && i.quantidade > 0);
-
-  if (itens.length === 0) {
-    throw new Error("Nenhum item de produto encontrado no XML.");
-  }
-
-  return { chaveNfe, emitente: xNome || null, itens };
-}
-
-/* Campo de código de barras com botão de scanner */
-function CodigoBarrasInput({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const [scanning, setScanning] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const startScan = () => {
-    setScanning(true);
-    setTimeout(() => inputRef.current?.focus(), 50);
-  };
-
-  const stopScan = () => setScanning(false);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      setScanning(false); // código capturado, sai do modo scan
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      {scanning ? (
-        <div className="border-2 border-primary rounded-xl p-3 bg-primary/5 animate-pulse">
-          <div className="flex items-center gap-2 mb-2">
-            <Scan className="w-5 h-5 text-primary animate-bounce" />
-            <span className="text-sm font-semibold text-primary">Aponte o leitor para o produto...</span>
-            <button type="button" onClick={stopScan} className="ml-auto text-muted-foreground hover:text-foreground">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={() => { if (!value) setScanning(false); }}
-            className="w-full bg-transparent border-none outline-none font-mono text-lg text-center tracking-widest text-foreground placeholder:text-muted-foreground"
-            placeholder="aguardando leitura..."
-            autoComplete="off"
-          />
-        </div>
-      ) : (
-        <div className="flex gap-2">
-          <Input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            placeholder="Código de barras..."
-            autoComplete="off"
-            className="font-mono"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-shrink-0 gap-1.5 border-primary/30 text-primary hover:border-primary"
-            onClick={startScan}
-            title="Ativar leitor de código de barras"
-          >
-            <Scan className="w-4 h-4" />
-            Escanear
-          </Button>
-        </div>
-      )}
-      {value && !scanning && (
-        <p className="text-xs text-muted-foreground font-mono">Código: {value}</p>
-      )}
-    </div>
-  );
-}
-
-export default function Produtos() {
-  const [search, setSearch] = useState("");
-  const { data: produtos = [], isLoading } = useProdutos({ q: search });
-
-  const criar = useCriarProdutoWrapper();
-  const editar = useEditarProdutoWrapper();
-  const deletar = useDeletarProdutoWrapper();
-  const verificarNfeImportada = useVerificarNfeImportadaWrapper();
-  const registrarNfeImportada = useRegistrarNfeImportadaWrapper();
-  const { toast } = useToast();
-
-  const [modalOpen, setModalOpen] = useState(false);
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [deleteModal, setDeleteModal] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [xmlRaw, setXmlRaw] = useState("");
-  const [xmlPreview, setXmlPreview] = useState<NfeImportPreview | null>(null);
-  const [xmlItens, setXmlItens] = useState<NfeItem[]>([]);
-  const [importingXml, setImportingXml] = useState(false);
-  const [xmlDuplicada, setXmlDuplicada] = useState<{ dataImportacao: string | null } | null>(null);
-  const [xmlItensHash, setXmlItensHash] = useState<string | null>(null);
-
-  const updateXmlItem = (idx: number, patch: Partial<NfeItem>) => {
-    setXmlItens((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
-  };
-
-  const defaultForm = {
-    nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria,
-    ncm: "", cfop: "5102", cest: "", cst: "", preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
-  };
-  const [formData, setFormData] = useState(defaultForm);
-
-  const [sortCol, setSortCol] = useState<SortCol | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  const toggleSort = useCallback((col: SortCol) => {
-    setSortCol((prev) => {
-      if (prev === col) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prev;
-      }
-      setSortDir("asc");
-      return col;
-    });
-  }, []);
-
-  const produtosOrdenados = useMemo(() => {
-    if (!sortCol) return produtos;
-    const list = [...produtos];
-    const dir = sortDir === "asc" ? 1 : -1;
-    list.sort((a, b) => {
-      const cmpStr = (sa: string, sb: string) => sa.localeCompare(sb, "pt-BR", { sensitivity: "base" }) * dir;
-      const cmpNum = (na: number, nb: number) => (na === nb ? 0 : na < nb ? -1 * dir : 1 * dir);
-
-      switch (sortCol) {
-        case "codigo":
-          return cmpStr((a.codigo || "").toLowerCase(), (b.codigo || "").toLowerCase());
-        case "nome":
-          return cmpStr(a.nome.toLowerCase(), b.nome.toLowerCase());
-        case "marca":
-          return cmpStr((a.marca || "").toLowerCase(), (b.marca || "").toLowerCase());
-        case "categoria":
-          return cmpStr(a.categoria, b.categoria);
-        case "preco":
-          return cmpNum(a.preco, b.preco);
-        case "estoque":
-          return cmpNum(a.estoque, b.estoque);
-        case "validade": {
-          const ta = a.validade ? new Date(a.validade + "T12:00:00").getTime() : null;
-          const tb = b.validade ? new Date(b.validade + "T12:00:00").getTime() : null;
-          if (ta === null && tb === null) return 0;
-          if (ta === null) return 1;
-          if (tb === null) return -1;
-          return (ta - tb) * dir;
-        }
-        case "criado_em":
-          return cmpNum(new Date(a.criado_em).getTime(), new Date(b.criado_em).getTime());
-        default:
-          return 0;
-      }
-    });
-    return list;
-  }, [produtos, sortCol, sortDir]);
-
-  const handleOpenNew = () => {
-    setEditingId(null);
-    setFormData(defaultForm);
-    setModalOpen(true);
-  };
-
-  const handleOpenImport = () => {
-    setXmlRaw("");
-    setXmlPreview(null);
-    setXmlItens([]);
-    setXmlDuplicada(null);
-    setXmlItensHash(null);
-    setImportModalOpen(true);
-  };
-
-  const handleOpenEdit = (p: Produto) => {
-    setEditingId(p.id);
-    setFormData({
-      nome: p.nome,
-      marca: p.marca || "",
-      codigo: p.codigo || "",
-      categoria: p.categoria,
-      ncm: (p as any).ncm || "",
-      cfop: (p as any).cfop || "5102",
-      cest: (p as any).cest || "",
-      cst: (p as any).cst || "",
-      preco: p.preco.toString(),
-      custo: p.custo.toString(),
-      estoque: p.estoque.toString(),
-      estoque_min: p.estoque_min.toString(),
-      unidade: p.unidade,
-      validade: p.validade || ""
-    });
-    setModalOpen(true);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload = {
-      nome: formData.nome,
-      marca: formData.marca || null,
-      codigo: formData.codigo || null,
-      categoria: formData.categoria,
-      ncm: formData.ncm || null,
-      cfop: (formData as any).cfop || null,
-      cest: (formData as any).cest || null,
-      cst: formData.cst || null,
-      preco: Number(formData.preco),
-      custo: Number(formData.custo) || 0,
-      estoque: Number(formData.estoque) || 0,
-      estoque_min: Number(formData.estoque_min) || 0,
-      unidade: formData.categoria === "feira" ? "kg" : (formData.unidade || "un"),
-      validade: formData.validade || null,
-    };
-
-    if (editingId) {
-      editar.mutate({ id: editingId, data: payload }, {
-        onSuccess: () => {
-          toast({ title: "Produto atualizado", className: "bg-green-600 text-white" });
-          setModalOpen(false);
-        },
-        onError: (err) => {
-          toast({ title: "Erro ao atualizar", description: err.message, variant: "destructive" });
-        },
-      });
-    } else {
-      criar.mutate({ data: payload }, {
-        onSuccess: () => {
-          toast({ title: "Produto criado", className: "bg-green-600 text-white" });
-          setModalOpen(false);
-        },
-        onError: (err) => {
-          toast({ title: "Erro ao criar", description: err.message, variant: "destructive" });
-        },
-      });
-    }
-  };
-
-  const handleDelete = () => {
-    if (!deleteModal) return;
-    deletar.mutate({ id: deleteModal }, {
-      onSuccess: () => {
-        toast({ title: "Produto excluído", className: "bg-green-600 text-white" });
-        setDeleteModal(null);
-      }
-    });
-  };
-
-    const parseXmlPreview = () => {
-    try {
-      const parsed = parseNfeXml(xmlRaw);
-      setXmlPreview(parsed);
-      setXmlItens(parsed.itens);
-      setXmlDuplicada(null);
-      setXmlItensHash(null);
-
-      verificarNfeImportada.mutate(
-        {
-          data: {
-            chaveNfe: parsed.chaveNfe,
-            itens: parsed.itens.map((i) => ({
-              codigoBarras: i.codigoBarras,
-              descricao: i.descricao,
-              quantidade: i.quantidade,
-            })),
-          },
-        },
-        {
-          onSuccess: (resp) => {
-            setXmlItensHash(resp.itensHash);
-            if (resp.jaImportada) {
-              setXmlDuplicada({ dataImportacao: resp.dataImportacao });
-              toast({
-                title: "Importação bloqueada",
-                description: "Não possível importar por ser um registro já feito.",
-                variant: "destructive",
-              });
-            }
-          },
-        }
-      );
-
-      toast({
-        title: "XML lido com sucesso",
-        description: `${parsed.itens.length} item(ns) encontrado(s).`,
-        className: "bg-green-600 text-white",
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Falha ao ler XML";
-      toast({ title: "Erro no XML", description: message, variant: "destructive" });
-      setXmlPreview(null);
-      setXmlItens([]);
-      setXmlDuplicada(null);
-      setXmlItensHash(null);
-    }
-  };
-
-  const runCriarProduto = (data: {
-    nome: string;
-    marca?: string | null;
-    codigo?: string | null;
-    categoria: CriarProdutoInputCategoria;
-    ncm?: string | null;
-    cfop?: string | null;
-    cest?: string | null;
-    cst?: string | null;
-    preco: number;
-    custo: number;
-    estoque: number;
-    estoque_min: number;
-    unidade: string;
-    validade?: string | null;
-  }) =>
-    new Promise<Produto>((resolve, reject) => {
-      criar.mutate(
-        { data },
-        {
-          onSuccess: (produtoCriado) => resolve(produtoCriado),
-          onError: (err) => reject(err),
-        }
-      );
-    });
-
-  const runEditarProduto = (
-    id: number,
-    data: {
-      nome?: string;
-      marca?: string | null;
-      codigo?: string | null;
-      categoria?: CriarProdutoInputCategoria;
-      ncm?: string | null;
-      cfop?: string | null;
-      cest?: string | null;
-      cst?: string | null;
-      preco?: number;
-      custo?: number;
-      estoque?: number;
-      estoque_min?: number;
-      unidade?: string;
-      validade?: string | null;
-    }
-  ) =>
-    new Promise<void>((resolve, reject) => {
-      editar.mutate(
-        { id, data },
-        {
-          onSuccess: () => resolve(),
-          onError: (err) => reject(err),
-        }
-      );
-    });
-
-    const handleImportarXml = async () => {
-    if (!xmlPreview || xmlItens.length === 0) {
-      toast({
-        title: "Leia o XML primeiro",
-        description: "Clique em \"Ler XML\" antes de importar.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (xmlDuplicada) {
-      toast({
-        title: "Importação bloqueada",
-        description: "Não possível importar por ser um registro já feito.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setImportingXml(true);
-    try {
-      let criados = 0;
-      let atualizados = 0;
-
-      const produtosPorCodigo = new Map(
-        produtos
-          .filter((p) => !!p.codigo)
-          .map((p) => [p.codigo!.trim(), p] as const)
-      );
-      const produtosPorNome = new Map(
-        produtos.map((p) => [normalizeNome(p.nome), p] as const)
-      );
-
-      for (const item of xmlItens) {
-        const existing =
-          (item.codigoBarras ? produtosPorCodigo.get(item.codigoBarras) : undefined) ??
-          produtosPorNome.get(normalizeNome(item.descricao));
-
-        if (existing) {
-          const novoEstoque = existing.estoque + item.quantidade;
-          const novoCodigo = existing.codigo || item.codigoBarras || null;
-
-          await runEditarProduto(existing.id, {
-            codigo: novoCodigo,
-            ncm: (existing as any).ncm || item.ncm,
-            cst: (existing as any).cst || item.cst,
-            custo: item.valorUnitario,
-            preco: existing.preco > 0 ? existing.preco : item.valorUnitario,
-            estoque: novoEstoque,
-            unidade: existing.unidade || item.unidade,
-          });
-          atualizados++;
-
-          // mantém os mapas locais em dia pra casar itens repetidos dentro do mesmo XML
-          const atualizado = { ...existing, estoque: novoEstoque, codigo: novoCodigo ?? existing.codigo };
-          if (atualizado.codigo) produtosPorCodigo.set(atualizado.codigo.trim(), atualizado);
-          produtosPorNome.set(normalizeNome(atualizado.nome), atualizado);
-        } else {
-          const criado = await runCriarProduto({
-            nome: item.descricao,
-            marca: null,
-            codigo: item.codigoBarras,
-            categoria: "mercado",
-            ncm: item.ncm,
-            cst: item.cst,
-            preco: item.valorUnitario,
-            custo: item.valorUnitario,
-            estoque: item.quantidade,
-            estoque_min: 5,
-            unidade: item.unidade || "un",
-            validade: null,
-          });
-          criados++;
-
-          if (criado.codigo) produtosPorCodigo.set(criado.codigo.trim(), criado);
-          produtosPorNome.set(normalizeNome(criado.nome), criado);
-        }
-      }
-
-            if (xmlItensHash) {
-        try {
-          await registrarNfeImportada.mutateAsync({
-            data: {
-              chaveNfe: xmlPreview.chaveNfe,
-              emitente: xmlPreview.emitente,
-              itensHash: xmlItensHash,
-              qtdItens: xmlItens.length,
-            },
-          });
-        } catch {
-          console.warn("Falha ao registrar NF-e como importada — produtos já foram criados/atualizados normalmente.");
-        }
-      }
-
-      toast({
-        title: "Importação concluída",
-        description: `${criados} criado(s), ${atualizados} atualizado(s).`,
-        className: "bg-green-600 text-white",
-      });
-      setImportModalOpen(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Falha ao importar XML";
-      toast({ title: "Erro na importação", description: message, variant: "destructive" });
-    } finally {
-      setImportingXml(false);
-    }
-  };
-
-  return (
-    <div className="p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Produtos</h1>
-          <p className="text-muted-foreground mt-1">Gerencie o catálogo de produtos e preços</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={handleOpenImport} variant="outline" className="gap-2" size="lg">
-            <FileUp className="w-5 h-5" />
-            Importar NF-e XML
-          </Button>
-          <Button onClick={handleOpenNew} className="gap-2" size="lg">
-            <Plus className="w-5 h-5" />
-            Novo Produto
-          </Button>
-        </div>
-      </div>
-
-      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative w-full max-w-md flex-1">
-            <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome, marca ou código..."
-              className="pl-10 h-12"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          {sortCol != null && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-2 shrink-0"
-              onClick={() => {
-                setSortCol(null);
-                setSortDir("asc");
-              }}
-            >
-              <ListRestart className="w-4 h-4" />
-              Limpar ordenação
-            </Button>
-          )}
-        </div>
-
-        <div className="overflow-x-auto flex-1">
-          {isLoading ? (
-            <div className="p-12 text-center text-muted-foreground">Carregando catálogo...</div>
-          ) : (
-            <table className="w-full text-left">
-              <thead className="bg-muted/50 text-muted-foreground text-sm uppercase">
-                <tr>
-                  <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "codigo" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("codigo")}
-                  >
-                    Cód.{sortCol === "codigo" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "nome" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("nome")}
-                  >
-                    Nome{sortCol === "nome" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "marca" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("marca")}
-                  >
-                    Marca{sortCol === "marca" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "categoria" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("categoria")}
-                  >
-                    Cat.{sortCol === "categoria" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 ${sortCol === "preco" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("preco")}
-                  >
-                    Preço{sortCol === "preco" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 ${sortCol === "estoque" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("estoque")}
-                  >
-                    Estoque{sortCol === "estoque" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "validade" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("validade")}
-                  >
-                    Validade{sortCol === "validade" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className={`px-4 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 ${sortCol === "criado_em" ? "text-primary" : ""}`}
-                    onClick={() => toggleSort("criado_em")}
-                  >
-                    Cadastro{sortCol === "criado_em" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                  </th>
-                  <th
-                    className="px-4 py-4 font-medium text-center cursor-pointer select-none hover:bg-muted/80"
-                    onClick={() => {
-                      setSortCol(null);
-                      setSortDir("asc");
-                    }}
-                    title="Limpar ordenação"
-                  >
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {produtosOrdenados.map(p => {
-                  const vs = validadeStatus(p.validade);
-                  return (
-                    <tr key={p.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-4 text-muted-foreground font-mono text-sm">{p.codigo || '-'}</td>
-                      <td className="px-4 py-4 font-bold">{p.nome}</td>
-                      <td className="px-4 py-4 text-muted-foreground">{p.marca || '-'}</td>
-                      <td className="px-4 py-4">
-                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.categoria === "cozinha"
-                          ? "bg-orange-100 text-orange-700"
-                          : p.categoria === "feira"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-primary/10 text-primary"
-                          }`}>
-                          {p.categoria}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-right font-mono font-bold text-primary">{formatMoney(p.preco)}</td>
-                      <td className={`px-4 py-4 text-right font-mono font-medium ${p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''}`}>
-                        {p.estoque} <span className="text-xs text-muted-foreground">{p.unidade}</span>
-                      </td>
-                      <td className="px-4 py-4">
-                        {p.validade ? (
-                          <span className={`flex items-center gap-1 text-sm font-medium ${vs === 'vencido' ? 'text-destructive' : vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
-                            }`}>
-                            <Calendar className="w-4 h-4" />
-                            {formatValidade(p.validade)}
-                            {vs === 'vencido' && <span className="text-xs font-bold bg-destructive/10 px-1 rounded">VENCIDO</span>}
-                            {vs === 'vencendo' && <span className="text-xs font-bold bg-yellow-100 px-1 rounded">VENCENDO</span>}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-xs text-muted-foreground">
-                        {p.criado_em ? new Date(p.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex justify-center gap-2">
-                          <button onClick={() => handleOpenEdit(p)} className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setDeleteModal(p.id)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {produtosOrdenados.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
-                      Nenhum produto encontrado. Clique em "Novo Produto" para adicionar.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? "Editar Produto" : "Novo Produto"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Nome Base (ID) *</label>
-              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Ex: Arroz" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Marca / Variação</label>
-              <Input value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: PratoFino 5kg" />
-            </div>
-          </div>
-
-          {/* Campo de Código de Barras com Botão Scanner */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Código de Barras</label>
-            <CodigoBarrasInput
-              value={formData.codigo}
-              onChange={v => setFormData({ ...formData, codigo: v })}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Categoria *</label>
-            <Select required value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value as CriarProdutoInputCategoria })}>
-              <option value="mercado">Mercado</option>
-              <option value="cozinha">Cozinha / Lanchonete</option>
-              <option value="feira">Feira (peso)</option>
-            </Select>
-            {formData.categoria === "feira" && (
-              <p className="text-xs text-muted-foreground mt-1">Produtos da feira usam unidade fixa em kg.</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">NCM</label>
-              <Input value={formData.ncm} onChange={e => setFormData({ ...formData, ncm: e.target.value })} placeholder="Ex: 22011000" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">CST / CSOSN</label>
-              <Input value={formData.cst} onChange={e => setFormData({ ...formData, cst: e.target.value })} placeholder="Ex: 060 ou 102" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">CFOP</label>
-              <Input value={(formData as any).cfop} onChange={e => setFormData({ ...formData, cfop: e.target.value } as any)} placeholder="Ex: 5102" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">CEST</label>
-              <Input value={(formData as any).cest} onChange={e => setFormData({ ...formData, cest: e.target.value } as any)} placeholder="Ex: 1234567" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Custo (R$)</label>
-              <Input type="number" step="0.01" min="0" value={formData.custo} onChange={e => setFormData({ ...formData, custo: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Preço Venda (R$) *</label>
-              <Input required type="number" step="0.01" min="0" value={formData.preco} onChange={e => setFormData({ ...formData, preco: e.target.value })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Estoque Inicial</label>
-              <Input type="number" step="0.01" value={formData.estoque} onChange={e => setFormData({ ...formData, estoque: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Estoque Min.</label>
-              <Input type="number" step="0.01" value={formData.estoque_min} onChange={e => setFormData({ ...formData, estoque_min: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Unidade</label>
-              <Input
-                value={formData.categoria === "feira" ? "kg" : formData.unidade}
-                onChange={e => setFormData({ ...formData, unidade: e.target.value })}
-                placeholder="un, kg, L"
-                disabled={formData.categoria === "feira"}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 flex items-center gap-1">
-              <Calendar className="w-4 h-4" /> Validade <span className="text-muted-foreground font-normal">(opcional)</span>
-            </label>
-            <Input
-              type="date"
-              value={formData.validade}
-              onChange={e => setFormData({ ...formData, validade: e.target.value })}
-            />
-          </div>
-          <div className="pt-6 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" disabled={criar.isPending || editar.isPending}>
-              {editingId ? "Salvar Alterações" : "Criar Produto"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importar produtos por NF-e (XML)">
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Cole o conteúdo do XML da NF-e ou envie o arquivo. O importador cria novos produtos e atualiza estoque/custo quando o código de barras já existir.
-          </p>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium">Arquivo XML</label>
-            <Input
-              type="file"
-              accept=".xml,text/xml,application/xml"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const text = await file.text();
-                setXmlRaw(text);
-                setXmlPreview(null);
-                setXmlItens([]);
-                setXmlDuplicada(null);
-                setXmlItensHash(null);
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium">Conteúdo XML</label>
-            <textarea
-              value={xmlRaw}
-              onChange={(e) => {
-                setXmlRaw(e.target.value);
-                setXmlPreview(null);
-                setXmlItens([]);
-                setXmlDuplicada(null);
-                setXmlItensHash(null);
-              }}
-              className="w-full min-h-40 rounded-xl border border-input bg-background px-3 py-2 text-sm font-mono"
-              placeholder="<nfeProc>...</nfeProc>"
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" onClick={parseXmlPreview} disabled={!xmlRaw.trim()}>
-              Ler XML
-            </Button>
-          </div>
-
-          {xmlPreview && (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-border bg-secondary/30 p-3 text-sm">
-                <p><strong>Emitente:</strong> {xmlPreview.emitente || "-"}</p>
-                <p><strong>Chave:</strong> {xmlPreview.chaveNfe || "-"}</p>
-                <p><strong>Itens:</strong> {xmlPreview.itens.length}</p>
-              </div>
-              {xmlDuplicada && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm font-medium">
-                  Não possível importar por ser um registro já feito.
-                </div>
-              )}
-              <div className="max-h-56 overflow-auto rounded-xl border border-border">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="px-3 py-2">Descrição</th>
-                      <th className="px-3 py-2">Cód. barras</th>
-                      <th className="px-3 py-2">NCM</th>
-                      <th className="px-3 py-2">CST/CSOSN</th>
-                      <th className="px-3 py-2 text-right">Qtd</th>
-                      <th className="px-3 py-2 text-right">V. un.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {xmlItens.slice(0, 100).map((item, idx) => (
-                      <tr key={`${item.codigoInterno}-${idx}`}>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-full min-w-[180px] bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
-                            value={item.descricao}
-                            onChange={(e) => updateXmlItem(idx, { descricao: e.target.value })}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-28 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
-                            value={item.codigoBarras ?? ""}
-                            onChange={(e) => updateXmlItem(idx, { codigoBarras: e.target.value || null })}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-20 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
-                            value={item.ncm ?? ""}
-                            onChange={(e) => updateXmlItem(idx, { ncm: e.target.value || null })}
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            className="w-16 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
-                            value={item.cst ?? ""}
-                            onChange={(e) => updateXmlItem(idx, { cst: e.target.value || null })}
-                          />
-                        </td>
-                        <td className="px-2 py-1 text-right">
-                          <input
-                            type="number"
-                            step="0.0001"
-                            className="w-20 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
-                            value={item.quantidade}
-                            onChange={(e) => updateXmlItem(idx, { quantidade: Number(e.target.value) || 0 })}
-                          />
-                        </td>
-                        <td className="px-2 py-1 text-right">
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="w-24 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
-                            value={item.valorUnitario}
-                            onChange={(e) => updateXmlItem(idx, { valorUnitario: Number(e.target.value) || 0 })}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {xmlPreview.itens.length > 100 && (
-                <p className="text-xs text-muted-foreground">
-                  Mostrando 100 itens na prévia de um total de {xmlPreview.itens.length}.
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="pt-2 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setImportModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="button" onClick={handleImportarXml} disabled={!xmlPreview || xmlItens.length === 0 || importingXml || !!xmlDuplicada}>
-              {importingXml ? "Importando..." : "Importar itens"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={!!deleteModal} onClose={() => setDeleteModal(null)} title="Excluir Produto">
-        <div className="space-y-6">
-          <div className="bg-destructive/10 text-destructive p-4 rounded-xl flex items-start gap-3">
-            <AlertCircle className="w-6 h-6 flex-shrink-0" />
-            <p>Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita e ele não aparecerá mais no PDV.</p>
-          </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setDeleteModal(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deletar.isPending}>
-              {deletar.isPending ? "Excluindo..." : "Sim, Excluir"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-    </div>
-  );
-}
-</file>
-
 <file path="artifacts/api-server/src/routes/vendas.ts">
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -21777,6 +20757,1146 @@ router.put("/:id", async (req, res) => {
 });
 
 export default router;
+</file>
+
+<file path="artifacts/arvoredo/src/pages/produtos.tsx">
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import {
+  useProdutos,
+  useCriarProdutoWrapper,
+  useEditarProdutoWrapper,
+  useDeletarProdutoWrapper,
+  useVerificarNfeImportadaWrapper,
+  useRegistrarNfeImportadaWrapper,
+} from "@/hooks/use-produtos";
+import { formatMoney } from "@/lib/utils";
+import { Button, Input, Select, Modal } from "@/components/ui-elements";
+import { Search, Plus, Edit2, Trash2, AlertCircle, Calendar, Scan, X, ListRestart, FileUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import type { Produto, CriarProdutoInputCategoria } from "@workspace/api-client-react/src/generated/api.schemas";
+
+function formatValidade(validade: string | null | undefined) {
+  if (!validade) return null;
+  const [ano, mes, dia] = validade.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+type SortCol =
+  | "codigo"
+  | "nome"
+  | "marca"
+  | "categoria"
+  | "preco"
+  | "estoque"
+  | "validade"
+  | "criado_em";
+
+function validadeStatus(validade: string | null | undefined): null | "vencido" | "vencendo" {
+  if (!validade) return null;
+  const hoje = new Date();
+  const val = new Date(validade + "T12:00:00");
+  const diff = (val.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24);
+  if (diff < 0) return "vencido";
+  if (diff <= 7) return "vencendo";
+  return null;
+}
+
+type NfeItem = {
+  codigoInterno: string;
+  codigoBarras: string | null;
+  descricao: string;
+  ncm: string | null;
+  cst: string | null;
+  unidade: string;
+  quantidade: number;
+  valorUnitario: number;
+  valorTotal: number;
+};
+
+type NfeImportPreview = {
+  chaveNfe: string | null;
+  emitente: string | null;
+  itens: NfeItem[];
+};
+
+function firstText(el: Element | null, tag: string): string {
+  if (!el) return "";
+  const found = el.getElementsByTagName(tag)[0];
+  return found?.textContent?.trim() ?? "";
+}
+
+function toNum(v: string): number {
+  const n = Number((v || "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeBarcode(code: string): string | null {
+  const trimmed = code.trim();
+  if (!trimmed || /^SEM\s*GTIN$/i.test(trimmed)) return null;
+  return trimmed;
+}
+
+function normalizeNome(nome: string): string {
+  return nome.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function ncmLimpo(ncm?: string | null): string {
+  return (ncm ?? "").replace(/\D/g, "");
+}
+
+function ncmInvalido(ncm?: string | null): boolean {
+
+  const n = ncmLimpo(ncm);
+  return n.length !== 8 || n === "00000000";
+}
+const XML_PAGE_SIZE = 50;
+function parseNfeXml(xmlText: string): NfeImportPreview {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "application/xml");
+  const parserError = doc.getElementsByTagName("parsererror")[0];
+  if (parserError) {
+    throw new Error("XML inválido. Confira o arquivo e tente novamente.");
+  }
+
+  const infNFe = doc.getElementsByTagName("infNFe")[0] ?? null;
+  const emit = doc.getElementsByTagName("emit")[0] ?? null;
+  const xNome = firstText(emit, "xNome");
+  const chaveRaw = infNFe?.getAttribute("Id") ?? "";
+  const chaveNfe = chaveRaw.startsWith("NFe") ? chaveRaw.slice(3) : chaveRaw || null;
+
+  const dets = Array.from(doc.getElementsByTagName("det"));
+  const itens: NfeItem[] = dets
+    .map((det) => {
+      const prod = det.getElementsByTagName("prod")[0] ?? null;
+      const imposto = det.getElementsByTagName("imposto")[0] ?? null;
+      const icmsNodes = imposto ? Array.from(imposto.getElementsByTagName("*")) : [];
+      const icms =
+        icmsNodes.find((node) => /^ICMS/.test(node.tagName)) ??
+        icmsNodes.find((node) => node.getElementsByTagName("CST")[0] || node.getElementsByTagName("CSOSN")[0]) ??
+        null;
+
+      const descricao = firstText(prod, "xProd");
+      const quantidade = toNum(firstText(prod, "qCom"));
+      const valorUnitario = toNum(firstText(prod, "vUnCom"));
+      const valorTotal = toNum(firstText(prod, "vProd")) || quantidade * valorUnitario;
+
+      return {
+        codigoInterno: firstText(prod, "cProd"),
+        codigoBarras: normalizeBarcode(firstText(prod, "cEAN") || firstText(prod, "cEANTrib")),
+        descricao,
+        ncm: firstText(prod, "NCM") || null,
+        cst: firstText(icms, "CST") || firstText(icms, "CSOSN") || null,
+        unidade: firstText(prod, "uCom") || "un",
+        quantidade,
+        valorUnitario,
+        valorTotal,
+      };
+    })
+    .filter((i) => i.descricao && i.quantidade > 0);
+
+  if (itens.length === 0) {
+    throw new Error("Nenhum item de produto encontrado no XML.");
+  }
+
+  return { chaveNfe, emitente: xNome || null, itens };
+}
+
+/* Campo de código de barras com botão de scanner */
+function CodigoBarrasInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [scanning, setScanning] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startScan = () => {
+    setScanning(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const stopScan = () => setScanning(false);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setScanning(false); // código capturado, sai do modo scan
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {scanning ? (
+        <div className="border-2 border-primary rounded-xl p-3 bg-primary/5 animate-pulse">
+          <div className="flex items-center gap-2 mb-2">
+            <Scan className="w-5 h-5 text-primary animate-bounce" />
+            <span className="text-sm font-semibold text-primary">Aponte o leitor para o produto...</span>
+            <button type="button" onClick={stopScan} className="ml-auto text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => { if (!value) setScanning(false); }}
+            className="w-full bg-transparent border-none outline-none font-mono text-lg text-center tracking-widest text-foreground placeholder:text-muted-foreground"
+            placeholder="aguardando leitura..."
+            autoComplete="off"
+          />
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder="Código de barras..."
+            autoComplete="off"
+            className="font-mono"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-shrink-0 gap-1.5 border-primary/30 text-primary hover:border-primary"
+            onClick={startScan}
+            title="Ativar leitor de código de barras"
+          >
+            <Scan className="w-4 h-4" />
+            Escanear
+          </Button>
+        </div>
+      )}
+      {value && !scanning && (
+        <p className="text-xs text-muted-foreground font-mono">Código: {value}</p>
+      )}
+    </div>
+  );
+}
+
+export default function Produtos() {
+  const [search, setSearch] = useState("");
+  const { data: produtos = [], isLoading } = useProdutos({ q: search });
+
+  const criar = useCriarProdutoWrapper();
+  const editar = useEditarProdutoWrapper();
+  const deletar = useDeletarProdutoWrapper();
+  const verificarNfeImportada = useVerificarNfeImportadaWrapper();
+  const registrarNfeImportada = useRegistrarNfeImportadaWrapper();
+  const { toast } = useToast();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [xmlRaw, setXmlRaw] = useState("");
+  const [xmlPreview, setXmlPreview] = useState<NfeImportPreview | null>(null);
+  const [xmlItens, setXmlItens] = useState<NfeItem[]>([]);
+  const [importingXml, setImportingXml] = useState(false);
+  const [xmlDuplicada, setXmlDuplicada] = useState<{ dataImportacao: string | null } | null>(null);
+  const [xmlItensHash, setXmlItensHash] = useState<string | null>(null);
+  const [xmlPagina, setXmlPagina] = useState(0);
+
+  const updateXmlItem = (idx: number, patch: Partial<NfeItem>) => {
+    setXmlItens((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
+  };
+
+  const totalPaginas = Math.max(1, Math.ceil(xmlItens.length / XML_PAGE_SIZE));
+  const paginaAtual = Math.min(xmlPagina, totalPaginas - 1);
+  const inicioPagina = paginaAtual * XML_PAGE_SIZE;
+  const itensPagina = xmlItens.slice(inicioPagina, inicioPagina + XML_PAGE_SIZE);
+  const qtdNcmInvalido = xmlItens.filter((i) => ncmInvalido(i.ncm)).length;
+
+  const irParaPrimeiroInvalido = () => {
+    const idx = xmlItens.findIndex((i) => ncmInvalido(i.ncm));
+    if (idx >= 0) setXmlPagina(Math.floor(idx / XML_PAGE_SIZE));
+  };
+
+  const defaultForm = {
+    nome: "", marca: "", codigo: "", categoria: "mercado" as CriarProdutoInputCategoria,
+    ncm: "", cfop: "5102", cest: "", cst: "", preco: "", custo: "", estoque: "", estoque_min: "5", unidade: "un", validade: ""
+  };
+  const [formData, setFormData] = useState(defaultForm);
+
+  const [sortCol, setSortCol] = useState<SortCol | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = useCallback((col: SortCol) => {
+    setSortCol((prev) => {
+      if (prev === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return prev;
+      }
+      setSortDir("asc");
+      return col;
+    });
+  }, []);
+
+  const produtosOrdenados = useMemo(() => {
+    if (!sortCol) return produtos;
+    const list = [...produtos];
+    const dir = sortDir === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      const cmpStr = (sa: string, sb: string) => sa.localeCompare(sb, "pt-BR", { sensitivity: "base" }) * dir;
+      const cmpNum = (na: number, nb: number) => (na === nb ? 0 : na < nb ? -1 * dir : 1 * dir);
+
+      switch (sortCol) {
+        case "codigo":
+          return cmpStr((a.codigo || "").toLowerCase(), (b.codigo || "").toLowerCase());
+        case "nome":
+          return cmpStr(a.nome.toLowerCase(), b.nome.toLowerCase());
+        case "marca":
+          return cmpStr((a.marca || "").toLowerCase(), (b.marca || "").toLowerCase());
+        case "categoria":
+          return cmpStr(a.categoria, b.categoria);
+        case "preco":
+          return cmpNum(a.preco, b.preco);
+        case "estoque":
+          return cmpNum(a.estoque, b.estoque);
+        case "validade": {
+          const ta = a.validade ? new Date(a.validade + "T12:00:00").getTime() : null;
+          const tb = b.validade ? new Date(b.validade + "T12:00:00").getTime() : null;
+          if (ta === null && tb === null) return 0;
+          if (ta === null) return 1;
+          if (tb === null) return -1;
+          return (ta - tb) * dir;
+        }
+        case "criado_em":
+          return cmpNum(new Date(a.criado_em).getTime(), new Date(b.criado_em).getTime());
+        default:
+          return 0;
+      }
+    });
+    return list;
+  }, [produtos, sortCol, sortDir]);
+
+  const handleOpenNew = () => {
+    setEditingId(null);
+    setFormData(defaultForm);
+    setModalOpen(true);
+  };
+
+  const handleOpenImport = () => {
+    setXmlRaw("");
+    setXmlPreview(null);
+    setXmlItens([]);
+    setXmlDuplicada(null);
+    setXmlItensHash(null);
+    setImportModalOpen(true);
+    setXmlItens([]);
+    setXmlPagina(0);
+  };
+
+  const handleOpenEdit = (p: Produto) => {
+    setEditingId(p.id);
+    setFormData({
+      nome: p.nome,
+      marca: p.marca || "",
+      codigo: p.codigo || "",
+      categoria: p.categoria,
+      ncm: (p as any).ncm || "",
+      cfop: (p as any).cfop || "5102",
+      cest: (p as any).cest || "",
+      cst: (p as any).cst || "",
+      preco: p.preco.toString(),
+      custo: p.custo.toString(),
+      estoque: p.estoque.toString(),
+      estoque_min: p.estoque_min.toString(),
+      unidade: p.unidade,
+      validade: p.validade || ""
+    });
+    setModalOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      nome: formData.nome,
+      marca: formData.marca || null,
+      codigo: formData.codigo || null,
+      categoria: formData.categoria,
+      ncm: formData.ncm || null,
+      cfop: (formData as any).cfop || null,
+      cest: (formData as any).cest || null,
+      cst: formData.cst || null,
+      preco: Number(formData.preco),
+      custo: Number(formData.custo) || 0,
+      estoque: Number(formData.estoque) || 0,
+      estoque_min: Number(formData.estoque_min) || 0,
+      unidade: formData.categoria === "feira" ? "kg" : (formData.unidade || "un"),
+      validade: formData.validade || null,
+    };
+
+    if (editingId) {
+      editar.mutate({ id: editingId, data: payload }, {
+        onSuccess: () => {
+          toast({ title: "Produto atualizado", className: "bg-green-600 text-white" });
+          setModalOpen(false);
+        },
+        onError: (err) => {
+          toast({ title: "Erro ao atualizar", description: err.message, variant: "destructive" });
+        },
+      });
+    } else {
+      criar.mutate({ data: payload }, {
+        onSuccess: () => {
+          toast({ title: "Produto criado", className: "bg-green-600 text-white" });
+          setModalOpen(false);
+        },
+        onError: (err) => {
+          toast({ title: "Erro ao criar", description: err.message, variant: "destructive" });
+        },
+      });
+    }
+  };
+
+  const handleDelete = () => {
+    if (!deleteModal) return;
+    deletar.mutate({ id: deleteModal }, {
+      onSuccess: () => {
+        toast({ title: "Produto excluído", className: "bg-green-600 text-white" });
+        setDeleteModal(null);
+      }
+    });
+  };
+
+  const parseXmlPreview = () => {
+    try {
+      const parsed = parseNfeXml(xmlRaw);
+      setXmlPreview(parsed);
+      setXmlItens(parsed.itens);
+      setXmlItens(parsed.itens);
+      setXmlPagina(0);
+      setXmlDuplicada(null);
+      setXmlItensHash(null);
+
+      verificarNfeImportada.mutate(
+        {
+          data: {
+            chaveNfe: parsed.chaveNfe,
+            itens: parsed.itens.map((i) => ({
+              codigoBarras: i.codigoBarras,
+              descricao: i.descricao,
+              quantidade: i.quantidade,
+            })),
+          },
+        },
+        {
+          onSuccess: (resp) => {
+            setXmlItensHash(resp.itensHash);
+            if (resp.jaImportada) {
+              setXmlDuplicada({ dataImportacao: resp.dataImportacao });
+              toast({
+                title: "Importação bloqueada",
+                description: "Não possível importar por ser um registro já feito.",
+                variant: "destructive",
+              });
+            }
+          },
+        }
+      );
+
+      toast({
+        title: "XML lido com sucesso",
+        description: `${parsed.itens.length} item(ns) encontrado(s).`,
+        className: "bg-green-600 text-white",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao ler XML";
+      toast({ title: "Erro no XML", description: message, variant: "destructive" });
+      setXmlPreview(null);
+      setXmlItens([]);
+      setXmlDuplicada(null);
+      setXmlItensHash(null);
+    }
+  };
+
+  const runCriarProduto = (data: {
+    nome: string;
+    marca?: string | null;
+    codigo?: string | null;
+    categoria: CriarProdutoInputCategoria;
+    ncm?: string | null;
+    cfop?: string | null;
+    cest?: string | null;
+    cst?: string | null;
+    preco: number;
+    custo: number;
+    estoque: number;
+    estoque_min: number;
+    unidade: string;
+    validade?: string | null;
+  }) =>
+    new Promise<Produto>((resolve, reject) => {
+      criar.mutate(
+        { data },
+        {
+          onSuccess: (produtoCriado) => resolve(produtoCriado),
+          onError: (err) => reject(err),
+        }
+      );
+    });
+
+  const runEditarProduto = (
+    id: number,
+    data: {
+      nome?: string;
+      marca?: string | null;
+      codigo?: string | null;
+      categoria?: CriarProdutoInputCategoria;
+      ncm?: string | null;
+      cfop?: string | null;
+      cest?: string | null;
+      cst?: string | null;
+      preco?: number;
+      custo?: number;
+      estoque?: number;
+      estoque_min?: number;
+      unidade?: string;
+      validade?: string | null;
+    }
+  ) =>
+    new Promise<void>((resolve, reject) => {
+      editar.mutate(
+        { id, data },
+        {
+          onSuccess: () => resolve(),
+          onError: (err) => reject(err),
+        }
+      );
+    });
+
+  const handleImportarXml = async () => {
+    if (!xmlPreview || xmlItens.length === 0) {
+      toast({
+        title: "Leia o XML primeiro",
+        description: "Clique em \"Ler XML\" antes de importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (xmlDuplicada) {
+      toast({
+        title: "Importação bloqueada",
+        description: "Não possível importar por ser um registro já feito.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const semNcm = xmlItens.filter((i) => ncmInvalido(i.ncm));
+    if (semNcm.length > 0) {
+      const exemplos = semNcm.slice(0, 3).map((i) => i.descricao).join(", ");
+      toast({
+        title: "Itens sem NCM válido",
+        description: `Corrija o NCM de ${semNcm.length} item(ns) na prévia (linhas em vermelho). Ex.: ${exemplos}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+
+
+    setImportingXml(true);
+    try {
+      let criados = 0;
+      let atualizados = 0;
+
+      const produtosPorCodigo = new Map(
+        produtos
+          .filter((p) => !!p.codigo)
+          .map((p) => [p.codigo!.trim(), p] as const)
+      );
+      const produtosPorNome = new Map(
+        produtos.map((p) => [normalizeNome(p.nome), p] as const)
+      );
+
+      for (const item of xmlItens) {
+        const existing =
+          (item.codigoBarras ? produtosPorCodigo.get(item.codigoBarras) : undefined) ??
+          produtosPorNome.get(normalizeNome(item.descricao));
+
+        if (existing) {
+          const novoEstoque = existing.estoque + item.quantidade;
+          const novoCodigo = existing.codigo || item.codigoBarras || null;
+
+          await runEditarProduto(existing.id, {
+            codigo: novoCodigo,
+            ncm: (existing as any).ncm || ncmLimpo(item.ncm),
+            cst: (existing as any).cst || item.cst,
+            custo: item.valorUnitario,
+            preco: existing.preco > 0 ? existing.preco : item.valorUnitario,
+            estoque: novoEstoque,
+            unidade: existing.unidade || item.unidade,
+          });
+          atualizados++;
+
+          // mantém os mapas locais em dia pra casar itens repetidos dentro do mesmo XML
+          const atualizado = { ...existing, estoque: novoEstoque, codigo: novoCodigo ?? existing.codigo };
+          if (atualizado.codigo) produtosPorCodigo.set(atualizado.codigo.trim(), atualizado);
+          produtosPorNome.set(normalizeNome(atualizado.nome), atualizado);
+        } else {
+          const criado = await runCriarProduto({
+            nome: item.descricao,
+            marca: null,
+            codigo: item.codigoBarras,
+            categoria: "mercado",
+            ncm: ncmLimpo(item.ncm),
+            cst: item.cst,
+            preco: item.valorUnitario,
+            custo: item.valorUnitario,
+            estoque: item.quantidade,
+            estoque_min: 5,
+            unidade: item.unidade || "un",
+            validade: null,
+          });
+          criados++;
+
+          if (criado.codigo) produtosPorCodigo.set(criado.codigo.trim(), criado);
+          produtosPorNome.set(normalizeNome(criado.nome), criado);
+        }
+      }
+
+      if (xmlItensHash) {
+        try {
+          await registrarNfeImportada.mutateAsync({
+            data: {
+              chaveNfe: xmlPreview.chaveNfe,
+              emitente: xmlPreview.emitente,
+              itensHash: xmlItensHash,
+              qtdItens: xmlItens.length,
+            },
+          });
+        } catch {
+          console.warn("Falha ao registrar NF-e como importada — produtos já foram criados/atualizados normalmente.");
+        }
+      }
+
+      toast({
+        title: "Importação concluída",
+        description: `${criados} criado(s), ${atualizados} atualizado(s).`,
+        className: "bg-green-600 text-white",
+      });
+      setImportModalOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao importar XML";
+      toast({ title: "Erro na importação", description: message, variant: "destructive" });
+    } finally {
+      setImportingXml(false);
+    }
+  };
+
+  return (
+    <div className="w-full min-w-0 p-6 md:p-8 h-full overflow-y-auto max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Produtos</h1>
+          <p className="text-muted-foreground mt-1">Gerencie o catálogo de produtos e preços</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleOpenImport} variant="outline" className="gap-2" size="lg">
+            <FileUp className="w-5 h-5" />
+            Importar NF-e XML
+          </Button>
+          <Button onClick={handleOpenNew} className="gap-2" size="lg">
+            <Plus className="w-5 h-5" />
+            Novo Produto
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-border bg-secondary/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative w-full max-w-md flex-1">
+            <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, marca ou código..."
+              className="pl-10 h-12"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          {sortCol != null && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => {
+                setSortCol(null);
+                setSortDir("asc");
+              }}
+            >
+              <ListRestart className="w-4 h-4" />
+              Limpar ordenação
+            </Button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="p-12 text-center text-muted-foreground">Carregando catálogo...</div>
+          ) : (
+            <table className="w-full table-fixed text-left">
+              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase sticky top-0 z-10">
+                <tr>
+                  <th
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "codigo" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("codigo")}
+                  >
+                    Cód.{sortCol === "codigo" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[18%] ${sortCol === "nome" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("nome")}
+                  >
+                    Nome{sortCol === "nome" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[16%] ${sortCol === "marca" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("marca")}
+                  >
+                    Marca{sortCol === "marca" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "categoria" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("categoria")}
+                  >
+                    Cat.{sortCol === "categoria" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "preco" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("preco")}
+                  >
+                    Preço{sortCol === "preco" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium text-right cursor-pointer select-none hover:bg-muted/80 w-[9%] ${sortCol === "estoque" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("estoque")}
+                  >
+                    Estoque{sortCol === "estoque" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[12%] ${sortCol === "validade" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("validade")}
+                  >
+                    Validade{sortCol === "validade" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className={`px-3 py-4 font-medium cursor-pointer select-none hover:bg-muted/80 w-[10%] ${sortCol === "criado_em" ? "text-primary" : ""}`}
+                    onClick={() => toggleSort("criado_em")}
+                  >
+                    Cadastro{sortCol === "criado_em" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </th>
+                  <th
+                    className="px-3 py-4 font-medium text-center cursor-pointer select-none hover:bg-muted/80 w-[5%]"
+                    onClick={() => { setSortCol(null); setSortDir("asc"); }}
+                    title="Limpar ordenação"
+                  >
+                    Ações
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {produtosOrdenados.map(p => {
+                  const vs = validadeStatus(p.validade);
+                  return (
+                    <tr key={p.id} className="hover:bg-muted/30">
+                      {/* Código - truncado */}
+                      <td className="px-3 py-4 text-muted-foreground font-mono text-sm truncate" title={p.codigo || '-'}>
+                        {p.codigo || '-'}
+                      </td>
+
+                      {/* Nome - truncado com tooltip */}
+                      <td className="px-3 py-4 font-bold truncate" title={p.nome}>
+                        {p.nome}
+                      </td>
+
+                      {/* Marca - truncado com tooltip */}
+                      <td className="px-3 py-4 text-muted-foreground truncate" title={p.marca || '-'}>
+                        {p.marca || '-'}
+                      </td>
+
+                      {/* Categoria - badge compacto */}
+                      <td className="px-3 py-4">
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-full truncate max-w-full ${p.categoria === "cozinha"
+                          ? "bg-orange-100 text-orange-700"
+                          : p.categoria === "feira"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-primary/10 text-primary"
+                          }`}>
+                          {p.categoria}
+                        </span>
+                      </td>
+
+                      {/* Preço */}
+                      <td className="px-3 py-4 text-right font-mono font-bold text-primary whitespace-nowrap">
+                        {formatMoney(p.preco)}
+                      </td>
+
+                      {/* Estoque */}
+                      <td className={`px-3 py-4 text-right font-mono font-medium whitespace-nowrap ${p.estoque <= p.estoque_min ? 'text-destructive font-bold' : ''
+                        }`}>
+                        {p.estoque} <span className="text-[10px] text-muted-foreground">{p.unidade}</span>
+                      </td>
+
+                      {/* Validade - formato compacto */}
+                      <td className="px-3 py-4">
+                        {p.validade ? (
+                          <div className={`flex items-center gap-1 text-xs font-medium ${vs === 'vencido' ? 'text-destructive' :
+                            vs === 'vencendo' ? 'text-yellow-600' : 'text-muted-foreground'
+                            }`}>
+                            <Calendar className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{formatValidade(p.validade)}</span>
+                            {vs === 'vencido' && (
+                              <span className="text-[9px] font-bold bg-destructive/10 px-1 rounded flex-shrink-0">VENC</span>
+                            )}
+                            {vs === 'vencendo' && (
+                              <span className="text-[9px] font-bold bg-yellow-100 px-1 rounded flex-shrink-0">VNC</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </td>
+
+                      {/* Cadastro - formato compacto */}
+                      <td className="px-3 py-4 text-[11px] text-muted-foreground leading-tight">
+                        {p.criado_em ? new Date(p.criado_em).toLocaleDateString('pt-BR') : '-'}
+                      </td>
+
+                      {/* Ações - ícones compactos */}
+                      <td className="px-3 py-4">
+                        <div className="flex justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenEdit(p)}
+                            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteModal(p.id)}
+                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {produtosOrdenados.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-12 text-center text-muted-foreground">
+                      Nenhum produto encontrado. Clique em "Novo Produto" para adicionar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? "Editar Produto" : "Novo Produto"}>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Nome *</label>
+              <Input required value={formData.nome} onChange={e => setFormData({ ...formData, nome: e.target.value })} placeholder="Ex: Arroz Tio João 5kg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Marca</label>
+              <Input value={formData.marca} onChange={e => setFormData({ ...formData, marca: e.target.value })} placeholder="Ex: Tio João" />
+            </div>
+          </div>
+
+          {/* Campo de Código de Barras com Botão Scanner */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Código de Barras</label>
+            <CodigoBarrasInput
+              value={formData.codigo}
+              onChange={v => setFormData({ ...formData, codigo: v })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Categoria *</label>
+            <Select required value={formData.categoria} onChange={e => setFormData({ ...formData, categoria: e.target.value as CriarProdutoInputCategoria })}>
+              <option value="mercado">Mercado</option>
+              <option value="cozinha">Cozinha / Lanchonete</option>
+              <option value="feira">Feira (peso)</option>
+            </Select>
+            {formData.categoria === "feira" && (
+              <p className="text-xs text-muted-foreground mt-1">Produtos da feira usam unidade fixa em kg.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">NCM</label>
+              <Input value={formData.ncm} onChange={e => setFormData({ ...formData, ncm: e.target.value })} placeholder="Ex: 22011000" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">CST / CSOSN</label>
+              <Input value={formData.cst} onChange={e => setFormData({ ...formData, cst: e.target.value })} placeholder="Ex: 060 ou 102" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">CFOP</label>
+              <Input value={(formData as any).cfop} onChange={e => setFormData({ ...formData, cfop: e.target.value } as any)} placeholder="Ex: 5102" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">CEST</label>
+              <Input value={(formData as any).cest} onChange={e => setFormData({ ...formData, cest: e.target.value } as any)} placeholder="Ex: 1234567" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Custo (R$)</label>
+              <Input type="number" step="0.01" min="0" value={formData.custo} onChange={e => setFormData({ ...formData, custo: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Preço Venda (R$) *</label>
+              <Input required type="number" step="0.01" min="0" value={formData.preco} onChange={e => setFormData({ ...formData, preco: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Estoque Inicial</label>
+              <Input type="number" step="0.01" value={formData.estoque} onChange={e => setFormData({ ...formData, estoque: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Estoque Min.</label>
+              <Input type="number" step="0.01" value={formData.estoque_min} onChange={e => setFormData({ ...formData, estoque_min: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Unidade</label>
+              <Input
+                value={formData.categoria === "feira" ? "kg" : formData.unidade}
+                onChange={e => setFormData({ ...formData, unidade: e.target.value })}
+                placeholder="un, kg, L"
+                disabled={formData.categoria === "feira"}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+              <Calendar className="w-4 h-4" /> Validade <span className="text-muted-foreground font-normal">(opcional)</span>
+            </label>
+            <Input
+              type="date"
+              value={formData.validade}
+              onChange={e => setFormData({ ...formData, validade: e.target.value })}
+            />
+          </div>
+          <div className="pt-6 flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" disabled={criar.isPending || editar.isPending}>
+              {editingId ? "Salvar Alterações" : "Criar Produto"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importar produtos por NF-e (XML)">
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Cole o conteúdo do XML da NF-e ou envie o arquivo. O importador cria novos produtos e atualiza estoque/custo quando o código de barras já existir.
+          </p>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Arquivo XML</label>
+            <Input
+              type="file"
+              accept=".xml,text/xml,application/xml"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const text = await file.text();
+                setXmlRaw(text);
+                setXmlPreview(null);
+                setXmlItens([]);
+                setXmlDuplicada(null);
+                setXmlItensHash(null);
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Conteúdo XML</label>
+            <textarea
+              value={xmlRaw}
+              onChange={(e) => {
+                setXmlRaw(e.target.value);
+                setXmlPreview(null);
+                setXmlItens([]);
+                setXmlDuplicada(null);
+                setXmlItensHash(null);
+              }}
+              className="w-full min-h-40 rounded-xl border border-input bg-background px-3 py-2 text-sm font-mono"
+              placeholder="<nfeProc>...</nfeProc>"
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={parseXmlPreview} disabled={!xmlRaw.trim()}>
+              Ler XML
+            </Button>
+          </div>
+
+          {xmlPreview && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border bg-secondary/30 p-3 text-sm">
+                <p><strong>Emitente:</strong> {xmlPreview.emitente || "-"}</p>
+                <p><strong>Chave:</strong> {xmlPreview.chaveNfe || "-"}</p>
+                <p><strong>Itens:</strong> {xmlPreview.itens.length}</p>
+              </div>
+              {xmlDuplicada && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm font-medium">
+                  Não possível importar por ser um registro já feito.
+                </div>
+              )}
+              {qtdNcmInvalido > 0 && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm font-medium flex items-center justify-between gap-3">
+                  <span>{qtdNcmInvalido} item(ns) com NCM inválido. Corrija antes de importar.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={irParaPrimeiroInvalido}>
+                    Ir para o primeiro
+                  </Button>
+                </div>
+              )}
+              <div className="max-h-56 overflow-auto rounded-xl border border-border">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="px-3 py-2">Descrição</th>
+                      <th className="px-3 py-2">Cód. barras</th>
+                      <th className="px-3 py-2">NCM</th>
+                      <th className="px-3 py-2">CST/CSOSN</th>
+                      <th className="px-3 py-2 text-right">Qtd</th>
+                      <th className="px-3 py-2 text-right">V. un.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {itensPagina.map((item, i) => {
+                      const idx = inicioPagina + i;
+                      const invalido = ncmInvalido(item.ncm);
+                      return (
+                        <tr
+                          key={`${item.codigoInterno}-${idx}`}
+                          className={invalido ? "bg-destructive/10" : ""}
+                        >
+                          <td className="px-2 py-1">
+                            <input
+                              className="w-full min-w-[180px] bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                              value={item.descricao}
+                              onChange={(e) => updateXmlItem(idx, { descricao: e.target.value })}
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className="w-28 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                              value={item.codigoBarras ?? ""}
+                              onChange={(e) => updateXmlItem(idx, { codigoBarras: e.target.value || null })}
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className={`w-20 bg-transparent border-b outline-none text-sm px-1 py-1 ${invalido
+                                ? "border-destructive text-destructive"
+                                : "border-transparent hover:border-input focus:border-primary"
+                                }`}
+                              value={item.ncm ?? ""}
+                              maxLength={10}
+                              onChange={(e) => updateXmlItem(idx, { ncm: e.target.value || null })}
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className="w-16 bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm px-1 py-1"
+                              value={item.cst ?? ""}
+                              onChange={(e) => updateXmlItem(idx, { cst: e.target.value || null })}
+                            />
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            <input
+                              type="number"
+                              step="0.0001"
+                              className="w-20 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                              value={item.quantidade}
+                              onChange={(e) => updateXmlItem(idx, { quantidade: Number(e.target.value) || 0 })}
+                            />
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="w-24 text-right bg-transparent border-b border-transparent hover:border-input focus:border-primary outline-none text-sm font-mono px-1 py-1"
+                              value={item.valorUnitario}
+                              onChange={(e) => updateXmlItem(idx, { valorUnitario: Number(e.target.value) || 0 })}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {totalPaginas > 1 && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Itens {inicioPagina + 1}–{Math.min(inicioPagina + XML_PAGE_SIZE, xmlItens.length)} de {xmlItens.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" disabled={paginaAtual === 0} onClick={() => setXmlPagina(paginaAtual - 1)}>
+                      Anterior
+                    </Button>
+                    <span>Página {paginaAtual + 1} de {totalPaginas}</span>
+                    <Button type="button" variant="outline" size="sm" disabled={paginaAtual >= totalPaginas - 1} onClick={() => setXmlPagina(paginaAtual + 1)}>
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="pt-2 flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setImportModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleImportarXml} disabled={!xmlPreview || xmlItens.length === 0 || importingXml || !!xmlDuplicada}>
+              {importingXml ? "Importando..." : "Importar itens"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!deleteModal} onClose={() => setDeleteModal(null)} title="Excluir Produto">
+        <div className="space-y-6">
+          <div className="bg-destructive/10 text-destructive p-4 rounded-xl flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 flex-shrink-0" />
+            <p>Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita e ele não aparecerá mais no PDV.</p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setDeleteModal(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deletar.isPending}>
+              {deletar.isPending ? "Excluindo..." : "Sim, Excluir"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
 </file>
 
 <file path="artifacts/api-server/src/lib/print-layout.ts">
