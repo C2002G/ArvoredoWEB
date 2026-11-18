@@ -55,7 +55,6 @@ Thumbs.db
 .env.*
 !.env.example
 Logs/
-repomix-output.xml
 
 *.md
 !README.md
@@ -63,3 +62,4 @@ repomix-output.xml
 artifacts/api-server/data/maquininha-config.json
 
 *.dump
+repomix-output.xml
