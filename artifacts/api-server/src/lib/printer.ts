@@ -3,6 +3,8 @@ import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import QRCode from "qrcode";
+import { logger } from "./logger";
 
 const execFileAsync = promisify(execFile);
 
@@ -178,19 +180,150 @@ export async function resolvePrinterName(): Promise<string> {
   );
 }
 
-export async function printTextToWindowsPrinter(text: string, printerName?: string) {
+// Largura do layout em colunas (igual a PRINTER_LAYOUT.colunas em print-layout.ts)
+const CUPOM_COLS = 48;
+
+export type PrintOptions = { qrUrl?: string };
+
+// Script GDI: calcula a fonte para as 48 colunas caberem na largura util do driver.
+// (somente ASCII: o arquivo .ps1 e lido pelo Windows PowerShell 5.1)
+const PS_GDI_SCRIPT = String.raw`
+param(
+  [Parameter(Mandatory=$true)][string]$TextFile,
+  [Parameter(Mandatory=$true)][string]$Printer,
+  [int]$Cols = 48,
+  [double]$PrintWidthMm = 0,
+  [string]$QrFile = ""
+)
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Drawing
+
+$text  = [System.IO.File]::ReadAllText($TextFile, [System.Text.Encoding]::UTF8)
+$lines = $text -split "\r?\n"
+$qr = $null
+if ($QrFile -and (Test-Path -LiteralPath $QrFile)) { $qr = [System.Drawing.Image]::FromFile($QrFile) }
+
+$pd = New-Object System.Drawing.Printing.PrintDocument
+$pd.PrinterSettings.PrinterName = $Printer
+if (-not $pd.PrinterSettings.IsValid) { throw "Impressora invalida: $Printer" }
+$pd.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+
+# Medidas em centesimos de polegada (unidade da impressao no .NET)
+$paper  = $pd.DefaultPageSettings.PaperSize
+$usable = $pd.DefaultPageSettings.PrintableArea.Width
+if ($PrintWidthMm -gt 0) { $usable = $PrintWidthMm / 25.4 * 100 }
+elseif ($usable -le 0 -or $usable -gt 340) { $usable = 283 }   # driver sem area util (ou A4): assume 72mm
+
+# Courier New tem largura de 0.6 em por caractere; 0.97 deixa folga na borda
+$fontPt = [math]::Floor(($usable / 100.0 * 72.0 * 0.97) / ($Cols * 0.6001) * 4.0) / 4.0
+if ($fontPt -lt 4) { $fontPt = 4 }
+$font   = New-Object System.Drawing.Font("Courier New", [single]$fontPt, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
+$lineH  = $fontPt / 72.0 * 100.0 * 1.1329
+$qrSize = [math]::Round($usable * 0.45)
+
+$qrBlock = 0
+if ($qr -ne $null) { $qrBlock = $qrSize + 10 }
+$height = [int][math]::Max(3000, [math]::Ceiling($lines.Count * $lineH + $qrBlock + 60))
+$custom = New-Object System.Drawing.Printing.PaperSize("Cupom", [int]$paper.Width, $height)
+$custom.RawKind = 256
+$pd.DefaultPageSettings.PaperSize = $custom
+$pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+
+$sf = New-Object System.Drawing.StringFormat([System.Drawing.StringFormat]::GenericTypographic)
+
+$pd.add_PrintPage({
+  param($s, $e)
+  $g = $e.Graphics
+  $y = 2.0
+  foreach ($line in $lines) {
+    $g.DrawString($line, $font, [System.Drawing.Brushes]::Black, 0.0, $y, $sf)
+    $y += $lineH
+  }
+  if ($qr -ne $null) {
+    $y += 8
+    $x = ($usable - $qrSize) / 2
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.DrawImage($qr, [single]$x, [single]$y, [single]$qrSize, [single]$qrSize)
+  }
+  $e.HasMorePages = $false
+}.GetNewClosure())
+
+try { $pd.Print() } finally { $font.Dispose(); if ($qr -ne $null) { $qr.Dispose() } }
+`;
+
+function envNumber(name: string, fallback: number) {
+  const n = Number(process.env[name]?.trim());
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+async function printViaWindowsDriver(text: string, printer: string, opts: PrintOptions) {
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const textFile = path.join(os.tmpdir(), `arvoredo_cupom_${id}.txt`);
+  const scriptFile = path.join(os.tmpdir(), `arvoredo_print_${id}.ps1`);
+  const qrFile = opts.qrUrl ? path.join(os.tmpdir(), `arvoredo_qr_${id}.png`) : null;
+
+  try {
+    await fs.writeFile(textFile, text, "utf8");
+    await fs.writeFile(scriptFile, PS_GDI_SCRIPT, "utf8");
+    if (qrFile && opts.qrUrl) {
+      const png = await QRCode.toBuffer(opts.qrUrl, { type: "png", scale: 6, margin: 2, errorCorrectionLevel: "M" });
+      await fs.writeFile(qrFile, png);
+    }
+
+    const args = [
+      "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptFile,
+      "-TextFile", textFile,
+      "-Printer", printer,
+      "-Cols", String(CUPOM_COLS),
+      "-PrintWidthMm", String(envNumber("PRINTER_PRINT_WIDTH_MM", 0)),
+    ];
+    if (qrFile) args.push("-QrFile", qrFile);
+
+    await execFileAsync("powershell.exe", args, { windowsHide: true, timeout: 20000 });
+  } finally {
+    for (const f of [textFile, scriptFile, qrFile]) {
+      if (f) await fs.rm(f, { force: true }).catch(() => undefined);
+    }
+  }
+}
+
+// Rede de seguranca: se o GDI falhar, o QR Code sai como URL em texto.
+function qrAsText(url: string) {
+  const W = 48;
+  const line = "-".repeat(W);
+  const center = (s: string) => " ".repeat(Math.max(0, Math.floor((W - s.length) / 2))) + s;
+  const urlLines = url.match(/.{1,48}/g) ?? [url];
+  return ["", line, center("QR Code - ESCANEAR ABAIXO"), line, ...urlLines, line, center("Use o celular para escanear"), ""].join("\r\n");
+}
+
+export async function printTextToWindowsPrinter(
+  text: string,
+  printerName?: string,
+  opts: PrintOptions = {},
+): Promise<"gdi" | "texto"> {
   if (process.platform !== "win32") {
     throw new Error("A impressão por USB só é suportada no Windows nesta versão.");
   }
 
   const name = printerName?.trim() || (await resolvePrinterName());
-  const tempFile = path.join(os.tmpdir(), `arvoredo_print_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`);
 
-  await fs.writeFile(tempFile, text, "utf8");
+  try {
+    await printViaWindowsDriver(text, name, opts);
+    logger.info(`Cupom impresso via driver Windows (GDI): ${name}`);
+    return "gdi";
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.warn(`Impressão GDI falhou (${msg}). Usando Out-Printer (sem ajuste de largura).`);
+  }
+
+  const finalText = opts.qrUrl ? text + "\r\n" + qrAsText(opts.qrUrl) : text;
+  const tempFile = path.join(os.tmpdir(), `arvoredo_print_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`);
+  await fs.writeFile(tempFile, finalText, "utf8");
 
   try {
     await execPowershellPrint(tempFile, name);
   } finally {
     await fs.rm(tempFile, { force: true }).catch(() => undefined);
   }
+  return "texto";
 }

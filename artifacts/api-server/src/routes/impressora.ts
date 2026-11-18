@@ -34,16 +34,16 @@ async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
         if (err) {
           return reject(new Error(`Falha ao abrir impressora USB: ${err.message}`));
         }
-        
+
         try {
           printer.font("a").align("ct").style("normal").size(1, 1);
           // O texto já vem formatado com quebras de linha corretas (\r\n)
           printer.text(text);
-          
+
           if (qrCodeUrl) {
             printer.align("ct").qrcode(qrCodeUrl, 2, 6, "M");
           }
-          
+
           printer.cut().close((closeErr: Error | null) => {
             if (closeErr) {
               return reject(new Error(`Falha ao fechar impressora: ${closeErr.message}`));
@@ -60,17 +60,34 @@ async function printCupomWithQrCode(text: string, qrCodeUrl?: string) {
     return { ok: true, erro: null, metodo: "usb" };
   } catch (usbError: any) {
     logger.warn(`Falha ao imprimir via USB/ESCpos: ${usbError.message}. Tentando fallback via PowerShell.`);
-    await printTextToWindowsPrinter(text);
-    logger.info("Cupom impresso via fallback (PowerShell, sem QR Code).");
-    // Retorna sucesso, mas informa que o QR Code não foi impresso.
-    return { ok: true, erro: "QR Code não impresso (fallback de impressão).", metodo: "fallback" };
+    const modo = await printTextToWindowsPrinter(text, undefined, { qrUrl: qrCodeUrl });
+    logger.info(`Cupom impresso via fallback (${modo}).`);
+    return {
+      ok: true,
+      erro: modo === "gdi" || !qrCodeUrl ? null : "QR Code impresso como texto (fallback de impressão).",
+      metodo: "fallback",
+    };
   }
 }
 
 router.post("/teste", async (req, res) => {
   try {
     const printerName = await resolvePrinterName();
-    const text = `ARVOREDO\r\nTeste de Impressao\r\nImpressora: ${printerName}\r\nHorario: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\r\n\r\nSe o cupom sair, a impressora esta conectada.`;
+    // Regua: as 48 colunas devem ir de borda a borda; os colchetes [ ] mostram se algo foi cortado.
+    const text = [
+      "ARVOREDO",
+      "Teste de Impressao",
+      `Impressora: ${printerName}`,
+      `Horario: ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`,
+      "",
+      "-".repeat(48),
+      "1234567890".repeat(5).slice(0, 48),
+      "[" + " ".repeat(46) + "]",
+      "-".repeat(48),
+      "",
+      "Se a regua vai de borda a borda, esta ok.",
+      "",
+    ].join("\r\n");
     const qrUrl = req.query.qr ? "https://www.sefaz.rs.gov.br/nfce/consulta" : undefined;
     const result = await printCupomWithQrCode(text, qrUrl);
     return res.json({ ...result, impressora: printerName });
@@ -125,7 +142,7 @@ router.post("/cupom", async (req, res) => {
 
     const text = await buildCupomText(venda, itens, clienteNome, chaveAcesso, qrUrl);
     const result = await printCupomWithQrCode(text, qrUrl);
-    
+
     return res.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Erro de impressão do cupom";
